@@ -49,11 +49,10 @@ public final class ProxyTab extends JPanel {
     private final JPanel editorCards = whitePanel(new CardLayout());
     private final JPanel mergedCards = whitePanel(new CardLayout());
     private final JLabel metaUpdated = Ui.metaText("—");
-    private final JButton btnDownload, btnDelete, btnSaveMerged, btnMonitor;
+    private final JButton btnDownload, btnDelete, btnSaveMerged;
     private final JLabel routesTitle;
     private final JLabel proxyStatus = Ui.metaText(" ");
     private final Autosave autosave;
-    private Runnable openMonitor = () -> {};
     private Store.Item active;
 
     public ProxyTab(AppContext ctx) {
@@ -90,7 +89,6 @@ public final class ProxyTab extends JPanel {
             if (active != null) deleteItem(active);
         });
         btnSaveMerged = Ui.iconButton("copy-plus", ctx.m("tooltip.save.merged"), false, this::saveMerged);
-        btnMonitor = Ui.iconButton("monitor-play", ctx.m("tooltip.monitor"), false, () -> openMonitor.run());
         routesTitle = Ui.caps(ctx.m("proxy.panel.header"));
         autosave = new Autosave(ctx, editor, saveStatus, this::save);
         autosave.bindSaveKey(this);
@@ -113,21 +111,18 @@ public final class ProxyTab extends JPanel {
         showMerged();
     }
 
-    public void onOpenMonitor(Runnable r) {
-        openMonitor = r;
-    }
-
     // ── Layout ──────────────────────────────────────────────────
 
     private JComponent buildSidebar() {
         JPanel p = new JPanel(new BorderLayout());
         p.setBackground(Color.WHITE);
         JButton add = Ui.iconButton("square-plus", ctx.m("tooltip.new.vhost"), false, this::addItem);
+        JButton importBtn = Ui.iconButton("circle-fading-plus", ctx.m("app.tooltip.import.vhost"), false, this::importFiles);
         JButton addFolder = Ui.iconButton("folder-plus", ctx.m("tooltip.new.folder"), false, () -> {
             ctx.store(s -> s.createFolder(Store.Kind.VHOSTS));
             tree.render();
         });
-        p.add(Ui.header(Ui.caps(ctx.m("proxy.sidebar.header")), add, addFolder), BorderLayout.NORTH);
+        p.add(Ui.header(Ui.caps(ctx.m("proxy.sidebar.header")), add, importBtn, addFolder), BorderLayout.NORTH);
         p.add(tree, BorderLayout.CENTER);
         JPanel meta = Ui.meta();
         meta.add(countLabel, BorderLayout.WEST);
@@ -168,7 +163,7 @@ public final class ProxyTab extends JPanel {
         JButton help = Ui.iconButton("circle-help", ctx.m("tooltip.install.guide"), false,
                 () -> OeDialog.info(ctx, ctx.m("modal.install.ca"), ctx.plain("app.proxy.ca.guide",
                         ProxyRuntime.caCert() == null ? "-" : ProxyRuntime.caCert().toAbsolutePath())));
-        p.add(Ui.header(titleWrap, btnSaveMerged, btnMonitor, help), BorderLayout.NORTH);
+        p.add(Ui.header(titleWrap, btnSaveMerged, help), BorderLayout.NORTH);
 
         JLabel empty = new JLabel(ctx.m("proxy.config.empty"), SwingConstants.CENTER);
         empty.setForeground(Ui.MUTED);
@@ -263,14 +258,45 @@ public final class ProxyTab extends JPanel {
 
     private void download() {
         if (active == null) return;
-        JFileChooser fc = new JFileChooser();
-        fc.setSelectedFile(new java.io.File(active.name.replaceAll("[^A-Za-z0-9]", "_") + ".yaml"));
-        if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
+        if (!ItemFiles.save(this, active.name, ItemFiles.VHOST_EXT, editor.getText())) ctx.toast(ctx.m("status.save.failed"));
+    }
+
+    /**
+     * Each chosen .oeproxy file becomes a new vhost named after the file; the last one is opened.
+     * A file that fails the vhost schema check is skipped, as an invalid edit is never saved either.
+     */
+    private void importFiles() {
+        List<ItemFiles.Loaded> files;
         try {
-            Files.writeString(fc.getSelectedFile().toPath(), editor.getText(), StandardCharsets.UTF_8);
+            files = ItemFiles.open(this, ItemFiles.VHOST_EXT);
         } catch (Exception e) {
-            ctx.toast(ctx.m("status.save.failed"));
+            ctx.toast(ctx.m("app.import.failed"));
+            return;
         }
+        if (files.isEmpty()) return;
+        autosave.flush();
+        Store.Item last = null;
+        int imported = 0;
+        String invalid = null;
+        for (ItemFiles.Loaded f : files) {
+            List<Problem> problems = problems(f.content());
+            if (!problems.isEmpty()) {
+                if (invalid == null) invalid = ctx.m("app.item.import.invalid", f.name(), problems.get(0).message);
+                continue;
+            }
+            Store.Item it = ctx.store(s -> s.createFrom(Store.Kind.VHOSTS, f.name(), f.content()));
+            if (it != null) {
+                last = it;
+                imported++;
+            }
+        }
+        if (last != null) {
+            tree.render();
+            updateCount();
+            activate(last.id);
+        }
+        if (invalid != null) OeDialog.info(ctx, ctx.m("app.tooltip.import.vhost"), invalid);
+        else if (imported > 0) ctx.toast(ctx.m("app.item.imported", imported));
     }
 
     // ── Validation (validateSchema / lintDoc of proxy.html) ─────
@@ -376,7 +402,6 @@ public final class ProxyTab extends JPanel {
         boolean has = !sel.isEmpty();
         ((CardLayout) mergedCards.getLayout()).show(mergedCards, has ? "merged" : "empty");
         routesTitle.setForeground(has ? new Color(0xe53e3e) : Ui.MUTED);
-        btnMonitor.setEnabled(has);
         btnSaveMerged.setEnabled(sel.size() >= 2);
         merged.setText(HostsRules.resolvePlaceholders(mergedYaml(sel)));
     }

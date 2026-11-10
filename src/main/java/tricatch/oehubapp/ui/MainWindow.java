@@ -16,17 +16,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The app window: the green navbar of _layout.html (logo, OEHOSTS | OEPROXY tabs,
- * settings gear) over the screens; the monitor opens from the oeProxy screen.
+ * The app window: the green navbar of _layout.html (OEHOSTS | OEPROXY tabs,
+ * settings gear) over the screens.
  */
 public final class MainWindow {
 
-    private static final String[] TABS = {"oeHosts", "oeProxy", "oeMonitor", "settings"};
-    /**
-     * Tabs with a label in the navbar. The monitor is opened from the oeProxy screen and counts as
-     * part of it (the OEPROXY label stays underlined); the settings tab is opened with the gear button.
-     */
-    private static final int NAV_TABS = 2;
+    private static final String[] TABS = {"oeHosts", "oeProxy", "Network", "settings"};
+    /** Tabs with a label in the navbar; the settings tab is opened with the gear button. */
+    private static final int NAV_TABS = 3;
     private static final int MONITOR = 2;
     private static final int SETTINGS = 3;
     /** The window on screen (replaced when the window is rebuilt for a language change). */
@@ -171,7 +168,6 @@ public final class MainWindow {
             proxy.flush();
         });
         content.add(settings, TABS[SETTINGS]);
-        proxy.onOpenMonitor(() -> select(MONITOR));
         monitor.onGotoProxy(() -> select(1));
 
         JPanel root = new JPanel(new BorderLayout());
@@ -182,7 +178,7 @@ public final class MainWindow {
     }
 
     private JComponent navbar() {
-        // West: logo and tabs; east: the gear; the current screen's actions sit in the middle of the
+        // West: the tabs; east: the gear; the current screen's actions sit in the middle of the
         // whole bar (not of the space left between the two sides).
         JPanel bar = new JPanel(null) {
             @Override
@@ -203,9 +199,7 @@ public final class MainWindow {
 
         JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         left.setOpaque(false);
-        JLabel logo = new JLabel(Ui.image("oe_logo_nav.svg", 28, 28));
-        logo.setBorder(new EmptyBorder(9, 2, 9, 8));
-        left.add(logo);
+        // No logo: the window's own title-bar icon sits right above it.
         for (int i = 0; i < NAV_TABS; i++) {
             if (i > 0) {
                 JLabel sep = new JLabel("|");
@@ -219,6 +213,7 @@ public final class MainWindow {
         navActions.setOpaque(false);
         navActions.add(new JPanel() {{ setOpaque(false); }}, TABS[0]);
         navActions.add(new JPanel() {{ setOpaque(false); }}, TABS[1]);
+        // Network: start/stop capture and clear.
         navActions.add(wrapMiddle(monitor.navActions()), TABS[MONITOR]);
         navActions.add(new JPanel() {{ setOpaque(false); }}, TABS[SETTINGS]);
         bar.add(left);
@@ -265,7 +260,7 @@ public final class MainWindow {
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                if (navIndex(current) == index) {
+                if (current == index) {
                     g2.setColor(Color.WHITE);
                     g2.fillRect(0, getHeight() - 2, getWidth(), 2);
                 } else if (hover) {
@@ -289,16 +284,11 @@ public final class MainWindow {
         cards.show(content, TABS[index]);
         ((CardLayout) navActions.getLayout()).show(navActions, TABS[index]);
         for (int i = 0; i < tabLabels.size(); i++) {
-            tabLabels.get(i).setForeground(i == navIndex(index) ? Color.WHITE : new Color(255, 255, 255, 191));
+            tabLabels.get(i).setForeground(i == index ? Color.WHITE : new Color(255, 255, 255, 191));
             tabLabels.get(i).repaint();
         }
         monitor.setVisibleTab(index == MONITOR);
         if (gear != null) gear.repaint();
-    }
-
-    /** The navbar label shown as active for a tab: the monitor belongs to oeProxy. */
-    private static int navIndex(int tab) {
-        return tab == MONITOR ? 1 : tab;
     }
 
     /** The gear opens the settings tab; it is underlined like a nav tab while that tab is shown. */

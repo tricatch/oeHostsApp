@@ -150,11 +150,12 @@ public final class HostsTab extends JPanel {
         JPanel p = new JPanel(new BorderLayout());
         p.setBackground(Color.WHITE);
         JButton add = Ui.iconButton("square-plus", ctx.m("tooltip.new.profile"), false, this::addItem);
+        JButton importBtn = Ui.iconButton("circle-fading-plus", ctx.m("app.tooltip.import.profile"), false, this::importFiles);
         JButton addFolder = Ui.iconButton("folder-plus", ctx.m("tooltip.new.folder"), false, () -> {
             ctx.store(s -> s.createFolder(Store.Kind.HOSTS));
             tree.render();
         });
-        p.add(Ui.header(Ui.caps(ctx.m("hosts.sidebar.header")), add, addFolder), BorderLayout.NORTH);
+        p.add(Ui.header(Ui.caps(ctx.m("hosts.sidebar.header")), add, importBtn, addFolder), BorderLayout.NORTH);
         p.add(tree, BorderLayout.CENTER);
         JPanel meta = Ui.meta();
         meta.add(countLabel, BorderLayout.WEST);
@@ -621,14 +622,29 @@ public final class HostsTab extends JPanel {
 
     private void download() {
         if (active == null) return;
-        JFileChooser fc = new JFileChooser();
-        fc.setSelectedFile(new java.io.File(active.name.replaceAll("[^A-Za-z0-9]", "_") + ".txt"));
-        if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
+        if (!ItemFiles.save(this, active.name, ItemFiles.HOSTS_EXT, editor.getText())) ctx.toast(ctx.m("status.save.failed"));
+    }
+
+    /** Each chosen .oehosts file becomes a new profile named after the file; the last one is opened. */
+    private void importFiles() {
+        List<ItemFiles.Loaded> files;
         try {
-            Files.writeString(fc.getSelectedFile().toPath(), editor.getText(), StandardCharsets.UTF_8);
+            files = ItemFiles.open(this, ItemFiles.HOSTS_EXT);
         } catch (Exception e) {
-            ctx.toast(ctx.m("status.save.failed"));
+            ctx.toast(ctx.m("app.import.failed"));
+            return;
         }
+        if (files.isEmpty()) return;
+        autosave.flush();
+        Store.Item last = null;
+        for (ItemFiles.Loaded f : files) {
+            Store.Item it = ctx.store(s -> s.createFrom(Store.Kind.HOSTS, f.name(), f.content()));
+            if (it != null) last = it;
+        }
+        if (last == null) return;
+        reload();
+        activate(last.id);
+        ctx.toast(ctx.m("app.item.imported", files.size()));
     }
 
     // ── Rules and previews ──────────────────────────────────────

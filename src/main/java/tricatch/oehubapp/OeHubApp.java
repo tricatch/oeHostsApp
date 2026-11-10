@@ -13,7 +13,7 @@ import java.nio.file.Path;
 import java.util.Map;
 
 /**
- * oeHubApp desktop app: oeHosts / oeProxy / oeMonitor as tabs of one Swing window, no browser or
+ * oeHubApp desktop app: oeHosts / oeProxy / Network as tabs of one Swing window, no browser or
  * local web server needed. Run: {@code java -jar oehubapp.jar [--data DIR]}.
  */
 public final class OeHubApp {

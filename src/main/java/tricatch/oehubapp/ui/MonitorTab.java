@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The oeMonitor screen (monitor.html): request table on top, detail tabs below, fed by the
+ * The Network screen (oeHub's monitor.html): request table on top, detail tabs below, fed by the
  * embedded proxy's live traffic events ({@link ProxyMonitor}). Recording subscribes to the proxy;
  * stopping it unsubscribes, so the proxy stops building events.
  */
@@ -214,28 +214,28 @@ public final class MonitorTab extends JPanel {
         ((CardLayout) panelCards.getLayout()).show(panelCards, TABS[index]);
     }
 
-    /** Navbar actions while the monitor is shown: record and clear. */
+    /** Navbar actions of the Network tab: start/stop capture and clear. */
     public JComponent navActions() {
-        JPanel p = new JPanel(new FlowLayout(FlowLayout.CENTER, 4, 0));
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 0));
         p.setOpaque(false);
-        recordBtn = navButton("circle-stop", ctx.m("monitor.stop.recording"), this::toggleRecording);
-        recordBtn.setIcon(Ui.icon("circle-stop", 15, Ui.DANGER));
+        recordBtn = Ui.navIconButton("circle-stop", ctx.m("app.monitor.stop"), this::toggleRecording);
+        showRecording(recordBtn);
         p.add(recordBtn);
-        p.add(navButton("brush-cleaning", ctx.m("tooltip.clear"), this::clear));
+        p.add(Ui.navIconButton("brush-cleaning", ctx.m("tooltip.clear"), this::clear));
         return p;
     }
 
-    private static JButton navButton(String icon, String tip, Runnable r) {
-        JButton b = Ui.iconButton(icon, tip, false, r);
-        b.setIcon(Ui.icon(icon, 15, new Color(0, 0, 0, 115)));
-        return b;
+    private void showRecording(JButton b) {
+        String icon = recording ? "circle-stop" : "circle-play";
+        b.setIcon(Ui.icon(icon, 15, recording ? Ui.DANGER : Ui.NAV_ICON));
+        b.setRolloverIcon(Ui.icon(icon, 15, recording ? Ui.DANGER : Ui.NAV_ICON_HOVER));
+        b.setDisabledIcon(Ui.icon(icon, 15, Ui.NAV_ICON_DISABLED));
+        b.setToolTipText(ctx.m(recording ? "app.monitor.stop" : "app.monitor.start"));
     }
 
     private void toggleRecording() {
         recording = !recording;
-        recordBtn.setIcon(Ui.icon(recording ? "circle-stop" : "circle-play", 15, recording ? Ui.DANGER : new Color(0, 0, 0, 115)));
-        recordBtn.setRolloverIcon(Ui.icon(recording ? "circle-stop" : "circle-play", 16, recording ? Ui.DANGER : new Color(0, 0, 0, 178)));
-        recordBtn.setToolTipText(ctx.m(recording ? "monitor.stop.recording" : "monitor.start.recording"));
+        showRecording(recordBtn);
         if (recording) monitor.start();
         else monitor.stop();
     }

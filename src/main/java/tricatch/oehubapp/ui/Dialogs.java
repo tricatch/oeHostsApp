@@ -14,7 +14,8 @@ final class Dialogs {
             JTextArea script = OeDialog.script(cmd);
             JScrollPane sp = new JScrollPane(script);
             sp.setBorder(BorderFactory.createEmptyBorder());
-            sp.setPreferredSize(new Dimension(640, Math.min(190, script.getPreferredSize().height + 40)));
+            // Fixed height: the command is always a long kill-and-launch script, scrolled inside.
+            sp.setPreferredSize(new Dimension(640, 360));
             fixWidth(top, 640);
             d.body(OeDialog.stack(10, top, sp));
             d.button(ctx.m("modal.chrome.cmd.copy"), true, () -> {

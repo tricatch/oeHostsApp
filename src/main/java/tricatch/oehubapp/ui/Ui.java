@@ -139,6 +139,54 @@ public final class Ui {
         return b;
     }
 
+    /**
+     * Icon button for the middle of the green navbar (Network start/stop capture, clear): a rounded square
+     * frame so it reads against BC300.
+     */
+    public static JButton navIconButton(String icon, String tooltip, Runnable action) {
+        JButton b = new JButton() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                int w = getWidth() - 1, h = getHeight() - 1;
+                Color fill, line;
+                if (!isEnabled()) {
+                    fill = new Color(255, 255, 255, 40);
+                    line = new Color(0, 0, 0, 30);
+                } else {
+                    fill = new Color(255, 255, 255, getModel().isRollover() ? 140 : 64);
+                    line = new Color(0, 0, 0, 64);
+                }
+                g2.setColor(fill);
+                g2.fillRoundRect(0, 0, w, h, 12, 12);
+                g2.setColor(line);
+                g2.drawRoundRect(0, 0, w, h, 12, 12);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        b.setIcon(icon(icon, 15, NAV_ICON));
+        b.setRolloverIcon(icon(icon, 15, NAV_ICON_HOVER));
+        b.setDisabledIcon(icon(icon, 15, NAV_ICON_DISABLED));
+        b.setToolTipText(tooltip);
+        b.setContentAreaFilled(false);
+        b.setBorderPainted(false);
+        b.setFocusPainted(false);
+        b.setFocusable(false);
+        b.setOpaque(false);
+        b.setRolloverEnabled(true);
+        b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        b.setPreferredSize(new Dimension(30, 28));
+        b.setMargin(new Insets(0, 0, 0, 0));
+        if (action != null) b.addActionListener(e -> action.run());
+        return b;
+    }
+
+    public static final Color NAV_ICON = new Color(0, 0, 0, 140);
+    public static final Color NAV_ICON_HOVER = new Color(0, 0, 0, 204);
+    public static final Color NAV_ICON_DISABLED = new Color(0, 0, 0, 64);
+
     /** Panel header: title on the left, actions on the right, a line under it. */
     public static JPanel header(JComponent title, JComponent... actions) {
         JPanel p = new JPanel(new BorderLayout(6, 0));

@@ -284,6 +284,17 @@ public final class Store {
         return i;
     }
 
+    /** A new item from an imported file; the name gets a " (n)" suffix if it is already taken. */
+    public Item createFrom(Kind kind, String name, String content) {
+        String base = name == null ? "" : name.strip();
+        if (base.length() > 190) base = base.substring(0, 190).strip();
+        if (base.isEmpty()) base = kind.defaultName;
+        Item i = newItem(kind, nextUniqueName(takenNames(kind, null), base), content, false, null);
+        items(kind).add(i);
+        save();
+        return i;
+    }
+
     private Item item(Kind kind, String id) {
         return items(kind).stream().filter(i -> i.id.equals(id)).findFirst().orElseThrow(StoreException::notFound);
     }
