@@ -112,6 +112,6 @@ JDK 25 툴체인으로 빌드하고 `--release 21`로 컴파일합니다(oe-prox
 
 | 이 저장소 | oeHub 원본 | 비고 |
 |---|---|---|
-| `i18n/messages_{en,ko}.properties` | `i18n/` | 그대로. 앱 전용 문구는 `i18n/oehubapp_{en,ko}.properties`에 두고 같은 키는 덮어씀 |
+| `i18n/messages_{en,ko}.properties` | `i18n/` | 이 앱이 쓰는 키만 남김(oeHub에서 키를 다시 가져올 때도 쓰는 키만 추가). 앱 전용 문구는 `i18n/oehubapp_{en,ko}.properties`에 두고 같은 키는 덮어씀 |
 | `icon/` | `static/icon/` | 그대로(Lucide SVG, 로고, 창 아이콘) |
 | `example/` | `example/` | 새 프로필·vhost의 예시 내용 |

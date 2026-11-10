@@ -13,7 +13,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * UI messages: oeHub's {@code messages_<lang>.properties} (copied unchanged) with this app's
+ * UI messages: oeHub's {@code messages_<lang>.properties} (trimmed to the keys this app uses) with this app's
  * {@code oehubapp_<lang>.properties} layered on top. Both are UTF-8.
  */
 public final class Messages {
