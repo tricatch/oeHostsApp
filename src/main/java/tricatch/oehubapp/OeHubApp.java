@@ -69,6 +69,7 @@ public final class OeHubApp {
         dockIcon();
         Store store = AppData.open(dataDir);
         ProxyRuntime.start(dataDir, store);
+        Thread.ofVirtual().name("fwdproxy-start").start(() -> ForwardProxy.start(store));
         SwingUtilities.invokeLater(() -> MainWindow.open(store));
         instance.watchFocusRequests(MainWindow::bringToFront);
     }

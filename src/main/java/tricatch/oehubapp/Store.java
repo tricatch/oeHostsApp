@@ -96,6 +96,10 @@ public final class Store {
     public static class Settings {
         public String proxySvr = DEFAULT_PROXY_SVR;
         public int fwdproxyPort = DEFAULT_FWDPROXY_PORT;
+        /** Desktop app: forward proxy on every network interface (0.0.0.0) instead of 127.0.0.1 only. */
+        public boolean fwdproxyLan;
+        /** Desktop app: reverse proxy on every network interface (the default) instead of 127.0.0.1 only. */
+        public boolean reverseProxyLan = true;
         public List<Preset> uaPresets = new ArrayList<>();
         public List<Preset> urlPresets = new ArrayList<>();
         /**
@@ -427,83 +431,107 @@ public final class Store {
         return list(Kind.HOSTS).stream().filter(i -> i.selected).map(i -> i.content).toList();
     }
 
-    // ── Import ────────────────────────────────────────────────
-
-    /** Rows imported, and rows skipped (encrypted or without a name). */
-    public record ImportResult(int imported, int skipped) {}
+    // ── Export / backup restore ─────────────────────────────────
 
     /**
-     * Imports one kind from an export file, this app's or oeHub's ({@link #exportKind}'s shape):
-     * the {@code hosts} or {@code vhosts} array of rows with name/content, {@code selected} and
-     * optionally {@code folderName}. Encrypted rows (an oeHub wrappedContentKey) cannot be read
-     * here and are skipped. With {@code replace}, that kind's items and folders are cleared first.
-     * A file without that array is refused.
+     * The chosen parts of the data for a backup's {@code data.json}: oeHosts (profiles, folders,
+     * launcher options), oeProxy (vhosts, folders, proxy options) and settings. A part left out has
+     * no key, so {@link #restoreParts} and {@link Backup.Contents} can tell it was not exported.
      */
-    public ImportResult importKind(JsonNode root, boolean replace, Kind kind) {
-        JsonNode rows = root == null ? null : root.get(kind == Kind.HOSTS ? "hosts" : "vhosts");
-        if (rows == null || !rows.isArray()) {
-            throw StoreException.invalid(kind == Kind.HOSTS ? "app.data.import.error.no.hosts" : "app.data.import.error.no.vhosts");
-        }
-        if (replace) {
-            items(kind).clear();
-            folders(kind).clear();
-        }
-        int imported = 0, skipped = 0;
-        for (JsonNode row : rows) {
-            String name = row.path(kind.nameKey).asText("").strip();
-            boolean encrypted = !row.path("wrappedContentKey").asText("").isEmpty();
-            if (name.isEmpty() || encrypted) {
-                skipped++;
-                continue;
-            }
-            String content = row.path(kind.contentKey).asText("").replace("\r\n", "\n");
-            String folderName = row.path("folderName").asText("").strip();
-            String folderId = folderName.isEmpty() ? null : folderByName(kind, folderName);
-            items(kind).add(newItem(kind, nextUniqueName(takenNames(kind, null), name), content,
-                    row.path("selected").asBoolean(false), folderId));
-            imported++;
-        }
-        save();
-        return new ImportResult(imported, skipped);
-    }
-    // ── Export / full restore ─────────────────────────────────
-
-    /**
-     * One kind's items in oeHub's export shape ({@code /api/hosts/export}, {@code /api/proxy/vhosts/export}):
-     * {@code {"version":1, "exportedAt", "hosts"|"vhosts": [{name, content, selected, folderName, sortOrder}]}},
-     * in tree order, so {@link #importKind} here and oeHub's own import both read it back.
-     * Empty folders and the collapsed state are not part of that shape.
-     */
-    public JsonNode exportKind(Kind kind) {
-        Map<String, String> folderNames = new HashMap<>();
-        for (Folder f : folders(kind)) folderNames.put(f.id, f.name);
+    public JsonNode exportParts(boolean hosts, boolean vhosts, boolean settings) {
         com.fasterxml.jackson.databind.node.ObjectNode root = MAPPER.createObjectNode();
-        root.put("version", 1);
-        root.put("exportedAt", now());
-        com.fasterxml.jackson.databind.node.ArrayNode rows = root.putArray(kind == Kind.HOSTS ? "hosts" : "vhosts");
-        long order = 0;
-        for (Item it : list(kind)) {
-            com.fasterxml.jackson.databind.node.ObjectNode r = rows.addObject();
-            r.put(kind.nameKey, it.name);
-            r.put(kind.contentKey, it.content);
-            r.put("selected", it.selected);
-            String folder = it.folderId == null ? null : folderNames.get(it.folderId);
-            if (folder != null) r.put("folderName", folder);
-            r.put("sortOrder", order++);
+        root.put("version", data.version);
+        if (hosts) {
+            root.set("hosts", MAPPER.valueToTree(data.hosts));
+            root.set("hostsFolders", MAPPER.valueToTree(data.hostsFolders));
+            root.set("hostsConf", MAPPER.valueToTree(data.hostsConf));
         }
+        if (vhosts) {
+            root.set("vhosts", MAPPER.valueToTree(data.vhosts));
+            root.set("vhostFolders", MAPPER.valueToTree(data.vhostFolders));
+            root.set("proxyConf", MAPPER.valueToTree(data.proxyConf));
+        }
+        if (settings) root.set("settings", MAPPER.valueToTree(data.settings));
         return root;
     }
 
-    /** Replaces everything stored with {@code from} (a full backup) and saves. */
-    public void replaceAll(Data from) {
-        data.hosts = from.hosts != null ? from.hosts : new ArrayList<>();
-        data.hostsFolders = from.hostsFolders != null ? from.hostsFolders : new ArrayList<>();
-        data.vhosts = from.vhosts != null ? from.vhosts : new ArrayList<>();
-        data.vhostFolders = from.vhostFolders != null ? from.vhostFolders : new ArrayList<>();
-        data.hostsConf = from.hostsConf != null ? new TreeMap<>(from.hostsConf) : new TreeMap<>();
-        data.proxyConf = from.proxyConf != null ? new TreeMap<>(from.proxyConf) : new TreeMap<>();
-        data.settings = from.settings != null ? from.settings : new Settings();
+    /** Replaces the chosen parts (see {@link #exportParts}) with those of a backup's {@code data.json}, and saves. */
+    public void restoreParts(JsonNode json, boolean hosts, boolean vhosts, boolean settings) throws IOException {
+        Data from = MAPPER.treeToValue(json, Data.class);
+        if (hosts) {
+            data.hosts = from.hosts != null ? from.hosts : new ArrayList<>();
+            data.hostsFolders = from.hostsFolders != null ? from.hostsFolders : new ArrayList<>();
+            data.hostsConf = from.hostsConf != null ? new TreeMap<>(from.hostsConf) : new TreeMap<>();
+        }
+        if (vhosts) {
+            data.vhosts = from.vhosts != null ? from.vhosts : new ArrayList<>();
+            data.vhostFolders = from.vhostFolders != null ? from.vhostFolders : new ArrayList<>();
+            data.proxyConf = from.proxyConf != null ? new TreeMap<>(from.proxyConf) : new TreeMap<>();
+        }
+        if (settings) data.settings = from.settings != null ? from.settings : new Settings();
         save();
+    }
+
+    /**
+     * Adds the chosen parts of a backup's {@code data.json} to what is stored, keeping everything
+     * already there: items are added (a taken name gets a " (n)" suffix) into folders matched by
+     * name, options only fill keys not set yet, and settings only gain the presets they lack (the
+     * other settings stay as they are). Saves once at the end.
+     */
+    public void mergeParts(JsonNode json, boolean hosts, boolean vhosts, boolean settings) throws IOException {
+        Data from = MAPPER.treeToValue(json, Data.class);
+        if (hosts) {
+            mergeItems(Kind.HOSTS, from.hosts, from.hostsFolders);
+            if (from.hostsConf != null) from.hostsConf.forEach(data.hostsConf::putIfAbsent);
+        }
+        if (vhosts) {
+            mergeItems(Kind.VHOSTS, from.vhosts, from.vhostFolders);
+            if (from.proxyConf != null) from.proxyConf.forEach(data.proxyConf::putIfAbsent);
+        }
+        if (settings && from.settings != null) {
+            Settings st = data.settings;
+            st.uaPresetsText = mergePresets(st.uaPresets, st.uaPresetsText, from.settings.uaPresets);
+            st.urlPresetsText = mergePresets(st.urlPresets, st.urlPresetsText, from.settings.urlPresets);
+        }
+        save();
+    }
+
+    private void mergeItems(Kind kind, List<Item> add, List<Folder> addFolders) {
+        Map<String, String> folderNames = new HashMap<>();
+        List<Folder> srcFolders = addFolders != null ? new ArrayList<>(addFolders) : new ArrayList<>();
+        srcFolders.sort(Comparator.comparingLong(f -> f.sortOrder));
+        for (Folder f : srcFolders) {
+            if (f.id == null || f.name == null || f.name.isBlank()) continue;
+            folderNames.put(f.id, folderByName(kind, f.name.strip()));
+        }
+        if (add == null) return;
+        List<Item> src = new ArrayList<>(add);
+        src.sort(Comparator.comparingLong(i -> i.sortOrder));
+        for (Item it : src) {
+            String name = it.name == null ? "" : it.name.strip();
+            if (name.isEmpty()) continue;
+            String folderId = it.folderId == null ? null : folderNames.get(it.folderId);
+            items(kind).add(newItem(kind, nextUniqueName(takenNames(kind, null), name),
+                    it.content == null ? "" : it.content, it.selected, folderId));
+        }
+    }
+
+    /**
+     * Appends to {@code list} the presets of {@code add} it does not have (same name and value), and
+     * returns the editor text with those lines appended (null stays null: the text is rebuilt from the list).
+     */
+    private static String mergePresets(List<Preset> list, String text, List<Preset> add) {
+        if (add == null) return text;
+        StringBuilder more = new StringBuilder();
+        for (Preset p : add) {
+            if (p == null || p.name == null || p.value == null) continue;
+            boolean has = list.stream().anyMatch(q -> p.name.equals(q.name) && p.value.equals(q.value));
+            if (has) continue;
+            list.add(new Preset(p.name, p.value));
+            more.append(p.name).append(" | ").append(p.value).append('\n');
+        }
+        if (text == null || more.isEmpty()) return text;
+        return (text.isEmpty() || text.endsWith("\n") ? text : text + "\n") + more;
     }
 
     private String folderByName(Kind kind, String name) {

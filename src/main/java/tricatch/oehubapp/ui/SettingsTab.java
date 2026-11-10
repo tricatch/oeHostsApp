@@ -355,6 +355,46 @@ public final class SettingsTab extends JPanel {
         return p;
     }
 
+    /** The "this PC only / every network" radio pair and the note shown while the latter is chosen. */
+    private record BindChoice(JPanel panel, JRadioButton all) {
+        boolean lan() {
+            return all.isSelected();
+        }
+    }
+
+    private BindChoice bindChoice(boolean lan, String warnKey) {
+        JRadioButton local = new JRadioButton(ctx.m("app.settings.bind.local"), !lan);
+        JRadioButton all = new JRadioButton(ctx.m("app.settings.bind.all"), lan);
+        ButtonGroup group = new ButtonGroup();
+        JPanel p = new JPanel();
+        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
+        p.setOpaque(false);
+        for (JRadioButton r : new JRadioButton[]{local, all}) {
+            r.setOpaque(false);
+            r.setFocusable(false);
+            r.setFont(Ui.font(Font.PLAIN, 13f));
+            r.setAlignmentX(LEFT_ALIGNMENT);
+            group.add(r);
+            p.add(r);
+        }
+        JComponent warn = desc(ctx.m(warnKey));
+        warn.setForeground(Ui.DANGER);
+        warn.setAlignmentX(LEFT_ALIGNMENT);
+        warn.setVisible(lan);
+        all.addItemListener(e -> {
+            warn.setVisible(all.isSelected());
+            p.revalidate();
+        });
+        p.add(Box.createVerticalStrut(4));
+        p.add(warn);
+        return new BindChoice(p, all);
+    }
+
+    /** The address a proxy is bound to: {@code 0.0.0.0:port} (every interface) or {@code 127.0.0.1:port}. */
+    private static String bound(boolean allInterfaces, int port) {
+        return (allInterfaces ? "0.0.0.0:" : "127.0.0.1:") + port;
+    }
+
     // ── oeHosts pages ───────────────────────────────────────────
 
     private JComponent presetsPage(boolean ua) {
@@ -412,8 +452,12 @@ public final class SettingsTab extends JPanel {
         port.setFont(Ui.font(Font.PLAIN, 13f));
         port.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878; margin:4,8,4,8");
         port.setMaximumSize(new Dimension(140, 34));
+        // Where it listens: this PC only (the default) or every network interface.
+        BindChoice bind = bindChoice(ctx.read(() -> ctx.rawStore().data.settings.fwdproxyLan),
+                "app.settings.fwdproxy.bind.all.warn");
         JLabel st = status();
-        JButton save = Ui.primary(ctx.m("btn.save"), Ui.icon("save-plus", 13, new Color(0x2d4a14)), () -> {
+        // Saves the port and the binding, then restarts the proxy with them; the state rows show the outcome.
+        JButton restart = Ui.primary(ctx.m("app.settings.server.restart"), Ui.icon("refresh-cw", 13, new Color(0x2d4a14)), () -> {
             int p;
             try {
                 p = Integer.parseInt(port.getText().strip());
@@ -425,18 +469,44 @@ public final class SettingsTab extends JPanel {
                 return;
             }
             int fp = p;
+            boolean toLan = bind.lan();
             ctx.storeRun(s -> {
                 s.data.settings.fwdproxyPort = fp;
+                s.data.settings.fwdproxyLan = toLan;
                 s.save();
             });
             ctx.fireSettingsChanged();
-            flash(st, ctx.m("status.saved"), false);
+            Thread.ofVirtual().name("fwdproxy-restart").start(tricatch.oehubapp.ForwardProxy::restart);
         });
-        save.setIconTextGap(5);
+        restart.setIconTextGap(5);
         // The result shows in the bottom bar, like the editors' save status.
         metaStatus.add(st, "fwd");
         metaPages.add("fwd");
-        return withActions(page(desc(ctx.m("app.settings.fwdproxy.desc")), buttons(port)), save);
+        JTextField[] v = new JTextField[3];
+        JPanel info = table(new String[][]{
+                {ctx.m("app.settings.server.state"), "-"},
+                {ctx.m("app.settings.server.port"), "-"},
+                {ctx.m("app.settings.server.error"), "-"}}, v);
+        // A word in the UI language: see serverPage.
+        v[0].setFont(Ui.font(Font.BOLD, 12.5f));
+        v[2].setFont(Ui.font(Font.PLAIN, 12.5f));
+        Runnable refresh = () -> {
+            tricatch.oehubapp.ForwardProxy.State s = tricatch.oehubapp.ForwardProxy.state();
+            v[0].setText(ctx.m(switch (s) {
+                case STOPPED -> "app.proxy.status.starting";
+                case RUNNING -> "app.settings.server.running";
+                case FAILED -> "app.settings.server.failed";
+            }));
+            v[0].setForeground(s == tricatch.oehubapp.ForwardProxy.State.RUNNING ? Ui.BC700
+                    : s == tricatch.oehubapp.ForwardProxy.State.FAILED ? Ui.DANGER : Ui.MUTED);
+            int fp = tricatch.oehubapp.ForwardProxy.port();
+            v[1].setText(fp > 0 ? bound(tricatch.oehubapp.ForwardProxy.lan(), fp) : "-");
+            String err = tricatch.oehubapp.ForwardProxy.error();
+            v[2].setText(s == tricatch.oehubapp.ForwardProxy.State.FAILED && err != null ? err : "-");
+        };
+        tricatch.oehubapp.ForwardProxy.onChange(() -> SwingUtilities.invokeLater(refresh));
+        refresh.run();
+        return page(desc(ctx.m("app.settings.fwdproxy.desc")), buttons(port), bind.panel(), buttons(restart), info);
     }
 
     /** {@code page} with {@code actions} at its bottom right, just above the bottom bar. */
@@ -767,10 +837,13 @@ public final class SettingsTab extends JPanel {
     }
 
     private JComponent serverPage() {
+        // Where it listens: every network interface (the default, so phones can use it) or this PC only.
+        BindChoice bind = bindChoice(ctx.read(() -> ctx.rawStore().data.settings.reverseProxyLan),
+                "app.settings.server.bind.all.warn");
         JTextField[] v = new JTextField[3];
         JPanel info = table(new String[][]{
                 {ctx.m("app.settings.server.state"), "-"},
-                {ctx.m("app.settings.server.port"), String.valueOf(ProxyRuntime.port())},
+                {ctx.m("app.settings.server.port"), "-"},
                 {ctx.m("app.settings.server.error"), "-"}}, v);
         // The status is a word in the UI language: Korean in the mono font falls back to a taller
         // glyph that the row cuts off at the top.
@@ -784,13 +857,22 @@ public final class SettingsTab extends JPanel {
                 case FAILED -> "app.settings.server.failed";
             }));
             v[0].setForeground(s == ProxyRuntime.State.RUNNING ? Ui.BC700 : s == ProxyRuntime.State.FAILED ? Ui.DANGER : Ui.MUTED);
+            v[1].setText(bound(ProxyRuntime.lan(), ProxyRuntime.port()));
             v[2].setText(s == ProxyRuntime.State.FAILED && ProxyRuntime.error() != null ? ProxyRuntime.error() : "-");
         };
         ProxyRuntime.onChange(() -> SwingUtilities.invokeLater(refresh));
         refresh.run();
-        JButton restart = Ui.primary(ctx.m("app.settings.server.restart"), Ui.icon("refresh-cw", 13, new Color(0x2d4a14)), ProxyRuntime::restart);
+        // Saves the binding, then restarts the proxy with it; the state rows show the outcome.
+        JButton restart = Ui.primary(ctx.m("app.settings.server.restart"), Ui.icon("refresh-cw", 13, new Color(0x2d4a14)), () -> {
+            boolean toLan = bind.lan();
+            ctx.storeRun(s -> {
+                s.data.settings.reverseProxyLan = toLan;
+                s.save();
+            });
+            ProxyRuntime.restart();
+        });
         restart.setIconTextGap(5);
-        return withActions(page(desc(ctx.m("app.settings.server.desc")), info), restart);
+        return page(desc(ctx.m("app.settings.server.desc")), bind.panel(), buttons(restart), info);
     }
 
     // ── General pages ───────────────────────────────────────────
@@ -823,33 +905,51 @@ public final class SettingsTab extends JPanel {
         JTextField[] v = new JTextField[1];
         JPanel info = table(new String[][]{{ctx.m("app.settings.data.file"), file.toString()}}, v);
         JButton folder = Ui.secondary(ctx.m("app.settings.open.folder"), "folder-open", () -> openFolder(file.getParent()));
-        // Export / import per screen and for everything, one row each.
-        JPanel transfer = new JPanel(new GridBagLayout());
-        transfer.setOpaque(false);
-        String[][] rows = {{"app.data.hosts", "hosts"}, {"app.data.vhosts", "vhosts"}, {"app.data.all", "all"}};
-        GridBagConstraints c = new GridBagConstraints();
-        for (int i = 0; i < rows.length; i++) {
-            String what = rows[i][1];
-            c.gridy = i;
-            c.gridx = 0;
-            c.anchor = GridBagConstraints.WEST;
-            c.insets = new Insets(i == 0 ? 0 : 6, 0, 0, 16);
-            JLabel name = new JLabel(ctx.m(rows[i][0]));
-            name.setFont(Ui.font(Font.BOLD, 12.5f));
-            name.setForeground(Ui.MUTED);
-            transfer.add(name, c);
-            c.gridx = 1;
-            JButton ex = Ui.secondary(ctx.m("app.data.export"), "file-down", () -> exportData(what));
-            JButton in = Ui.secondary(ctx.m("app.data.import"), "circle-fading-plus", () -> importData(what));
-            transfer.add(buttons(ex, in), c);
+        // What to export / import: one check box per part, all on by default except the CA (its private key is sensitive).
+        JCheckBox[] parts = new JCheckBox[DATA_PARTS.length];
+        JPanel checks = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        checks.setOpaque(false);
+        JButton ex = Ui.secondary(ctx.m("app.data.export"), "file-down", () -> exportData(chosen(parts)));
+        JButton in = Ui.secondary(ctx.m("app.data.import"), "circle-fading-plus", () -> importData(chosen(parts)));
+        for (int i = 0; i < parts.length; i++) {
+            parts[i] = new JCheckBox(ctx.m(DATA_PARTS[i]), i != CA_PART);
+            parts[i].setOpaque(false);
+            parts[i].setFocusable(false);
+            parts[i].setFont(Ui.font(Font.PLAIN, 13f));
+            parts[i].addActionListener(e -> {
+                boolean any = chosen(parts).any();
+                ex.setEnabled(any);
+                in.setEnabled(any);
+            });
+            if (i > 0) checks.add(Box.createHorizontalStrut(18));
+            checks.add(parts[i]);
         }
-        // Takes the spare width, so the rows stay at the left edge.
-        c.gridx = 2;
-        c.gridy = 0;
-        c.weightx = 1;
-        transfer.add(Box.createHorizontalGlue(), c);
         // Export / import first, then the data file itself, with a line between the two blocks.
-        return page(transfer, separator(), desc(ctx.m("app.settings.data.desc")), info, buttons(folder));
+        return page(desc(ctx.m("app.data.desc")), checks, buttons(ex, in), separator(),
+                desc(ctx.m("app.settings.data.desc")), info, buttons(folder));
+    }
+
+    /** The data page's check boxes, in {@link Parts} order. */
+    private static final int CA_PART = 3;
+    private static final String[] DATA_PARTS = {"app.data.hosts", "app.data.vhosts", "app.data.settings", "app.data.ca"};
+
+    /** The parts of the data chosen for an export or import. */
+    private record Parts(boolean hosts, boolean vhosts, boolean settings, boolean ca) {
+        boolean any() {
+            return hosts || vhosts || settings || ca;
+        }
+    }
+
+    private static Parts chosen(JCheckBox[] b) {
+        return new Parts(b[0].isSelected(), b[1].isSelected(), b[2].isSelected(), b[3].isSelected());
+    }
+
+    /** The names of the parts that are on, comma separated, for a message. */
+    private String names(Parts p) {
+        List<String> n = new ArrayList<>();
+        boolean[] on = {p.hosts(), p.vhosts(), p.settings(), p.ca()};
+        for (int i = 0; i < on.length; i++) if (on[i]) n.add(ctx.m(DATA_PARTS[i]));
+        return String.join(", ", n);
     }
 
     /** A full-width 1px line with some air around it, between two blocks of a page. */
@@ -867,58 +967,42 @@ public final class SettingsTab extends JPanel {
         return line;
     }
 
-    /** Exports "hosts" / "vhosts" (a JSON file oeHub can read too) or "all" (a ZIP with the CA). */
-    private void exportData(String what) {
+    /** Exports the chosen parts to one backup ZIP ({@link tricatch.oehubapp.Backup}). */
+    private void exportData(Parts p) {
+        if (!p.any()) return;
         flushEdits.run();
         flush();
-        boolean all = what.equals("all");
-        if (all && !OeDialog.confirm(ctx, ctx.m("app.data.all.export.title"), ctx.m("app.data.all.export.confirm"))) return;
+        if (p.ca() && !OeDialog.confirm(ctx, ctx.m("app.data.export.title"), ctx.m("app.data.export.confirm.ca"))) return;
         String ts = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss"));
-        String fileName = switch (what) {
-            case "hosts" -> "oehosts-" + ts + ".json";
-            case "vhosts" -> "oeproxy-" + ts + ".json";
-            default -> "oehubapp-backup-" + ts + ".zip";
-        };
         JFileChooser fc = new JFileChooser();
-        fc.setSelectedFile(new java.io.File(fileName));
+        fc.setSelectedFile(new java.io.File("oehubapp-backup-" + ts + ".zip"));
         if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
         Path out = fc.getSelectedFile().toPath();
         try {
             byte[] json = ctx.read(() -> {
                 try {
-                    Store s = ctx.rawStore();
-                    return Store.MAPPER.writeValueAsBytes(all ? s.data : s.exportKind(
-                            what.equals("hosts") ? Store.Kind.HOSTS : Store.Kind.VHOSTS));
+                    return Store.MAPPER.writeValueAsBytes(ctx.rawStore().exportParts(p.hosts(), p.vhosts(), p.settings()));
                 } catch (java.io.IOException e) {
                     throw new java.io.UncheckedIOException(e);
                 }
             });
-            if (all) tricatch.oehubapp.Backup.write(json, ProxyRuntime.caDir(), out);
-            else Files.write(out, json);
+            tricatch.oehubapp.Backup.write(json, p.ca() ? ProxyRuntime.caDir() : null, out);
             ctx.toast(ctx.m("app.data.exported"));
         } catch (Exception e) {
             ctx.toast(ctx.m("app.data.export.failed"));
         }
     }
 
-    private void importData(String what) {
+    /**
+     * Imports the chosen parts from a backup ZIP: each part both chosen and in the file is added to, or overwrites, what is stored (the CA,
+     * being one, is always overwritten). The CA pair is checked before
+     * anything changes. The window is rebuilt when the settings change (the language may differ).
+     */
+    private void importData(Parts chosen) {
+        if (!chosen.any()) return;
         flushEdits.run();
         flush();
-        switch (what) {
-            case "hosts" -> SettingsDialog.importJson(ctx, ctx.m("app.data.hosts.import.title"),
-                    ctx.plain("app.data.hosts.import.desc"), Store.Kind.HOSTS, reloadAll);
-            case "vhosts" -> SettingsDialog.importJson(ctx, ctx.m("app.data.vhosts.import.title"),
-                    ctx.plain("app.data.vhosts.import.desc"), Store.Kind.VHOSTS, reloadAll);
-            default -> importAll();
-        }
-    }
-
-    /**
-     * Restores a full backup: every profile, vhost, option and setting, and the CA when the backup
-     * has one. The CA pair is checked before anything changes; the window is rebuilt afterwards
-     * (the language may differ).
-     */
-    private void importAll() {
+        String title = ctx.m("app.data.import.title");
         JFileChooser fc = new JFileChooser();
         fc.setAcceptAllFileFilterUsed(false);
         fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("*.zip", "zip"));
@@ -927,33 +1011,89 @@ public final class SettingsTab extends JPanel {
         try {
             b = tricatch.oehubapp.Backup.read(fc.getSelectedFile().toPath());
         } catch (Exception e) {
-            OeDialog.info(ctx, ctx.m("app.data.all.import.title"), ctx.m("app.data.all.import.error.format"));
+            OeDialog.info(ctx, title, ctx.m("app.data.import.error.format"));
             return;
         }
-        if (!OeDialog.confirm(ctx, ctx.m("app.data.all.import.title"), ctx.m("app.data.all.import.confirm"))) return;
-        if (b.cert() != null) {
+        Parts p = new Parts(chosen.hosts() && b.hasHosts(), chosen.vhosts() && b.hasVhosts(),
+                chosen.settings() && b.hasSettings(), chosen.ca() && b.hasCa());
+        if (!p.any()) {
+            OeDialog.info(ctx, title, ctx.m("app.data.import.error.none"));
+            return;
+        }
+        Parts missing = new Parts(chosen.hosts() && !p.hosts(), chosen.vhosts() && !p.vhosts(),
+                chosen.settings() && !p.settings(), chosen.ca() && !p.ca());
+        Boolean replace = askImportMode(title, p, missing);
+        if (replace == null) return;
+        if (p.ca()) {
             Path dir = null;
             try {
                 dir = Files.createTempDirectory("oehubapp-restore");
                 Path cer = Files.write(dir.resolve("ca.cer"), b.cert()), key = Files.write(dir.resolve("ca.pfx"), b.key());
                 ProxyRuntime.importCa(cer, key, "");
             } catch (ProxyRuntime.ImportException e) {
-                OeDialog.info(ctx, ctx.m("app.data.all.import.title"), ctx.m(e.code));
+                OeDialog.info(ctx, title, ctx.m(e.code));
                 return;
             } catch (Exception e) {
-                OeDialog.info(ctx, ctx.m("app.data.all.import.title"), ctx.m("app.import.failed"));
+                OeDialog.info(ctx, title, ctx.m("app.import.failed"));
                 return;
             } finally {
                 deleteTree(dir);
             }
         }
-        if (ctx.store(s -> {
-            s.replaceAll(b.data());
+        if ((p.hosts() || p.vhosts() || p.settings()) && ctx.store(s -> {
+            try {
+                if (replace) {
+                    s.restoreParts(b.data(), p.hosts(), p.vhosts(), p.settings());
+                } else {
+                    s.mergeParts(b.data(), p.hosts(), p.vhosts(), p.settings());
+                }
+            } catch (java.io.IOException e) {
+                OeDialog.info(ctx, title, ctx.m("app.data.import.error.format"));
+                return null;
+            }
             return Boolean.TRUE;
         }) == null) return;
-        ProxyRuntime.restart();
-        OeDialog.info(ctx, ctx.m("app.data.all.import.title"), ctx.m("app.data.all.imported"));
-        relaunch.run();
+        if (p.vhosts() || p.settings() || p.ca()) ProxyRuntime.restart();
+        if (p.settings()) {
+            OeDialog.info(ctx, title, ctx.m("app.data.imported.reload"));
+            relaunch.run();
+        } else {
+            reloadAll.run();
+            ctx.toast(ctx.m("app.data.imported"));
+        }
+    }
+
+    /**
+     * Asks how to import the parts {@code p}: add to the current data (the default) or overwrite it.
+     * True to overwrite, false to add, null when cancelled. Overwriting asks once more.
+     */
+    private Boolean askImportMode(String title, Parts p, Parts missing) {
+        String text = ctx.m("app.data.import.parts", names(p));
+        if (missing.any()) text += " " + ctx.m("app.data.import.missing", names(missing));
+        if (p.ca()) text += " " + ctx.m("app.data.import.ca.always");
+        JComponent note = OeDialog.note(text);
+        Dialogs.fixWidth(note, 440);
+        JRadioButton add = new JRadioButton(ctx.m("app.data.import.mode.add"), true);
+        JRadioButton overwrite = new JRadioButton(ctx.m("app.data.import.mode.replace"));
+        ButtonGroup g = new ButtonGroup();
+        for (JRadioButton r : new JRadioButton[]{add, overwrite}) {
+            r.setOpaque(false);
+            r.setFocusable(false);
+            r.setFont(Ui.font(Font.PLAIN, 13f));
+            g.add(r);
+        }
+        Boolean[] result = {null};
+        OeDialog.open(ctx, title, d -> {
+            d.body(OeDialog.stack(8, note, add, overwrite));
+            d.button(ctx.m("btn.import"), true, () -> {
+                result[0] = overwrite.isSelected();
+                d.dispose();
+            });
+            d.button(ctx.m("btn.cancel"), false, d::dispose);
+        });
+        if (Boolean.TRUE.equals(result[0])
+                && !OeDialog.confirm(ctx, title, ctx.m("app.data.import.confirm", names(p)))) return null;
+        return result[0];
     }
 
     private static void deleteTree(Path dir) {
@@ -1000,6 +1140,7 @@ public final class SettingsTab extends JPanel {
      * ({@link tricatch.oehubapp.BuildInfo}), so they are the ones actually shipped.
      */
     private static final List<Lib> LIBS = List.of(
+            lib("Apache Commons Lang", "https://commons.apache.org/proper/commons-lang/", "org.apache.commons:commons-lang3", "Apache 2.0", APACHE),
             lib("Ant-Style Path Matcher", "https://github.com/azagniotov/ant-style-path-matcher", "io.github.azagniotov:ant-style-path-matcher", "Apache 2.0", APACHE),
             lib("Bouncy Castle", "https://www.bouncycastle.org", "org.bouncycastle:bcprov-jdk18on", "MIT", MIT),
             lib("Caffeine", "https://github.com/ben-manes/caffeine", "com.github.ben-manes.caffeine:caffeine", "Apache 2.0", APACHE),
@@ -1007,9 +1148,14 @@ public final class SettingsTab extends JPanel {
             lib("Error Prone Annotations", "https://errorprone.info", "com.google.errorprone:error_prone_annotations", "Apache 2.0", APACHE),
             lib("FlatLaf", "https://www.formdev.com/flatlaf/", "com.formdev:flatlaf", "Apache 2.0", APACHE),
             lib("gotpache-keytool", "https://github.com/tricatch/gotpache-keytool", "io.github.tricatch:gotpache-keytool", "MIT", MIT),
+            lib("Guava", "https://github.com/google/guava", "com.google.guava:guava", "Apache 2.0", APACHE),
+            lib("J2ObjC Annotations", "https://github.com/google/j2objc", "com.google.j2objc:j2objc-annotations", "Apache 2.0", APACHE),
             lib("Jackson", "https://github.com/FasterXML/jackson", "com.fasterxml.jackson.core:jackson-databind", "Apache 2.0", APACHE),
+            lib("JSpecify", "https://jspecify.dev", "org.jspecify:jspecify", "Apache 2.0", APACHE),
             lib("JSVG", "https://github.com/weisJ/jsvg", "com.github.weisj:jsvg", "MIT", MIT),
+            lib("LittleProxy", "https://github.com/LittleProxy/LittleProxy", "io.github.littleproxy:littleproxy", "Apache 2.0", APACHE),
             lib("Lucide", "https://lucide.dev", null, "ISC", MIT),
+            lib("Netty", "https://netty.io", "io.netty:netty-common", "Apache 2.0", APACHE),
             lib("oe-proxy", "https://github.com/tricatch/oeProxy", "io.github.tricatch:oe-proxy", "MIT", MIT),
             lib("RSyntaxTextArea", "https://github.com/bobbylight/RSyntaxTextArea", "com.fifesoft:rsyntaxtextarea", "BSD 3-Clause", BSD),
             lib("SLF4J", "https://www.slf4j.org", "org.slf4j:slf4j-api", "MIT", MIT),

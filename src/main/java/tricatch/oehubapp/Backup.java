@@ -1,5 +1,6 @@
 package tricatch.oehubapp;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,9 +11,10 @@ import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 /**
- * The full backup: one ZIP with the whole data file ({@code data.json}: profiles, vhosts, launcher
- * and proxy options, settings) and the CA pair ({@code root-ca/ca.cer}, {@code root-ca/ca.pfx},
- * the key unencrypted, as {@link tricatch.oe.proxy.standalone.CaGenerator} writes it).
+ * The data backup: one ZIP with {@code data.json} and, when chosen, the CA pair
+ * ({@code root-ca/ca.cer}, {@code root-ca/ca.pfx}, the key unencrypted, as
+ * {@link tricatch.oe.proxy.standalone.CaGenerator} writes it). {@code data.json} holds only the
+ * parts chosen at export ({@link Store#exportParts}); a part is present when its key is.
  *
  * <p>Reading takes only those three names, each up to a size limit, so a crafted archive can
  * neither write anywhere (nothing is extracted to disk by name) nor exhaust memory.
@@ -25,20 +27,37 @@ public final class Backup {
     private static final int DATA_MAX = 64 * 1024 * 1024;
     private static final int CA_MAX = 1024 * 1024;
 
-    /** What a backup holds; {@code cert}/{@code key} are null when it has no CA. */
-    public record Contents(Store.Data data, byte[] cert, byte[] key) {}
+    /** What a backup holds: its {@code data.json}; {@code cert}/{@code key} are null when it has no CA. */
+    public record Contents(JsonNode data, byte[] cert, byte[] key) {
+        public boolean hasHosts() {
+            return data.has("hosts");
+        }
+
+        public boolean hasVhosts() {
+            return data.has("vhosts");
+        }
+
+        public boolean hasSettings() {
+            return data.has("settings");
+        }
+
+        public boolean hasCa() {
+            return cert != null;
+        }
+    }
 
     private Backup() {}
 
-    /** Writes {@code dataJson} and the CA files found in {@code caDir} to {@code out}. */
+    /** Writes {@code dataJson}, and the CA files found in {@code caDir} unless it is null, to {@code out}. */
     public static void write(byte[] dataJson, Path caDir, Path out) throws IOException {
         Path tmp = out.resolveSibling(out.getFileName() + ".tmp");
         try (ZipOutputStream z = new ZipOutputStream(Files.newOutputStream(tmp))) {
             z.putNextEntry(new ZipEntry(DATA));
             z.write(dataJson);
             z.closeEntry();
-            Path cert = caDir.resolve("ca.cer"), key = caDir.resolve("ca.pfx");
-            if (Files.isRegularFile(cert) && Files.isRegularFile(key)) {
+            Path cert = caDir == null ? null : caDir.resolve("ca.cer");
+            Path key = caDir == null ? null : caDir.resolve("ca.pfx");
+            if (cert != null && Files.isRegularFile(cert) && Files.isRegularFile(key)) {
                 z.putNextEntry(new ZipEntry(CERT));
                 Files.copy(cert, z);
                 z.closeEntry();
@@ -54,9 +73,9 @@ public final class Backup {
     }
 
     /** Reads a backup; an IOException when the file is not one (no readable {@code data.json}). */
-    public static Contents read(Path zip) throws IOException {
+    public static Contents read(Path file) throws IOException {
         byte[] data = null, cert = null, key = null;
-        try (ZipInputStream z = new ZipInputStream(Files.newInputStream(zip))) {
+        try (ZipInputStream z = new ZipInputStream(Files.newInputStream(file))) {
             for (ZipEntry e = z.getNextEntry(); e != null; e = z.getNextEntry()) {
                 switch (e.getName()) {
                     case DATA -> data = capped(z, DATA_MAX);
@@ -67,11 +86,10 @@ public final class Backup {
             }
         }
         if (data == null) throw new IOException("no " + DATA);
-        Store.Data d = Store.MAPPER.readValue(data, Store.Data.class);
-        if (d == null) throw new IOException("empty " + DATA);
-        if (d.settings == null) d.settings = new Store.Settings();
+        JsonNode root = Store.MAPPER.readTree(data);
+        if (root == null || !root.isObject()) throw new IOException("empty " + DATA);
         boolean hasCa = cert != null && key != null;
-        return new Contents(d, hasCa ? cert : null, hasCa ? key : null);
+        return new Contents(root, hasCa ? cert : null, hasCa ? key : null);
     }
 
     private static byte[] capped(InputStream in, int max) throws IOException {

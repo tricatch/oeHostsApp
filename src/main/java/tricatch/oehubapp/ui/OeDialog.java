@@ -114,7 +114,13 @@ public final class OeDialog extends JDialog {
         Dimension d = getSize();
         setSize(Math.max(d.width, 420), d.height);
         setLocationRelativeTo(getOwner());
-        setVisible(true);
+        // Modal: setVisible blocks until the dialog closes, so the backdrop spans exactly its life.
+        Backdrop.show(getOwner());
+        try {
+            setVisible(true);
+        } finally {
+            Backdrop.hide(getOwner());
+        }
     }
 
     // ── Body building blocks ────────────────────────────────────

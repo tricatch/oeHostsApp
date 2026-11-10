@@ -261,7 +261,7 @@ public final class HostsTab extends JPanel {
         // Routing switches and launch buttons
         JPanel routing = column(new CompoundBorder(Ui.topLine(), new EmptyBorder(4, 0, 10, 0)));
         routing.add(option(swHrr, "--host-resolver-rules", infoButton(() -> ctx.plain("hosts.resolver.rules.info"))));
-        routing.add(option(swProxy, "--proxy-server", infoButton(() -> ctx.plain("hosts.proxy.server.info", fwdPort()))));
+        routing.add(option(swProxy, "--proxy-server", infoButton(() -> ctx.plain("app.hosts.proxy.server.info", fwdPort()))));
         JPanel btnRow = new JPanel(new GridBagLayout());
         btnRow.setOpaque(false);
         btnRow.setBorder(new EmptyBorder(6, 12, 0, 12));
@@ -749,14 +749,19 @@ public final class HostsTab extends JPanel {
         StyleConstants.setForeground(dup, faded);
         p.getHighlighter().removeAllHighlights();
         try {
+            // Struck ranges are highlighted once all text is in: a highlight ending at the end of
+            // the document grows with every insert there, so one added while appending would also
+            // strike all the lines that follow.
+            List<int[]> struck = new ArrayList<>();
             for (int i = 0; i < entries.size(); i++) {
                 Entry e = entries.get(i);
                 String line = map ? "MAP " + e.host + " " + e.ip : e.ip + " " + e.host;
                 if (i > 0) d.insertString(d.getLength(), "\n", normal);
                 int start = d.getLength();
                 d.insertString(start, line, e.active ? normal : dup);
-                if (!e.active) p.getHighlighter().addHighlight(start, start + line.length(), new StrikePainter(faded));
+                if (!e.active) struck.add(new int[]{start, start + line.length()});
             }
+            for (int[] r : struck) p.getHighlighter().addHighlight(r[0], r[1], new StrikePainter(faded));
         } catch (javax.swing.text.BadLocationException ignored) {
             // cannot happen: always appending at the end
         }
@@ -806,12 +811,33 @@ public final class HostsTab extends JPanel {
                     int x1 = (int) (end.getX() + fm.charWidth(c.getDocument().getText(i - 1, 1).charAt(0)));
                     // Where GlyphPainter draws the text: line top + ascent + leading.
                     int baseline = (int) first.getY() + fm.getHeight() - fm.getDescent();
-                    g2.fillRect(x0, baseline + offset, Math.max(0, x1 - x0), 1);
+                    line(g2, x0, x1, baseline + offset);
                     if (r == null) break;
                     first = r;
                 }
             } catch (javax.swing.text.BadLocationException ignored) {
                 // the text changed under the highlight: nothing to draw
+            }
+        }
+
+        /**
+         * A horizontal line from x0 to x1 just below y, snapped to device pixels. A 1-unit rect in
+         * user space is 1.25 or 1.5 device pixels at 125% / 150% scaling and lands on a whole pixel
+         * on some text lines and a half pixel on others, so the strokes alternated between thin and
+         * thick; here every one is round(scale) device pixels thick.
+         */
+        private static void line(Graphics2D g2, int x0, int x1, int y) {
+            java.awt.geom.AffineTransform t = g2.getTransform();
+            int thick = Math.max(1, (int) Math.round(t.getScaleY()));
+            int dx0 = (int) Math.round(t.getTranslateX() + x0 * t.getScaleX());
+            int dx1 = (int) Math.round(t.getTranslateX() + x1 * t.getScaleX());
+            int dy = (int) Math.round(t.getTranslateY() + y * t.getScaleY());
+            Graphics2D d = (Graphics2D) g2.create();
+            try {
+                d.setTransform(new java.awt.geom.AffineTransform());
+                d.fillRect(dx0, dy, Math.max(0, dx1 - dx0), thick);
+            } finally {
+                d.dispose();
             }
         }
 

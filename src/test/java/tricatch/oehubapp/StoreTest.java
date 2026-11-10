@@ -63,18 +63,6 @@ class StoreTest {
     }
 
     @Test
-    void importsOehubExportAndSkipsEncrypted() throws Exception {
-        Store s = open();
-        Store.ImportResult r = s.importKind(json("{\"version\":1,\"hosts\":["
-                + "{\"hostsProfile\":\"dev\",\"hostsContent\":\"1.1.1.1 a.com\",\"selected\":true,\"folderName\":\"team\"},"
-                + "{\"hostsProfile\":\"secret\",\"hostsContent\":\"{}\",\"wrappedContentKey\":\"xyz\"}]}"), false, Store.Kind.HOSTS);
-        assertEquals(new Store.ImportResult(1, 1), r);
-        assertEquals(1, s.data.hostsFolders.size());
-        assertEquals(s.data.hostsFolders.get(0).id, s.data.hosts.get(0).folderId);
-        assertEquals(400, assertThrows(Store.StoreException.class, () -> s.importKind(json("{\"x\":1}"), false, Store.Kind.HOSTS)).status);
-    }
-
-    @Test
     void migratesLegacyFileWithoutTouchingIt() throws Exception {
         Path legacy = dir.resolve("oehosts.json");
         String text = "{\"version\":1,\"profiles\":["
@@ -103,31 +91,7 @@ class StoreTest {
     }
 
     @Test
-    void exportKindRoundTripsThroughImport() throws Exception {
-        Store s = open();
-        Store.Item a = s.create(Store.Kind.HOSTS, "en");
-        Store.Folder f = s.createFolder(Store.Kind.HOSTS);
-        s.moveItem(Store.Kind.HOSTS, a.id, f.id);
-        s.toggleSelected(Store.Kind.HOSTS, a.id);
-        s.create(Store.Kind.VHOSTS, "en");
-        JsonNode hosts = s.exportKind(Store.Kind.HOSTS);
-        assertEquals(1, hosts.get("hosts").size());
-        assertNull(hosts.get("vhosts"));
-        assertEquals(f.name, hosts.get("hosts").get(0).get("folderName").asText());
-
-        Store other = Store.open(dir.resolve("other.json"), null);
-        assertThrows(Store.StoreException.class, () -> other.importKind(hosts, false, Store.Kind.VHOSTS));
-        Store.ImportResult r = other.importKind(hosts, false, Store.Kind.HOSTS);
-        assertEquals(1, r.imported());
-        Store.Item copy = other.data.hosts.get(0);
-        assertEquals(a.content, copy.content);
-        assertTrue(copy.selected);
-        assertEquals(f.name, other.data.hostsFolders.get(0).name);
-        assertTrue(other.data.vhosts.isEmpty());
-    }
-
-    @Test
-    void fullBackupRoundTrip() throws Exception {
+    void backupRestoresOnlyChosenParts() throws Exception {
         Store s = open();
         s.create(Store.Kind.HOSTS, "en");
         s.create(Store.Kind.VHOSTS, "en");
@@ -135,18 +99,54 @@ class StoreTest {
         Path ca = Files.createDirectories(dir.resolve("ca"));
         Files.writeString(ca.resolve("ca.cer"), "CERT");
         Files.writeString(ca.resolve("ca.pfx"), "KEY");
-        Path zip = dir.resolve("backup.zip");
-        Backup.write(Store.MAPPER.writeValueAsBytes(s.data), ca, zip);
 
-        Backup.Contents b = Backup.read(zip);
+        // Everything, CA included.
+        Path all = dir.resolve("all.zip");
+        Backup.write(Store.MAPPER.writeValueAsBytes(s.exportParts(true, true, true)), ca, all);
+        Backup.Contents b = Backup.read(all);
+        assertTrue(b.hasHosts() && b.hasVhosts() && b.hasSettings() && b.hasCa());
         assertEquals("CERT", new String(b.cert()));
         assertEquals("KEY", new String(b.key()));
         Store other = Store.open(dir.resolve("other.json"), null);
-        other.replaceAll(b.data());
-        assertEquals(1, other.data.hosts.size());
+        other.create(Store.Kind.HOSTS, "en");
+        other.create(Store.Kind.HOSTS, "en");
+        other.restoreParts(b.data(), false, true, true);
+        assertEquals(2, other.data.hosts.size(), "hosts not chosen: kept");
         assertEquals(1, other.data.vhosts.size());
         assertEquals(4321, other.data.settings.fwdproxyPort);
 
+        // oeHosts only, no CA.
+        Path hostsOnly = dir.resolve("hosts.zip");
+        Backup.write(Store.MAPPER.writeValueAsBytes(s.exportParts(true, false, false)), null, hostsOnly);
+        b = Backup.read(hostsOnly);
+        assertTrue(b.hasHosts());
+        assertFalse(b.hasVhosts() || b.hasSettings() || b.hasCa());
+        other.restoreParts(b.data(), true, false, false);
+        assertEquals(1, other.data.hosts.size());
+        assertEquals(1, other.data.vhosts.size());
+
+        // Add mode keeps what is there: names get a suffix, folders match by name, presets are appended once.
+        Store keep = Store.open(dir.resolve("keep.json"), null);
+        Store.Item mine = keep.create(Store.Kind.HOSTS, "en");
+        keep.data.settings.uaPresets.add(new Store.Preset("a", "1"));
+        keep.data.settings.uaPresetsText = "# mine\na | 1";
+        keep.data.settings.fwdproxyPort = 1111;
+        s.data.settings.uaPresets.add(new Store.Preset("a", "1"));
+        s.data.settings.uaPresets.add(new Store.Preset("b", "2"));
+        Store.Folder f = s.createFolder(Store.Kind.VHOSTS);
+        s.moveItem(Store.Kind.VHOSTS, s.data.vhosts.get(0).id, f.id);
+        keep.mergeParts(s.exportParts(true, true, true), true, true, true);
+        keep.mergeParts(s.exportParts(true, true, true), false, false, true);
+        assertEquals(2, keep.data.hosts.size());
+        assertEquals(mine.name, keep.data.hosts.get(0).name);
+        assertEquals(mine.name + " (2)", keep.data.hosts.get(1).name);
+        assertEquals(1, keep.data.vhostFolders.size());
+        assertEquals(keep.data.vhostFolders.get(0).id, keep.data.vhosts.get(0).folderId);
+        assertEquals(2, keep.data.settings.uaPresets.size());
+        assertEquals("# mine\na | 1\nb | 2\n", keep.data.settings.uaPresetsText);
+        assertEquals(1111, keep.data.settings.fwdproxyPort);
+
         Files.writeString(dir.resolve("not.zip"), "plain text");
         assertThrows(java.io.IOException.class, () -> Backup.read(dir.resolve("not.zip")));
-    }}
+    }
+}

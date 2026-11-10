@@ -30,6 +30,8 @@ dependencies {
     implementation("com.formdev:flatlaf:3.8")
     implementation("com.formdev:flatlaf-extras:3.8")
     implementation("com.fifesoft:rsyntaxtextarea:3.6.0")
+    // Forward proxy (same version as oeHub).
+    implementation("io.github.littleproxy:littleproxy:2.9.1")
 
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

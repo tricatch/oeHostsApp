@@ -4,8 +4,10 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
 
-/** {@code .oe-toast}: a white box with a green border at the top center, gone after 2.5 s. */
+/** {@code .oe-toast}: a white box with a green border at the top center, gone after 2.5 s; at least {@link #MIN_WIDTH} wide. */
 final class Toast {
+
+    private static final int MIN_WIDTH = 280;
 
     private static JComponent current;
 
@@ -33,7 +35,10 @@ final class Toast {
         l.setFont(Ui.font(Font.BOLD, 13f));
         l.setForeground(new Color(0x3a6b1a));
         l.setBorder(new EmptyBorder(12, 22, 15, 22));
+        l.setHorizontalAlignment(SwingConstants.CENTER);
+        // Short messages ("Exported.") would make a stubby box: keep a minimum width.
         Dimension d = l.getPreferredSize();
+        d.width = Math.max(d.width, MIN_WIDTH);
         l.setBounds((layers.getWidth() - d.width) / 2, 24, d.width, d.height);
         layers.add(l, JLayeredPane.POPUP_LAYER);
         layers.repaint();

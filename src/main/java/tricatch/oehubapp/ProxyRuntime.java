@@ -50,6 +50,7 @@ public final class ProxyRuntime {
     private static volatile Store store;
     /** Whether startSslPassServer has succeeded once (later starts go through its own restart). */
     private static volatile boolean started;
+    private static volatile boolean lan = true;
     private static final List<Runnable> listeners = new CopyOnWriteArrayList<>();
     private static final Logger log = LoggerFactory.getLogger(ProxyRuntime.class);
     private static final ObjectMapper YAML = new ObjectMapper(new YAMLFactory());
@@ -72,6 +73,22 @@ public final class ProxyRuntime {
 
     public static int port() {
         return ReverseProxyServer.HTTPS_PORT;
+    }
+
+    /** Whether the last (re)start bound every network interface rather than 127.0.0.1. */
+    public static boolean lan() {
+        return lan;
+    }
+
+    /** Applies the stored binding (settings.reverseProxyLan) to the library before a (re)start. */
+    private static boolean applyBinding(Store store) {
+        boolean all;
+        synchronized (store) {
+            all = store.data.settings.reverseProxyLan;
+        }
+        lan = all;
+        ReverseProxyServer.setBindAddress(all ? null : java.net.InetAddress.getLoopbackAddress());
+        return all;
     }
 
     /** {@code r} runs (on the starting thread) whenever the state changes. */
@@ -98,6 +115,7 @@ public final class ProxyRuntime {
             }
             set(State.STARTING, null);
             try {
+                applyBinding(store);
                 ReverseProxyServer.startSslPassServer();
                 set(State.RUNNING, null);
             } catch (Exception e) {
@@ -344,9 +362,10 @@ public final class ProxyRuntime {
 
             // SSLPassServer binds on an executor thread and only logs a failure there, so check the
             // port first to be able to show why the proxy is not running.
-            log.info("proxy starting on port {} (CA {})", port(), cert.toAbsolutePath());
+            boolean all = applyBinding(store);
+            log.info("proxy starting on {}:{} (CA {})", all ? "*" : "127.0.0.1", port(), cert.toAbsolutePath());
             set(State.STARTING, null);
-            probePort(port());
+            probePort(port(), all);
             ReverseProxyServer.startSslPassServer();
             started = true;
             set(State.RUNNING, null);
@@ -446,8 +465,8 @@ public final class ProxyRuntime {
      * this JVM's dual-stack [::] socket can both bind, and IPv4 connections to 127.0.0.1 then reach
      * the other program while this proxy looks healthy.
      */
-    private static void probePort(int port) throws IOException {
-        for (String addr : new String[]{"0.0.0.0", "::"}) {
+    private static void probePort(int port, boolean all) throws IOException {
+        for (String addr : all ? new String[]{"0.0.0.0", "::"} : new String[]{"127.0.0.1"}) {
             try (ServerSocket socket = new ServerSocket()) {
                 socket.setReuseAddress(false);
                 socket.bind(new InetSocketAddress(java.net.InetAddress.getByName(addr), port));

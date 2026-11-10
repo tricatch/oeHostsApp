@@ -22,12 +22,14 @@ oeHubApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts / 
   It saves each tab as `<prefix>-<n>.png` and each dialog listed in `MainWindow.screenshots()` as `<prefix>-d<n>.png`, then exits. Add a dialog there when you need to check it.
 - `-Doehubapp.settings.page=<id>` opens that settings page first (ids are the `Page` ids in `SettingsTab`).
 - Always use a scratch `--data` folder, never the user's real data folder. Check both `ko` and `en` when strings change.
-- The user often has their own instance running: it holds port 443 (the proxy then reports "failed to start" in the test instance, which is expected) and its window may be on screen. Do not drive real mouse/keyboard input (e.g. `java.awt.Robot`) unless the test window is known to be the target; prefer screenshot mode.
+- The user often has their own instance running: it holds ports 443 and 36980 (the reverse and forward proxies then report "failed to start" in the test instance, which is expected) and its window may be on screen. Do not drive real mouse/keyboard input (e.g. `java.awt.Robot`) unless the test window is known to be the target; prefer screenshot mode.
 - Small changes do not need the full test suite; run the tests that cover the touched code.
 
 ## Platform Constraints
 
 - Ship only a jar run by a signed `java`. Do not wrap it in an unsigned `.exe`/`.app` and do not build native helpers: Windows Smart App Control and macOS Gatekeeper block unsigned binaries. For the same reason FlatLaf's native library stays disabled (`flatlaf.useNativeLibrary=false`); do not add dependencies that extract native DLLs.
+- The forward proxy (`ForwardProxy`, LittleProxy) is a trimmed port of oeHub's `tricatch.oe.fwdproxy.ForwardProxyServer`: it has no account authentication, whitelist, loopback/DNS-rebinding guards, blocked page or self-loop owner registration (no `LittleProxyInternals` reflection). It binds to 127.0.0.1 by default; binding every interface (`settings.fwdproxyLan`) is the user's explicit choice and makes it an open proxy on that network, so keep it off by default and keep the warning next to the option. Netty must stay pure Java here: do not add `netty-transport-native-*` or `netty-tcnative` artifacts (native libraries).
+- The reverse proxy's binding (`settings.reverseProxyLan`, every interface by default) is applied through `ReverseProxyServer.setBindAddress`, added to oe-proxy after 0.1.0. Until an oe-proxy release with it is on Maven Central and `build.gradle.kts` points at it, the app builds only with the sibling `../oeProxy` checkout.
 - No network port is used for single-instance detection; it is a file lock in the data folder (`SingleInstance`). Keep it that way.
 
 ## Matching oeHub
@@ -40,7 +42,7 @@ oeHubApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts / 
   - `ui.MonitorTab` ↔ `templates/oehub/proxy-monitor.pebble`
   - `ui.SidebarTree` ↔ `static/js/list-folders.js`
   - `ui.Ui`, `ui.OeDialog` ↔ `static/css/app.css`, `oe-panel.css`, `hosts.css`
-- Data exported from Settings → Data stays in oeHub's export format so the two apps can exchange it.
+- Settings → Data exports the checked parts (oeHosts, oeProxy, settings, CA) to one ZIP (`Backup`, `Store.exportParts`); a part is present in `data.json` only when it was exported, and an import touches only the parts that are both checked and present, either adding to the current data (`Store.mergeParts`, the default) or overwriting it (`Store.restoreParts`); the CA is always overwritten.
 - Brand colors are oeHub's (`Ui.BC100`…`Ui.BC700`); do not introduce other greens. Buttons have a 6px radius.
 - Navbar: tabs on the left (`MainWindow.TABS`, shown uppercase), gear on the right, and the current tab's actions in the middle of the whole bar (a `CardLayout`, one card per tab). Middle-bar buttons use `Ui.navIconButton` (rounded frame); panel-header buttons use `Ui.iconButton`.
 

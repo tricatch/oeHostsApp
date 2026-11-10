@@ -43,6 +43,8 @@ java -Doehubapp.log=debug -jar oehubapp.jar     # 콘솔 로그를 더 자세히
 
 - 같은 프로필(`--user-data-dir`이 같거나 둘 다 기본 프로필)로 Chrome이 이미 떠 있으면 새 옵션이 적용되지 않습니다. 그래서 확인을 받은 뒤 그 Chrome을 닫고 다시 실행합니다. 정상 종료가 안 되면 강제로 끝내므로 저장하지 않은 작업은 사라질 수 있습니다.
 - **Win / Mac** 버튼은 같은 실행을 터미널에 붙여 넣을 수 있는 명령으로 보여 줍니다.
+- **--proxy-server**를 켜면 Chrome이 앱에 내장된 포워드 프록시(`127.0.0.1:36980`, 포트는 설정 → 포워드 프록시)를 거칩니다. 선택한 프로필의 호스트는 기록된 IP로, 나머지는 일반 DNS로 연결됩니다. `--host-resolver-rules`와는 함께 쓰지 않습니다. 계정 인증은 없습니다.
+- 포워드 프록시는 기본으로 이 PC에서만 접속할 수 있습니다. 설정 → 포워드 프록시에서 "같은 네트워크의 다른 기기도 접속"을 고르고 **다시 시작**을 누르면 휴대폰 등도 `PC의 IP:포트`를 프록시로 지정해 쓸 수 있습니다. 이때는 같은 네트워크의 누구나 인증 없이 쓸 수 있으니 믿을 수 있는 네트워크에서만 켜세요.
 - 가져온 프로필에 위험한 옵션(프로그램 실행, 샌드박스 해제, 디버깅 포트 등)이 있으면 아무것도 실행하지 않습니다.
 - Chrome 위치: Windows는 Program Files·LocalAppData의 `chrome.exe`, macOS는 `/Applications/Google Chrome.app`
 
@@ -55,7 +57,7 @@ java -Doehubapp.log=debug -jar oehubapp.jar     # 콘솔 로그를 더 자세히
 - 처음 한 번은 CA 인증서를 신뢰 저장소에 등록해야 브라우저 경고가 사라집니다. 아래 [인증서](#인증서-ca)를 보세요.
 - 어디서 온 요청이든 모든 요청에 고른 vhost의 라우팅이 적용됩니다. 계정 구분이 없는 1인용 모드입니다.
 - 백엔드는 내부망과 외부 주소 모두 허용하고, 백엔드의 내부 인증서도 신뢰합니다.
-- 휴대폰 등 다른 기기에서 쓰려면, 처음 443 포트를 열 때 Windows 방화벽이 물으면 허용합니다.
+- 리버스 프록시는 기본으로 같은 네트워크의 다른 기기도 접속할 수 있습니다(0.0.0.0). 휴대폰 등에서 쓰려면 처음 443 포트를 열 때 Windows 방화벽이 물으면 허용합니다. 이 PC에서만 쓰려면 설정 → 리버스 프록시에서 "이 PC에서만 접속"을 고르고 **다시 시작**을 누릅니다. 같은 화면의 포트 줄에 지금 바인딩된 주소(`0.0.0.0:443` 또는 `127.0.0.1:443`)가 나옵니다.
 - oeHub의 `${PROXY_SVR}`·`${LOCAL_SVR}`는 이 앱에서 항상 `127.0.0.1`로 바뀝니다(프록시·Chrome·백엔드가 모두 같은 PC에 있으므로).
 
 ### Network — 트래픽 보기
@@ -80,12 +82,15 @@ java -Doehubapp.log=debug -jar oehubapp.jar     # 콘솔 로그를 더 자세히
 | 무엇을 | 어디서 | 형식 |
 |---|---|---|
 | 프로필·vhost 하나 | 편집기 위 내보내기 버튼 / 목록 머리의 가져오기 버튼(+ 옆) | `.oehosts` · `.oeproxy` (편집기 내용 그대로) |
-| oeHosts 전체, oeProxy 전체 | 설정 → 일반 → 데이터 | JSON (oeHub의 내보내기와 같은 형식) |
-| 모든 것 + CA | 설정 → 일반 → 데이터 → 전체 (CA 포함) | ZIP |
+| oeHosts·oeProxy·설정·CA 인증서 중 체크한 것 | 설정 → 일반 → 데이터 | 백업 ZIP 하나 |
 
 - 파일 가져오기는 여러 개를 한 번에 고를 수 있고, 이름은 파일 이름을 따릅니다(겹치면 ` (2)`처럼 번호가 붙음). 형식이 맞지 않는 `.oeproxy`는 건너뜁니다.
-- JSON은 oeHub와 서로 주고받을 수 있습니다. 가져올 때 병합 또는 전체 교체를 고르며, 암호화된(E2E) 항목은 건너뜁니다.
-- 전체 백업 ZIP에는 **CA 개인키**가 들어 있습니다. 공유하지 말고 안전한 곳에 보관하세요. 가져오면 모든 것이 교체됩니다.
+- 데이터 화면에서 항목(oeHosts, oeProxy, 설정, CA 인증서)을 체크한 뒤 내보내기·가져오기를 누릅니다. 가져오기는 체크한 항목 중 파일에 있는 것만 처리하고, 체크하지 않은 항목은 건드리지 않습니다.
+- 가져올 때 방식을 고릅니다.
+  - **추가**(기본): 지금 데이터는 그대로 두고 파일의 프로필·vhost를 더합니다(이름이 겹치면 ` (2)`처럼 번호가 붙고, 폴더는 이름으로 맞춤). 설정은 없는 프리셋만 더하고 나머지는 그대로 둡니다.
+  - **덮어쓰기**: 해당 항목을 지우고 파일 내용으로 바꿉니다. 되돌릴 수 없습니다.
+  - CA 인증서는 하나뿐이라 어느 방식이든 덮어씁니다.
+- CA 인증서를 체크해 내보낸 ZIP에는 **CA 개인키**가 들어 있습니다. 공유하지 말고 안전한 곳에 보관하세요.
 
 ## 인증서 (CA)
 
@@ -128,7 +133,13 @@ JDK 25가 있으면 됩니다(만들어진 jar는 Java 21 이상에서 실행).
 | [Caffeine](https://github.com/ben-manes/caffeine) (oe-proxy 의존성) | 3.1.8 | Apache-2.0 |
 | [Ant-Style Path Matcher](https://github.com/azagniotov/ant-style-path-matcher) (oe-proxy 의존성) | 1.0.0 | Apache-2.0 |
 | [Caffeine](https://github.com/ben-manes/caffeine)이 쓰는 [Checker Framework Qualifiers](https://checkerframework.org) | 3.37.0 | MIT |
-| [Caffeine](https://github.com/ben-manes/caffeine)이 쓰는 [Error Prone Annotations](https://errorprone.info) | 2.21.1 | Apache-2.0 |
+| [Error Prone Annotations](https://errorprone.info) (Caffeine·Guava 의존성) | 2.50.0 | Apache-2.0 |
+| [LittleProxy](https://github.com/LittleProxy/LittleProxy) (포워드 프록시) | 2.9.1 | Apache-2.0 |
+| [Netty](https://netty.io) (LittleProxy 의존성) | 4.2.17.Final | Apache-2.0 |
+| [Guava](https://github.com/google/guava) (LittleProxy 의존성) | 33.7.1-jre | Apache-2.0 |
+| [Apache Commons Lang](https://commons.apache.org/proper/commons-lang/) (LittleProxy 의존성) | 3.20.0 | Apache-2.0 |
+| [JSpecify](https://jspecify.dev) (Guava 의존성) | 1.0.1 | Apache-2.0 |
+| [J2ObjC Annotations](https://github.com/google/j2objc) (Guava 의존성) | 3.1 | Apache-2.0 |
 | [SLF4J Simple](https://www.slf4j.org/) | 2.0.17 | MIT |
 | [SLF4J API](https://www.slf4j.org/) (oe-proxy 의존성) | 2.0.18 | MIT |
 | [Lucide](https://lucide.dev/) 아이콘 | — | ISC |
