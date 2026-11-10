@@ -1,36 +1,68 @@
 # oeHubApp
 
-oeHub의 **oeHosts / oeProxy / Network(oeHub의 트래픽 모니터)** 화면과 설정 화면을 탭으로 묶은 단독 데스크톱 앱입니다.
-Java Swing(FlatLaf)으로 그린 창 하나로 실행되며, 브라우저나 로컬 웹 서버가 필요 없습니다.
-Java(JDK 21 이상)로 실행하는 jar 하나이며, Windows와 macOS에서 같은 파일을 씁니다.
-Chrome은 앱이 직접 실행합니다. oeHub처럼 oeLink(`oelink://` URL 핸들러)를 따로 설치할 필요가 없습니다.
+PC 한 대에서 hosts 프로필로 Chrome을 띄우고, 내장 역방향 프록시(oeProxy)로 도메인을 로컬·개발 서버에 연결하고, 그 트래픽을 들여다보는 데스크톱 앱입니다.
+[oeHub](https://github.com/tricatch/oeHub)의 **oeHosts / oeProxy / Network(트래픽 모니터)** 화면을 서버 없이 혼자 쓸 수 있게 옮겼습니다.
 
-oeHub의 사용자 관리, E2E 암호화, 검색, 공유·공개 링크 기능은 넣지 않습니다.
+- 창 하나로 실행되는 Java 앱입니다. 브라우저나 웹 서버, 계정이 필요 없습니다.
+- jar 파일 하나를 Windows와 macOS에서 똑같이 씁니다.
+- Chrome은 앱이 직접 실행합니다. oeHub처럼 oeLink(`oelink://` URL 핸들러)를 따로 설치할 필요가 없습니다.
+- oeHub의 사용자 관리, E2E 암호화, 검색, 공유·공개 링크 기능은 없습니다.
 
-| 탭 | 동작 |
+## 화면
+
+| 탭 | 하는 일 |
 |---|---|
-| oeHosts | 실제 동작. hosts 프로필 편집·폴더·선택·병합, "Chrome 실행" 버튼으로 앱이 Chrome을 직접 실행 |
-| oeProxy | 실제 동작. 앱에 내장된 [oe-proxy](https://github.com/tricatch/oeProxy)가 앱과 함께 https 443에서 실행되며, 선택한 vhost를 병합해 바로 반영 |
-| Network | 실제 동작. 내장 프록시를 지나가는 요청·응답(헤더, 쿠키, 본문, WebSocket 프레임)을 실시간으로 보여 줌. 상단 바 가운데의 캡처 시작/중지·지우기 버튼으로 조작하며, 캡처를 멈추면 프록시도 이벤트를 만들지 않음 |
-| 설정 | 우측 상단 톱니바퀴. 왼쪽 목록에서 oeHosts(User-Agent·Open URL 프리셋, 포워드 프록시), oeProxy(CA 인증서, 리버스 프록시), 일반(언어, 데이터 내보내기·가져오기, 정보, 오픈소스) 항목을 골라 관리 |
+| **oeHosts** | hosts 프로필을 만들고 폴더로 정리하고, 여러 개를 골라 병합합니다. "Chrome 실행"을 누르면 고른 프로필의 `--host-resolver-rules`와 옵션으로 Chrome을 띄웁니다. |
+| **oeProxy** | 가상 호스트(vhost)를 YAML로 적어 도메인·경로별로 백엔드에 연결합니다. 앱에 들어 있는 [oe-proxy](https://github.com/tricatch/oeProxy)가 https 443에서 돌며, 고른 vhost를 병합해 바로 반영합니다. |
+| **Network** | 내장 프록시를 지나가는 요청·응답(헤더, 쿠키, 본문, WebSocket 프레임)을 실시간으로 보여 줍니다. 상단 바 가운데의 버튼으로 캡처를 시작·중지하거나 목록을 지웁니다. 캡처를 멈추면 프록시도 이벤트를 만들지 않습니다. |
+| **설정** (우측 상단 톱니바퀴) | User-Agent·Open URL 프리셋, 포워드 프록시, CA 인증서, 리버스 프록시, 언어, 데이터 내보내기·가져오기, 정보, 오픈소스 목록 |
 
-## 실행
+## 설치와 실행
+
+[Java](https://adoptium.net/) 21 이상이 필요합니다. `oehubapp.jar`를 받아 실행합니다.
 
 ```
-java -jar oehubapp.jar                    # 데스크톱 앱
-javaw -jar oehubapp.jar                   # Windows에서 콘솔 창 없이
-java -Doehubapp.log=debug -jar oehubapp.jar   # 콘솔 로그를 더 자세히
-java -jar oehubapp.jar --data D:\oehub-data
+java -jar oehubapp.jar                          # 실행
+javaw -jar oehubapp.jar                         # Windows에서 콘솔 창 없이
+java -jar oehubapp.jar --data D:\oehub-data     # 데이터 폴더를 따로 지정
+java -Doehubapp.log=debug -jar oehubapp.jar     # 콘솔 로그를 더 자세히
 ```
 
-- "Chrome 실행"은 앱이 Chrome을 직접 띄웁니다(Windows: Program Files·LocalAppData의 `chrome.exe`, macOS: `/Applications/Google Chrome.app`). 같은 프로필(`--user-data-dir` 값이 같거나, 둘 다 기본 프로필)로 이미 떠 있는 Chrome은 새 옵션을 받지 않으므로, 확인을 받은 뒤 정상 종료를 요청하고 5초 안에 닫히지 않으면 강제로 끝낸 다음 다시 실행합니다. 가져온 프로필의 extraArgs 등에 프로그램 실행·샌드박스 해제·디버깅 포트 같은 위험한 옵션이 있으면 아무것도 실행하지 않습니다.
-- Win / Mac 버튼은 같은 실행을 터미널에 붙여 넣을 명령으로 보여 줍니다.
-- 실행 파일(.exe/.app)로 감싸지 않습니다. 서명되지 않은 래퍼는 Smart App Control·Gatekeeper에 막히지만, 서명된 `java`로 jar를 실행하면 막히지 않습니다. 같은 이유로 FlatLaf의 네이티브 DLL은 쓰지 않습니다(`flatlaf.useNativeLibrary=false`).
-- 데이터 폴더마다 하나만 실행됩니다. 이미 실행 중일 때 다시 실행하면 새 창을 띄우지 않고 실행 중인 창을 앞으로 가져온 뒤 종료합니다. 데이터 폴더의 `oehubapp.lock`을 OS 파일 잠금으로 잡고, 두 번째 실행은 같은 폴더에 `oehubapp.focus`를 남겨 알립니다(네트워크 포트는 쓰지 않음). 비정상 종료해도 OS가 잠금을 풀어 주므로 다음 실행이 막히지 않습니다.
-- `java`로 실행하면 콘솔(stderr)에 로그가 나옵니다: 프록시 시작·실패, 불러온 라우트 목록, 라우트가 없는 요청(404, 그때의 라우트 목록 포함), 백엔드 연결 실패(502·504). 기본 수준은 `info`이고 `-Doehubapp.log=debug`로 바꿀 수 있습니다.
-- macOS에서는 Dock 아이콘을 oe 로고로 바꾸고 메뉴 막대 이름을 oeHubApp으로 표시합니다. jar로 실행하므로 시작 직후 잠깐은 Java 아이콘이 보일 수 있습니다.
-- 화면 언어는 시스템 언어를 따르며, 설정 → 일반 → 언어에서 바꿀 수 있습니다(데이터 파일에 저장).
-- 각 화면의 왼쪽 목록은 경계선을 끌어 너비를 바꿀 수 있습니다. 기본 300px이고, 한 번 바꾼 너비는 데이터 파일에 저장되고 모든 탭(oeHosts·oeProxy·설정)이 같은 너비를 씁니다. oeHosts·oeProxy의 오른쪽 패널 너비(기본 548px)도 같은 방식으로 저장·공유됩니다.
+- 데이터 폴더 하나에는 앱이 하나만 뜹니다. 이미 실행 중일 때 다시 실행하면 새 창 대신 기존 창을 앞으로 가져옵니다.
+- 화면 언어는 시스템 언어를 따르며, 설정 → 일반 → 언어에서 바꿀 수 있습니다.
+- 각 화면의 왼쪽 목록과 오른쪽 패널은 경계선을 끌어 너비를 바꿀 수 있고, 바꾼 너비는 모든 탭이 같이 씁니다.
+- macOS에서는 시작 직후 잠깐 Java 아이콘이 보였다가 oe 로고로 바뀝니다.
+
+## 사용법
+
+### oeHosts — Chrome 실행
+
+1. 왼쪽 목록의 **+** 로 프로필을 만들고 `IP 도메인` 형식으로 적습니다(자동 저장).
+2. 쓸 프로필의 스위치를 켭니다. 여러 개를 켜면 병합되고, 같은 도메인은 먼저 나온 것이 이깁니다.
+3. 오른쪽에서 Chrome 옵션(`--incognito`, `--user-agent`, `--user-data-dir`, 열 URL 등)을 고르고 **Chrome 실행**을 누릅니다.
+
+- 같은 프로필(`--user-data-dir`이 같거나 둘 다 기본 프로필)로 Chrome이 이미 떠 있으면 새 옵션이 적용되지 않습니다. 그래서 확인을 받은 뒤 그 Chrome을 닫고 다시 실행합니다. 정상 종료가 안 되면 강제로 끝내므로 저장하지 않은 작업은 사라질 수 있습니다.
+- **Win / Mac** 버튼은 같은 실행을 터미널에 붙여 넣을 수 있는 명령으로 보여 줍니다.
+- 가져온 프로필에 위험한 옵션(프로그램 실행, 샌드박스 해제, 디버깅 포트 등)이 있으면 아무것도 실행하지 않습니다.
+- Chrome 위치: Windows는 Program Files·LocalAppData의 `chrome.exe`, macOS는 `/Applications/Google Chrome.app`
+
+### oeProxy — 도메인을 백엔드로 연결
+
+1. **+** 로 vhost를 만들고 YAML로 도메인과 경로별 백엔드를 적습니다. 새 vhost에 예시가 들어 있습니다.
+2. 쓸 vhost의 스위치를 켜면 오른쪽 ROUTES에 병합 결과가 보이고, 다음 요청부터 반영됩니다.
+3. 브라우저가 그 도메인을 이 PC로 보내도록 oeHosts 프로필이나 OS hosts에 `127.0.0.1 도메인`을 넣습니다.
+
+- 처음 한 번은 CA 인증서를 신뢰 저장소에 등록해야 브라우저 경고가 사라집니다. 아래 [인증서](#인증서-ca)를 보세요.
+- 어디서 온 요청이든 모든 요청에 고른 vhost의 라우팅이 적용됩니다. 계정 구분이 없는 1인용 모드입니다.
+- 백엔드는 내부망과 외부 주소 모두 허용하고, 백엔드의 내부 인증서도 신뢰합니다.
+- 휴대폰 등 다른 기기에서 쓰려면, 처음 443 포트를 열 때 Windows 방화벽이 물으면 허용합니다.
+- oeHub의 `${PROXY_SVR}`·`${LOCAL_SVR}`는 이 앱에서 항상 `127.0.0.1`로 바뀝니다(프록시·Chrome·백엔드가 모두 같은 PC에 있으므로).
+
+### Network — 트래픽 보기
+
+- oeProxy를 지나가는 요청이 위쪽 표에 쌓이고, 하나를 고르면 아래에서 헤더·쿠키·요청·응답·WebSocket·이벤트를 볼 수 있습니다.
+- 상단 바 가운데 버튼: **캡처 시작/중지**, **지우기**
+- 고른 vhost가 없으면 프록시가 비활성이라는 안내가 나옵니다.
 
 ## 데이터
 
@@ -40,34 +72,46 @@ java -jar oehubapp.jar --data D:\oehub-data
 | macOS | `~/Library/Application Support/oeHubApp/oehubapp.json` |
 | 그 밖 | `~/.config/oeHubApp/oehubapp.json` |
 
-- 저장할 때마다 이전 내용은 `oehubapp.json.bak`으로 보관합니다. 읽을 수 없는 데이터 파일은 덮어쓰지 않고 실행을 멈춥니다.
-- 첫 실행 때 이전 이름(oeHosts)의 데이터를 가져옵니다. `oeHosts/oehosts-app.json`이 있으면 그대로 복사하고, 없으면 egui 버전의 `oeHosts/oehosts.json`에서 프로필·폴더·옵션·프리셋을 옮겨 옵니다. 이전 파일은 **읽기만** 합니다.
-- `--data`로 다른 폴더를 지정하면 이전 데이터를 가져오지 않고 빈 상태로 시작합니다.
-- 설정 → 일반 → 데이터에서 oeHosts·oeProxy를 각각 JSON으로 내보내고 가져옵니다(병합 또는 전체 교체). 파일 형식이 oeHub의 내보내기와 같아서 oeHub와 서로 주고받을 수 있고, 암호화된(E2E) 항목은 건너뜁니다.
-- 같은 화면의 "전체 (인증서 포함)"은 모든 프로필·vhost·옵션·설정과 CA 인증서·개인키를 ZIP 하나로 내보내고, 가져올 때는 전부 교체합니다. 백업 파일에 CA 개인키가 들어 있으므로 공유하지 않습니다.
-- 프로필·vhost 하나는 편집기 위 내보내기 버튼으로 `.oehosts`·`.oeproxy` 파일(편집기 내용 그대로, UTF-8)로 저장합니다. 목록 머리의 가져오기 버튼(+ 옆)으로 이 파일을 여러 개 골라 새 항목으로 추가하며, 이름은 파일 이름에서 확장자를 뺀 것입니다(겹치면 ` (2)`처럼 번호를 붙임). vhost 스키마 검사에 실패한 `.oeproxy` 파일은 가져오지 않습니다.
-- oeHub의 `${PROXY_SVR}`·`${LOCAL_SVR}`는 이 앱에서 쓰지 않습니다. 프록시·Chrome·백엔드가 모두 같은 PC에 있고, 휴대폰도 이 PC의 프록시를 거치므로 둘 다 항상 `127.0.0.1`입니다. 기존 데이터나 oeHub에서 가져온 내용에 남아 있으면 `127.0.0.1`로 바꿔 씁니다.
+- 프로필·vhost·옵션·설정이 모두 이 파일 하나에 저장되고, 저장할 때마다 이전 내용은 `oehubapp.json.bak`으로 남습니다.
+- 처음 실행할 때 이전 이름(oeHosts)으로 쓰던 데이터가 있으면 가져옵니다. 이전 파일은 읽기만 합니다. `--data`로 다른 폴더를 지정하면 빈 상태로 시작합니다.
 
-## oeProxy (내장 역방향 프록시)
+### 내보내기·가져오기
 
-- 앱이 시작될 때 같은 프로세스 안에서 [oe-proxy](https://github.com/tricatch/oeProxy)를 https 443 포트로 띄웁니다(oeHub와 같은 내장 방식). oeProxy 화면 아래에 실행 상태가 표시되고, 실패하면 마우스를 올려 이유를 볼 수 있습니다(예: 443 포트를 다른 프로그램이 사용 중).
-- 계정이 없는 단일 소유자 모드라, 어디서 온 요청이든 식별 헤더가 있든 없든(oeHub 확장 프로그램의 `X-OeHub-Oid` 포함) 모든 요청에 선택한 vhost의 라우팅이 적용됩니다. vhost를 고치거나 선택을 바꾸면 다음 요청부터 반영됩니다.
-- 첫 실행 때 데이터 폴더의 `root-ca/ca.cer`(인증서), `ca.pfx`(개인키, 암호 없음)로 자체 서명 CA를 만듭니다. `ca.cer`를 OS 신뢰 저장소에 한 번 등록해야 브라우저 경고가 사라집니다. 설정 → oeProxy → CA 인증서에서 등록 여부를 확인하고, Windows는 "신뢰 저장소에 등록" 버튼으로 현재 사용자 저장소에 바로 등록합니다(관리자 권한 불필요, Windows 확인 창이 뜸). 내보내기·등록 명령 복사·새 CA 만들기도 같은 화면에 있습니다. `ca.pfx`는 이 CA로 서명된 모든 인증서를 위조할 수 있으므로 공유하지 않습니다.
-- 이미 가진 CA(예: oeHub의 `ca.cer`/`ca.pfx`)는 같은 화면의 "CA 가져오기"로 바꿔 쓸 수 있습니다. 브라우저가 이미 그 CA를 신뢰하면 다시 등록할 필요가 없습니다. 개인키는 PEM(PKCS#8, 비밀번호 암호화 가능) 또는 PKCS#12(.pfx/.p12)를 받고, PKCS#12에 인증서가 들어 있으면 인증서 파일은 생략할 수 있습니다. CA 인증서인지, 개인키가 인증서와 짝이 맞는지 확인한 뒤 `root-ca/`에 암호 없는 PEM으로 저장하고 프록시를 다시 시작합니다.
-- 처음 443 포트를 열 때 Windows 방화벽이 허용 여부를 물을 수 있습니다. 휴대폰 등 다른 기기에서 쓰려면 허용합니다.
-- 백엔드는 내부망뿐 아니라 외부 주소도 허용하고, 백엔드의 내부 인증서도 신뢰합니다.
+| 무엇을 | 어디서 | 형식 |
+|---|---|---|
+| 프로필·vhost 하나 | 편집기 위 내보내기 버튼 / 목록 머리의 가져오기 버튼(+ 옆) | `.oehosts` · `.oeproxy` (편집기 내용 그대로) |
+| oeHosts 전체, oeProxy 전체 | 설정 → 일반 → 데이터 | JSON (oeHub의 내보내기와 같은 형식) |
+| 모든 것 + CA | 설정 → 일반 → 데이터 → 전체 (CA 포함) | ZIP |
 
-## 빌드
+- 파일 가져오기는 여러 개를 한 번에 고를 수 있고, 이름은 파일 이름을 따릅니다(겹치면 ` (2)`처럼 번호가 붙음). 형식이 맞지 않는 `.oeproxy`는 건너뜁니다.
+- JSON은 oeHub와 서로 주고받을 수 있습니다. 가져올 때 병합 또는 전체 교체를 고르며, 암호화된(E2E) 항목은 건너뜁니다.
+- 전체 백업 ZIP에는 **CA 개인키**가 들어 있습니다. 공유하지 말고 안전한 곳에 보관하세요. 가져오면 모든 것이 교체됩니다.
+
+## 인증서 (CA)
+
+- 처음 실행할 때 데이터 폴더의 `root-ca/`에 자체 서명 CA(`ca.cer` 인증서, `ca.pfx` 개인키)를 만듭니다. oeProxy는 이 CA로 도메인별 HTTPS 인증서를 발급합니다.
+- 설정 → oeProxy → CA 인증서에서 등록 여부를 확인합니다. Windows는 **신뢰 저장소에 등록** 버튼으로 현재 사용자 저장소에 바로 등록합니다(관리자 권한 불필요, 확인 창이 뜸). macOS 등은 **등록 명령 복사**를 터미널에 붙여 넣습니다.
+- oeHub에서 쓰던 CA가 있으면 **CA 가져오기**로 바꿔 쓸 수 있습니다. 브라우저가 이미 그 CA를 신뢰한다면 다시 등록할 필요가 없습니다. 개인키는 PEM(PKCS#8, 암호 가능) 또는 PKCS#12(.pfx/.p12)를 받습니다.
+- `ca.pfx`가 있으면 이 CA를 신뢰하는 모든 기기에 대해 아무 사이트의 인증서나 위조할 수 있습니다. 절대 공유하지 마세요.
+
+## 문제 해결
+
+| 증상 | 확인할 것 |
+|---|---|
+| oeProxy 아래에 "프록시 시작 실패" | 마우스를 올리면 이유가 나옵니다. 대부분 443 포트를 다른 프로그램(이미 실행 중인 다른 oeHubApp·oeHub, IIS 등)이 쓰는 경우입니다. 그 프로그램을 끄고 설정 → oeProxy → 리버스 프록시에서 **다시 시작**합니다. |
+| 브라우저 인증서 경고 | CA를 신뢰 저장소에 등록했는지 확인합니다. 등록 후에는 브라우저를 다시 시작합니다. |
+| 404 / 502 / 504 페이지 | 404는 맞는 라우트가 없음, 502·504는 백엔드에 연결하지 못함입니다. `java`로 실행했다면 콘솔 로그에 그때의 라우트 목록과 원인이 나옵니다. |
+| Chrome이 새 옵션 없이 뜸 | 같은 프로필의 Chrome이 이미 떠 있던 경우입니다. 앱이 묻는 확인에서 닫고 다시 실행을 고릅니다. |
+
+## 직접 빌드
 
 ```
-./gradlew test         # 단위 테스트
 ./gradlew shadowJar    # build/libs/oehubapp.jar
-./gradlew run          # 데스크톱 앱 개발 실행
 ```
 
-JDK 25 툴체인으로 빌드하고 `--release 21`로 컴파일합니다(oe-proxy가 가상 스레드를 쓰므로 21 이상). 형제 폴더 `../oeProxy`가 있으면 oeHub처럼 `includeBuild`로 그 소스를 직접 빌드해 쓰고, 없으면 Maven Central의 `io.github.tricatch:oe-proxy`를 받습니다.
+JDK 25가 있으면 됩니다(만들어진 jar는 Java 21 이상에서 실행).
 
-화면 확인용으로 `-Doehubapp.shot=<경로 접두어>`를 주고 실행하면 탭 4개와 주요 대화상자를 `<접두어>-0.png` … 로 저장하고 종료합니다.
+## 오픈소스
 
 | 라이브러리 | 버전 | 라이선스 |
 |---|---|---|
@@ -87,32 +131,6 @@ JDK 25 툴체인으로 빌드하고 `--release 21`로 컴파일합니다(oe-prox
 | [Caffeine](https://github.com/ben-manes/caffeine)이 쓰는 [Error Prone Annotations](https://errorprone.info) | 2.21.1 | Apache-2.0 |
 | [SLF4J Simple](https://www.slf4j.org/) | 2.0.17 | MIT |
 | [SLF4J API](https://www.slf4j.org/) (oe-proxy 의존성) | 2.0.18 | MIT |
-| [Lucide](https://lucide.dev/) 아이콘 (oeHub에서 복사) | — | ISC |
+| [Lucide](https://lucide.dev/) 아이콘 | — | ISC |
 
-앱의 설정 → 일반 → 오픈소스에도 같은 목록이 링크와 함께 나옵니다. 버전은 빌드할 때 jar에 기록한 실제 포함 버전(`oehubapp-build.properties`)을 보여 주므로, 라이브러리를 추가하면 그 화면의 목록(`SettingsTab.LIBS`)과 이 표에 함께 넣습니다.
-
-## oeHub와 맞추기
-
-화면은 oeHub와 같은 모양을 유지하는 것이 원칙입니다.
-
-색·크기·문구는 oeHub의 CSS와 메시지를 기준으로 Java에 옮겼습니다. oeHub 쪽이 바뀌면 아래 짝을 함께 고칩니다.
-
-| 이 저장소 (`tricatch.oehubapp`) | oeHub 원본 |
-|---|---|
-| `ChromeArgs` | `static/js/chrome-launch-args.js`, `util.js`의 `resolveUDD`·`wrapDelayedUrl`·`winArgQuote`·`macArgQuote` |
-| `HostsRules` | `util.js`의 `parseHostsToMap`, hosts 페이지의 `mergeSelectedProfiles` |
-| `ui.HostsTab` | `templates/oehub/hosts.pebble` (설정 키는 같은 `hostsConf` 이름) |
-| `ui.ProxyTab` | `templates/oehub/proxy.pebble` (`validateSchema`, `buildMergedVirtualYaml`) |
-| `ui.MonitorTab` | `templates/oehub/proxy-monitor.pebble` |
-| `ui.SidebarTree` | `static/js/list-folders.js` |
-| `ui.Ui`, `ui.OeDialog` | `static/css/app.css`, `oe-panel.css`, `hosts.css` |
-
-### oeHub에서 복사해 온 리소스
-
-경로는 `src/main/resources/` 기준입니다.
-
-| 이 저장소 | oeHub 원본 | 비고 |
-|---|---|---|
-| `i18n/messages_{en,ko}.properties` | `i18n/` | 이 앱이 쓰는 키만 남김(oeHub에서 키를 다시 가져올 때도 쓰는 키만 추가). 앱 전용 문구는 `i18n/oehubapp_{en,ko}.properties`에 두고 같은 키는 덮어씀 |
-| `icon/` | `static/icon/` | 그대로(Lucide SVG, 로고, 창 아이콘) |
-| `example/` | `example/` | 새 프로필·vhost의 예시 내용 |
+앱의 설정 → 일반 → 오픈소스에도 같은 목록이 링크와 함께 나옵니다.
