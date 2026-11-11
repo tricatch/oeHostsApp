@@ -30,7 +30,8 @@ public final class MainWindow {
     private static volatile MainWindow shown;
 
     private final AppContext ctx;
-    private final JFrame frame = new JFrame("oeHubApp");
+    /** Kept across rebuilds: a language change swaps the contents, not the window. */
+    private final JFrame frame;
     private final CardLayout cards = new CardLayout();
     private final JPanel content = new JPanel(cards);
     private final List<JLabel> tabLabels = new ArrayList<>();
@@ -42,26 +43,22 @@ public final class MainWindow {
     private JButton gear;
     private int current = -1;
 
-    private MainWindow(Store store) {
+    private MainWindow(Store store, JFrame frame) {
+        this.frame = frame;
         ctx = new AppContext(store);
         ctx.setFrame(frame);
     }
 
     public static void open(Store store) {
-        open(store, null, 0);
-    }
-
-    private static void open(Store store, Rectangle bounds, int tab) {
-        MainWindow w = new MainWindow(store);
+        JFrame frame = new JFrame("oeHubApp");
+        setUpFrame(frame);
+        MainWindow w = new MainWindow(store, frame);
         shown = w;
         w.build();
-        if (bounds != null) w.frame.setBounds(bounds);
-        else {
-            w.frame.setSize(1400, 860);
-            w.frame.setLocationRelativeTo(null);
-        }
-        w.select(tab);
-        w.frame.setVisible(true);
+        frame.setSize(1400, 860);
+        frame.setLocationRelativeTo(null);
+        w.select(0);
+        frame.setVisible(true);
         String shot = System.getProperty("oehubapp.shot");
         if (shot != null) w.screenshots(shot);
     }
@@ -133,14 +130,13 @@ public final class MainWindow {
         });
     }
 
-    private void build() {
+    /** What the window needs once, whatever is shown in it. */
+    private static void setUpFrame(JFrame frame) {
         frame.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         frame.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
-                hosts.flush();
-                proxy.flush();
-                settings.flush();
+                shown.flush();
                 System.exit(0);
             }
         });
@@ -153,7 +149,16 @@ public final class MainWindow {
             }
         }
         frame.setIconImages(icons);
+        frame.setMinimumSize(new Dimension(1000, 600));
+    }
 
+    private void flush() {
+        hosts.flush();
+        proxy.flush();
+        settings.flush();
+    }
+
+    private void build() {
         hosts = new HostsTab(ctx);
         proxy = new ProxyTab(ctx);
         monitor = new MonitorTab(ctx, proxy);
@@ -174,7 +179,6 @@ public final class MainWindow {
         root.add(navbar(), BorderLayout.NORTH);
         root.add(content, BorderLayout.CENTER);
         frame.setContentPane(root);
-        frame.setMinimumSize(new Dimension(1000, 600));
     }
 
     private JComponent navbar() {
@@ -314,15 +318,19 @@ public final class MainWindow {
         return gear;
     }
 
-    /** Rebuilds the window (language change, import) keeping its place and tab. */
+    /**
+     * Rebuilds the screens (language change, import) in the same window, on the same tab and
+     * settings page: the window itself never closes, so it does not blink or move.
+     */
     private void relaunch() {
-        hosts.flush();
-        proxy.flush();
-        settings.flush();
+        flush();
         monitor.dispose();
-        Rectangle bounds = frame.getBounds();
-        int tab = current;
-        frame.dispose();
-        open(ctx.rawStore(), bounds, tab);
+        MainWindow w = new MainWindow(ctx.rawStore(), frame);
+        w.build();
+        w.settings.showPage(settings.activePage());
+        w.select(current);
+        shown = w;
+        frame.revalidate();
+        frame.repaint();
     }
 }

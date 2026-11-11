@@ -124,6 +124,15 @@ public final class SettingsTab extends JPanel {
 
     // ── Left list ───────────────────────────────────────────────
 
+    /** The page shown now, to reopen it after the window is rebuilt. */
+    String activePage() {
+        return activeId;
+    }
+
+    void showPage(String id) {
+        if (!id.equals(activeId)) select(id);
+    }
+
     private void select(String id) {
         activeId = id;
         Page page = folders.stream().flatMap(f -> f.pages().stream()).filter(p -> p.id().equals(id)).findFirst().orElseThrow();
