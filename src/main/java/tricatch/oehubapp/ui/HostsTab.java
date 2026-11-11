@@ -44,7 +44,7 @@ public final class HostsTab extends JPanel {
     private final CodeEditor editor = new CodeEditor(null);
     private final JPanel editorCards = whitePanel(new CardLayout());
     private final JLabel metaUpdated = Ui.metaText("—");
-    private final JButton btnDownload, btnDelete;
+    private final JButton btnShare, btnDownload, btnDelete;
     private JButton launchBtn;
     private final Autosave autosave;
 
@@ -111,6 +111,7 @@ public final class HostsTab extends JPanel {
         editorTitle = Ui.title(ctx.m("editor.select.profile"));
         saveStatus.setFont(Ui.font(Font.PLAIN, 12f));
         saveStatus.setForeground(Ui.MUTED);
+        btnShare = Ui.iconButton("share-2", ctx.m("app.share.tooltip"), false, this::share);
         btnDownload = Ui.iconButton("file-down", ctx.m("tooltip.export"), false, this::download);
         btnDelete = Ui.iconButton("trash", ctx.m("tooltip.delete.profile"), true, () -> {
             if (active != null) deleteItem(active);
@@ -169,7 +170,7 @@ public final class HostsTab extends JPanel {
         JPanel titleRow = new JPanel(new BorderLayout(10, 0));
         titleRow.setOpaque(false);
         titleRow.add(editorTitle, BorderLayout.WEST);
-        p.add(Ui.header(titleRow, btnDownload, btnDelete), BorderLayout.NORTH);
+        p.add(Ui.header(titleRow, btnShare, btnDownload, btnDelete), BorderLayout.NORTH);
 
         JLabel empty = new JLabel(ctx.m("hosts.empty"), SwingConstants.CENTER);
         empty.setForeground(Ui.MUTED);
@@ -599,7 +600,80 @@ public final class HostsTab extends JPanel {
         editor.setEditable(it != null);
         btnDelete.setEnabled(it != null);
         btnDownload.setEnabled(it != null);
+        btnShare.setEnabled(it != null);
+        shareIcon(it != null && it.shared);
         metaUpdated.setText(it == null ? "—" : fmt(it.updatedAt));
+    }
+
+    /** The share button is green while the open profile is shared. */
+    private void shareIcon(boolean shared) {
+        btnShare.setIcon(Ui.icon("share-2", 15, shared ? Ui.BC500 : Ui.ICON));
+        btnShare.setRolloverIcon(Ui.icon("share-2", 16, shared ? Ui.BC700 : new Color(0, 0, 0, 178)));
+    }
+
+    /**
+     * Sharing of the open profile for SwitchHosts and the like: a switch, the URL ShareServer serves
+     * it at, and Copy. Turning the switch on or off takes effect at once.
+     */
+    /** The share dialog of the open profile (also used by MainWindow's screenshot mode). */
+    void showShare() {
+        share();
+    }
+
+    private void share() {
+        if (active == null) return;
+        autosave.flush();
+        String id = active.id;
+        int port = ctx.read(() -> ctx.rawStore().data.settings.shareServerPort);
+        String token = ctx.store(s -> s.shareToken(id));
+        if (token == null) return;
+        String url = tricatch.oehubapp.ShareServer.url(port, token, active.name);
+        OeDialog.open(ctx, ctx.m("app.share.title", active.name), d -> {
+            Switch sw = new Switch(active.shared, Ui.BC500);
+            JLabel swLabel = new JLabel(ctx.m("app.share.switch"));
+            swLabel.setFont(Ui.font(Font.BOLD, 13f));
+            JPanel swRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+            swRow.setOpaque(false);
+            swRow.add(sw);
+            swRow.add(swLabel);
+
+            // The command box of the Chrome command dialog, one line.
+            JTextArea urlField = OeDialog.script(url);
+            urlField.setLineWrap(false);
+            urlField.setColumns(0);
+
+            JComponent desc = OeDialog.note(ctx.m("app.share.desc"));
+            Dialogs.fixWidth(desc, 580);
+            List<JComponent> parts = new ArrayList<>(List.of(desc, swRow, urlField));
+            if (tricatch.oehubapp.ShareServer.state() == tricatch.oehubapp.ShareServer.State.FAILED) {
+                JComponent w = OeDialog.warn(ctx.m("app.share.server.failed", port,
+                        String.valueOf(tricatch.oehubapp.ShareServer.error())), null);
+                Dialogs.fixWidth(w, 580);
+                parts.add(w);
+            }
+            d.body(OeDialog.stack(12, parts.toArray(new JComponent[0])));
+
+            JButton copy = d.button(ctx.m("app.share.copy"), true, () -> {
+                OeDialog.copy(url);
+                ctx.toast(ctx.m("app.share.copied"));
+            });
+            d.button(ctx.m("btn.close"), false, d::dispose);
+            Runnable sync = () -> {
+                urlField.setEnabled(sw.isOn());
+                copy.setEnabled(sw.isOn());
+            };
+            sw.onChange(on -> {
+                Store.Item r = ctx.store(s -> s.setShared(id, on));
+                if (r == null) return;
+                if (active != null && active.id.equals(id)) {
+                    active = r;
+                    shareIcon(on);
+                }
+                tree.render();
+                sync.run();
+            });
+            sync.run();
+        });
     }
 
     private void addItem() {

@@ -2,6 +2,7 @@ package tricatch.oehubapp.ui;
 
 import tricatch.oehubapp.OeHubApp;
 import tricatch.oehubapp.ProxyRuntime;
+import tricatch.oehubapp.ShareServer;
 import tricatch.oehubapp.Store;
 
 import javax.swing.*;
@@ -81,7 +82,8 @@ public final class SettingsTab extends JPanel {
         folders.add(new Folder("app.settings.folder.hosts", List.of(
                 new Page("ua", "app.settings.ua.presets.title", () -> presetsPage(true)),
                 new Page("url", "app.settings.url.presets.title", () -> presetsPage(false)),
-                new Page("fwd", "app.settings.fwdproxy.title", this::fwdProxyPage))));
+                new Page("fwd", "app.settings.fwdproxy.title", this::fwdProxyPage),
+                new Page("share", "app.settings.share.title", this::sharePage))));
         folders.add(new Folder("app.settings.folder.proxy", List.of(
                 new Page("ca", "app.settings.ca.title", this::caPage),
                 new Page("server", "app.settings.server.title", this::serverPage))));
@@ -516,6 +518,61 @@ public final class SettingsTab extends JPanel {
         tricatch.oehubapp.ForwardProxy.onChange(() -> SwingUtilities.invokeLater(refresh));
         refresh.run();
         return page(desc(ctx.m("app.settings.fwdproxy.desc")), buttons(port), bind.panel(), buttons(restart), info);
+    }
+
+    /** The oeHosts share server (ShareServer): its port, a restart button and its state, like fwdProxyPage. */
+    private JComponent sharePage() {
+        JTextField port = new JTextField(String.valueOf(ctx.read(() -> ctx.rawStore().data.settings.shareServerPort)), 8);
+        port.setFont(Ui.font(Font.PLAIN, 13f));
+        port.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878; margin:4,8,4,8");
+        port.setMaximumSize(new Dimension(140, 34));
+        JLabel st = status();
+        JButton restart = Ui.primary(ctx.m("app.settings.server.restart"), Ui.icon("refresh-cw", 13, new Color(0x2d4a14)), () -> {
+            int p;
+            try {
+                p = Integer.parseInt(port.getText().strip());
+            } catch (NumberFormatException e) {
+                p = -1;
+            }
+            if (p < 1 || p > 65535) {
+                flash(st, ctx.m("app.settings.error.port"), true);
+                return;
+            }
+            int sp = p;
+            ctx.storeRun(s -> {
+                s.data.settings.shareServerPort = sp;
+                s.save();
+            });
+            ctx.fireSettingsChanged();
+            Thread.ofVirtual().name("share-restart").start(ShareServer::restart);
+        });
+        restart.setIconTextGap(5);
+        metaStatus.add(st, "share");
+        metaPages.add("share");
+        JTextField[] v = new JTextField[3];
+        JPanel info = table(new String[][]{
+                {ctx.m("app.settings.server.state"), "-"},
+                {ctx.m("app.settings.server.port"), "-"},
+                {ctx.m("app.settings.server.error"), "-"}}, v);
+        v[0].setFont(Ui.font(Font.BOLD, 12.5f));
+        v[2].setFont(Ui.font(Font.PLAIN, 12.5f));
+        Runnable refresh = () -> {
+            ShareServer.State s = ShareServer.state();
+            v[0].setText(ctx.m(switch (s) {
+                case STOPPED -> "app.proxy.status.starting";
+                case RUNNING -> "app.settings.server.running";
+                case FAILED -> "app.settings.server.failed";
+            }));
+            v[0].setForeground(s == ShareServer.State.RUNNING ? Ui.BC700
+                    : s == ShareServer.State.FAILED ? Ui.DANGER : Ui.MUTED);
+            int sp = ShareServer.port();
+            v[1].setText(sp > 0 ? bound(false, sp) : "-");
+            String err = ShareServer.error();
+            v[2].setText(s == ShareServer.State.FAILED && err != null ? err : "-");
+        };
+        ShareServer.onChange(() -> SwingUtilities.invokeLater(refresh));
+        refresh.run();
+        return page(desc(ctx.m("app.settings.share.desc")), buttons(port), buttons(restart), info);
     }
 
     /** {@code page} with {@code actions} at its bottom right, just above the bottom bar. */

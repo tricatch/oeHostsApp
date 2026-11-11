@@ -70,6 +70,7 @@ public final class OeHubApp {
         Store store = AppData.open(dataDir);
         ProxyRuntime.start(dataDir, store);
         Thread.ofVirtual().name("fwdproxy-start").start(() -> ForwardProxy.start(store));
+        Thread.ofVirtual().name("share-start").start(() -> ShareServer.start(store));
         SwingUtilities.invokeLater(() -> MainWindow.open(store));
         instance.watchFocusRequests(MainWindow::bringToFront);
     }

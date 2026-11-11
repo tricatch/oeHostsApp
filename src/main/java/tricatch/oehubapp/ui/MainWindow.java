@@ -68,7 +68,7 @@ public final class MainWindow {
      * once the window has settled, then exits. Lets the UI be checked without a person at the screen.
      */
     private void screenshots(String prefix) {
-        Runnable[] dialogs = {() -> hosts.showDirectCmd(true)};
+        Runnable[] dialogs = {() -> hosts.showDirectCmd(true), hosts::showShare};
         Timer t = new Timer(1500, null);
         int[] step = {0};
         t.addActionListener(e -> {

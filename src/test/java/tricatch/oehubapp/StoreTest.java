@@ -24,6 +24,13 @@ class StoreTest {
     }
 
     @Test
+    void idsAreBase32() {
+        String idPattern = "[0-9a-hjkmnp-tv-z]{14}";
+        assertTrue(Store.newId().matches(idPattern));
+        assertNotEquals(Store.newId(), Store.newId());
+    }
+
+    @Test
     void createRenameUniqueNamesAndPersist() throws Exception {
         Store s = open();
         Store.Item a = s.create(Store.Kind.HOSTS, "en");

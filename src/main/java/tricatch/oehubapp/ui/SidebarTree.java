@@ -215,7 +215,20 @@ public final class SidebarTree extends JPanel {
         center.add(name, "label");
         row.add(icon, BorderLayout.WEST);
         row.add(center, BorderLayout.CENTER);
-        row.add(sw, BorderLayout.EAST);
+        if (it.shared) {
+            // A shared oeHosts profile (ShareServer) shows the share icon before its switch.
+            JPanel east = new JPanel();
+            east.setLayout(new BoxLayout(east, BoxLayout.X_AXIS));
+            east.setOpaque(false);
+            JLabel shared = new JLabel(Ui.icon("share-2", 13, Ui.BC500));
+            shared.setToolTipText(ctx.m("app.share.shared"));
+            east.add(shared);
+            east.add(Box.createHorizontalStrut(6));
+            east.add(sw);
+            row.add(east, BorderLayout.EAST);
+        } else {
+            row.add(sw, BorderLayout.EAST);
+        }
         row.hoverOn(name, icon);
         MouseAdapter click = new MouseAdapter() {
             @Override

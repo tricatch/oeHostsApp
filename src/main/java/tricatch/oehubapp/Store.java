@@ -34,6 +34,9 @@ public final class Store {
 
     public static final String DEFAULT_PROXY_SVR = "127.0.0.1";
     public static final int DEFAULT_FWDPROXY_PORT = 36980;
+    public static final int DEFAULT_SHARE_PORT = 36981;
+    /** Crockford base32, lower case (no i, l, o, u). */
+    private static final String BASE32 = "0123456789abcdefghjkmnpqrstvwxyz";
 
     public static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
@@ -66,6 +69,8 @@ public final class Store {
         public String name = "";
         public String content = "";
         public boolean selected;
+        /** oeHosts only: served by {@link ShareServer} at {@code /hosts/<shareToken>} (for SwitchHosts and the like). */
+        public boolean shared;
         public String folderId;
         public long sortOrder;
         public String createAt;
@@ -100,6 +105,8 @@ public final class Store {
         public boolean fwdproxyLan;
         /** Desktop app: reverse proxy on every network interface (the default) instead of 127.0.0.1 only. */
         public boolean reverseProxyLan = true;
+        /** Desktop app: port of the oeHosts share server ({@link ShareServer}, 127.0.0.1 only). */
+        public int shareServerPort = DEFAULT_SHARE_PORT;
         public List<Preset> uaPresets = new ArrayList<>();
         public List<Preset> urlPresets = new ArrayList<>();
         /**
@@ -129,6 +136,12 @@ public final class Store {
         /** oeProxy screen options (local_svr, the last merged vhost config). */
         public Map<String, String> proxyConf = new TreeMap<>();
         public Settings settings = new Settings();
+        /**
+         * Key of the share URLs' HMAC ({@link #shareToken}), created on first use. Kept out of
+         * backups ({@link #exportParts} has no part for it), so URLs never work with another
+         * installation's data.
+         */
+        public String shareKey;
     }
 
     /** Store failures, mapped to HTTP statuses by the server. */
@@ -159,8 +172,17 @@ public final class Store {
         return LocalDateTime.now().format(TS);
     }
 
+    /**
+     * 14 Crockford base32 digits: 64 random bits (13 digits) and one digit of a counter. The random
+     * part alone makes a clash practically impossible; the counter only separates ids made in the
+     * same instant.
+     */
     public static String newId() {
-        return String.format("%016x%04x", RANDOM.nextLong(), SEQ.getAndIncrement() & 0xffff);
+        long r = RANDOM.nextLong();
+        char[] out = new char[14];
+        for (int k = 12; k >= 0; k--, r >>>= 5) out[k] = BASE32.charAt((int) (r & 31));
+        out[13] = BASE32.charAt(SEQ.getAndIncrement() & 31);
+        return new String(out);
     }
 
     /**
@@ -328,6 +350,81 @@ public final class Store {
         i.updatedAt = now();
         save();
         return i;
+    }
+
+    /** Turns sharing of an oeHosts profile on or off (not an edit of the profile: updatedAt stays). */
+    public Item setShared(String id, boolean shared) {
+        Item i = item(Kind.HOSTS, id);
+        i.shared = shared;
+        save();
+        return i;
+    }
+
+    /** The content of a shared oeHosts profile, or null when there is none with that id or it is not shared. */
+    public String sharedHostsContent(String id) {
+        for (Item i : data.hosts) if (i.shared && i.id.equals(id)) return i.content;
+        return null;
+    }
+
+    /**
+     * The share URL's token for an oeHosts profile: {@code <id>-<tag>}, where the tag is the first 40
+     * bits of HMAC-SHA256(shareKey, id) in 8 Crockford base32 digits. Without the key a valid token
+     * cannot be made up from an id (and the id itself is 64 random bits), so trying ids gets nowhere.
+     * Creates the key on first use.
+     */
+    public String shareToken(String id) {
+        if (data.shareKey == null) {
+            byte[] k = new byte[32];
+            RANDOM.nextBytes(k);
+            data.shareKey = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(k);
+            save();
+        }
+        return id + "-" + shareTag(id);
+    }
+
+    /**
+     * A profile name as the share URL's readable last segment: letters and digits (any script),
+     * {@code -} and {@code .} are kept, every run of anything else becomes one {@code _}. Only for
+     * people to tell URLs apart; the server ignores it.
+     */
+    public static String shareSlug(String name) {
+        StringBuilder b = new StringBuilder();
+        String n = name == null ? "" : name.strip();
+        for (int k = 0; k < n.length(); ) {
+            int c = n.codePointAt(k);
+            k += Character.charCount(c);
+            boolean keep = Character.isLetterOrDigit(c) || c == '-' || c == '.';
+            if (keep) b.appendCodePoint(c);
+            else if (b.isEmpty() || b.charAt(b.length() - 1) != '_') b.append('_');
+            if (b.length() >= 60) break;
+        }
+        return b.isEmpty() ? "_" : b.toString();
+    }
+
+    /** The content of the shared profile a {@link #shareToken} names, or null when the tag does not match. */
+    public String sharedHostsContentByToken(String token) {
+        int dash = token.lastIndexOf('-');
+        if (dash <= 0 || data.shareKey == null) return null;
+        String id = token.substring(0, dash);
+        byte[] expected = shareTag(id).getBytes(StandardCharsets.US_ASCII);
+        byte[] given = token.substring(dash + 1).getBytes(StandardCharsets.US_ASCII);
+        if (!java.security.MessageDigest.isEqual(expected, given)) return null;
+        return sharedHostsContent(id);
+    }
+
+    private String shareTag(String id) {
+        try {
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new javax.crypto.spec.SecretKeySpec(java.util.Base64.getUrlDecoder().decode(data.shareKey), "HmacSHA256"));
+            byte[] h = mac.doFinal(id.getBytes(StandardCharsets.UTF_8));
+            long bits = 0;
+            for (int k = 0; k < 5; k++) bits = (bits << 8) | (h[k] & 0xff);
+            char[] out = new char[8];
+            for (int k = 7; k >= 0; k--, bits >>>= 5) out[k] = BASE32.charAt((int) (bits & 31));
+            return new String(out);
+        } catch (java.security.GeneralSecurityException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     public void delete(Kind kind, String id) {
