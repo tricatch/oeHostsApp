@@ -29,7 +29,7 @@ oeHubApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts / 
 
 - Ship only a jar run by a signed `java`. Do not wrap it in an unsigned `.exe`/`.app` and do not build native helpers: Windows Smart App Control and macOS Gatekeeper block unsigned binaries. For the same reason FlatLaf's native library stays disabled (`flatlaf.useNativeLibrary=false`); do not add dependencies that extract native DLLs.
 - The forward proxy (`ForwardProxy`, LittleProxy) is a trimmed port of oeHub's `tricatch.oe.fwdproxy.ForwardProxyServer`: it has no account authentication, whitelist, loopback/DNS-rebinding guards, blocked page or self-loop owner registration (no `LittleProxyInternals` reflection). It binds to 127.0.0.1 by default; binding every interface (`settings.fwdproxyLan`) is the user's explicit choice and makes it an open proxy on that network, so keep it off by default and keep the warning next to the option. Netty must stay pure Java here: do not add `netty-transport-native-*` or `netty-tcnative` artifacts (native libraries).
-- The reverse proxy's binding (`settings.reverseProxyLan`, every interface by default) is applied through `ReverseProxyServer.setBindAddress`, added to oe-proxy after 0.1.0. Until an oe-proxy release with it is on Maven Central and `build.gradle.kts` points at it, the app builds only with the sibling `../oeProxy` checkout.
+- The reverse proxy's binding (`settings.reverseProxyLan`, every interface by default) is applied through `ReverseProxyServer.setBindAddress` (oe-proxy 0.1.1 and later).
 - No network port is used for single-instance detection; it is a file lock in the data folder (`SingleInstance`). Keep it that way.
 
 ## Matching oeHub

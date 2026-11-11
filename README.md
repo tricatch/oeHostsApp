@@ -127,7 +127,7 @@ JDK 25가 있으면 됩니다(만들어진 jar는 Java 21 이상에서 실행).
 | [Jackson Databind](https://github.com/FasterXML/jackson-databind) | 2.22.4 | Apache-2.0 |
 | [Jackson YAML](https://github.com/FasterXML/jackson-dataformats-text) | 2.22.4 | Apache-2.0 |
 | [SnakeYAML](https://bitbucket.org/snakeyaml/snakeyaml) (Jackson YAML 의존성) | 2.5 | Apache-2.0 |
-| [oe-proxy](https://github.com/tricatch/oeProxy) | 0.1.0 | MIT |
+| [oe-proxy](https://github.com/tricatch/oeProxy) | 0.1.1 | MIT |
 | [gotpache-keytool](https://github.com/tricatch/gotpache-keytool) (oe-proxy 의존성) | 0.1.0 | MIT |
 | [Bouncy Castle](https://www.bouncycastle.org) (oe-proxy 의존성) | 1.85 | MIT |
 | [Caffeine](https://github.com/ben-manes/caffeine) (oe-proxy 의존성) | 3.1.8 | Apache-2.0 |

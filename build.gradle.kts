@@ -23,7 +23,7 @@ tasks.withType<JavaCompile> {
 }
 
 dependencies {
-    implementation("io.github.tricatch:oe-proxy:0.1.0")
+    implementation("io.github.tricatch:oe-proxy:0.1.1")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.22.4")
     implementation("org.slf4j:slf4j-simple:2.0.17")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.4")
