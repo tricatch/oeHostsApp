@@ -45,8 +45,8 @@ public final class ChromeLauncher {
 
     /**
      * The launch words for {@link ChromeArgs#parts} (whose values carry the quotes of a command
-     * line) and an optional start URL, opened a second late so the resolver rules are in place.
-     * Null when a part does not form exactly one word (an open quote).
+     * line) and an optional start URL, passed as it is. Null when a part does not form exactly one
+     * word (an open quote) or the URL is not a permitted start URL ({@link ChromeArgs#isStartUrl}).
      */
     public static List<String> words(List<String> parts, String url) {
         List<String> out = new ArrayList<>();
@@ -55,7 +55,11 @@ public final class ChromeLauncher {
             if (w == null || w.size() != 1) return null;
             out.add(w.get(0));
         }
-        if (url != null && !url.isBlank()) out.add(ChromeArgs.delayedUrl(url.strip()));
+        if (url != null && !url.isBlank()) {
+            String u = url.strip();
+            if (!ChromeArgs.isStartUrl(u)) return null;
+            out.add(u);
+        }
         return out;
     }
 
@@ -91,8 +95,7 @@ public final class ChromeLauncher {
     static boolean allowed(String word) {
         if (word.chars().anyMatch(c -> c < 0x20)) return false;
         if (word.startsWith("--")) return word.matches("--[A-Za-z0-9][A-Za-z0-9-]*(=.*)?") && !ChromeArgs.isDenied(word);
-        if (word.matches("(?s)^(https?://|about:|chrome://).*")) return true;
-        return word.startsWith("data:text/html,<script>setTimeout(()=>location.replace('") && word.endsWith("'),1000)</script>");
+        return ChromeArgs.isStartUrl(word);
     }
 
     /**

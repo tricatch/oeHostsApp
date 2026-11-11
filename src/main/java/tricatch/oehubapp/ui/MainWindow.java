@@ -8,6 +8,8 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.MatteBorder;
 import java.awt.*;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
@@ -55,9 +57,9 @@ public final class MainWindow {
         MainWindow w = new MainWindow(store, frame);
         shown = w;
         w.build();
-        frame.setSize(1400, 860);
-        frame.setLocationRelativeTo(null);
+        boolean maximized = w.restoreBounds();
         w.select(0);
+        if (maximized) frame.setExtendedState(frame.getExtendedState() | Frame.MAXIMIZED_BOTH);
         frame.setVisible(true);
         String shot = System.getProperty("oehubapp.shot");
         if (shot != null) w.screenshots(shot);
@@ -136,6 +138,7 @@ public final class MainWindow {
         frame.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
+                shown.saveWindowState();
                 shown.flush();
                 System.exit(0);
             }
@@ -150,6 +153,83 @@ public final class MainWindow {
         }
         frame.setIconImages(icons);
         frame.setMinimumSize(new Dimension(1000, 600));
+        // Window state is also saved shortly after each move/resize/maximize, not only on close:
+        // quitting another way (e.g. Cmd+Q on macOS) skips windowClosing.
+        Timer saveLater = new Timer(600, e -> {
+            if (shown != null) shown.saveWindowState();
+        });
+        saveLater.setRepeats(false);
+        frame.addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentMoved(ComponentEvent e) {
+                saveLater.restart();
+            }
+
+            @Override
+            public void componentResized(ComponentEvent e) {
+                saveLater.restart();
+            }
+        });
+        frame.addWindowStateListener(e -> saveLater.restart());
+    }
+
+    private static final int DEFAULT_W = 1400;
+    private static final int DEFAULT_H = 860;
+
+    /**
+     * Sizes and places the window as it was last time ({@code settings.window*}), or at the default
+     * size in the middle of the screen when nothing is stored or the stored place is no longer on
+     * any screen (a monitor was unplugged). Returns whether the window should open maximized.
+     */
+    private boolean restoreBounds() {
+        Rectangle r = ctx.read(() -> {
+            Store.Settings st = ctx.rawStore().data.settings;
+            return st.windowWidth == null || st.windowHeight == null || st.windowX == null || st.windowY == null
+                    ? null : new Rectangle(st.windowX, st.windowY, st.windowWidth, st.windowHeight);
+        });
+        if (r != null && onScreen(r)) {
+            frame.setBounds(r);
+        } else {
+            frame.setSize(DEFAULT_W, DEFAULT_H);
+            frame.setLocationRelativeTo(null);
+        }
+        return ctx.read(() -> ctx.rawStore().data.settings.windowMaximized);
+    }
+
+    /** True when enough of the window's title bar lies on some screen to grab it with the mouse. */
+    private static boolean onScreen(Rectangle r) {
+        Rectangle titleBar = new Rectangle(r.x, r.y, r.width, 30);
+        for (GraphicsDevice d : GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
+            Rectangle hit = titleBar.intersection(d.getDefaultConfiguration().getBounds());
+            if (!hit.isEmpty() && hit.width >= 100 && hit.height >= 20) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Stores the window state for {@link #restoreBounds}. The bounds are taken only while the window
+     * is in its normal state, so a maximized window keeps the size it returns to; a minimized window
+     * stores nothing. Saves only when something changed.
+     */
+    private void saveWindowState() {
+        int state = frame.getExtendedState();
+        if (!frame.isShowing() || (state & Frame.ICONIFIED) != 0) return;
+        boolean max = (state & Frame.MAXIMIZED_BOTH) == Frame.MAXIMIZED_BOTH;
+        Rectangle r = max ? null : frame.getBounds();
+        ctx.storeRun(s -> {
+            Store.Settings st = s.data.settings;
+            boolean changed = st.windowMaximized != max;
+            st.windowMaximized = max;
+            if (r != null && !(Integer.valueOf(r.x).equals(st.windowX) && Integer.valueOf(r.y).equals(st.windowY)
+                    && Integer.valueOf(r.width).equals(st.windowWidth) && Integer.valueOf(r.height).equals(st.windowHeight))) {
+                st.windowX = r.x;
+                st.windowY = r.y;
+                st.windowWidth = r.width;
+                st.windowHeight = r.height;
+                changed = true;
+            }
+            if (changed) s.save();
+        });
     }
 
     private void flush() {

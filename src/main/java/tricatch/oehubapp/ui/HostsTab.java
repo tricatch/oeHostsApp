@@ -268,20 +268,21 @@ public final class HostsTab extends JPanel {
         btnRow.setBorder(new EmptyBorder(6, 12, 0, 12));
         GridBagConstraints c = new GridBagConstraints();
         c.fill = GridBagConstraints.BOTH;
-        c.weightx = 1;
         c.insets = new Insets(0, 0, 0, 6);
+        // Launch | Win | Mac share the row 6:2:2: with no preferred width of their own, GridBagLayout
+        // hands out the whole width by weight.
         launchBtn = Ui.primary(ctx.m("app.chrome.launch"), Ui.image("chrome.svg", 15, 15), this::launch);
         JButton launch = launchBtn;
-        launch.setPreferredSize(new Dimension(160, 34));
-        btnRow.add(launch, c);
-        c.weightx = 0;
+        c.weightx = 6;
+        btnRow.add(ratioWidth(launch), c);
         JButton cpWin = Ui.secondary("Win", "copy", () -> showDirectCmd(true));
         cpWin.setToolTipText(ctx.m("tooltip.copy.win.chrome"));
-        btnRow.add(cpWin, c);
+        c.weightx = 2;
+        btnRow.add(ratioWidth(cpWin), c);
         c.insets = new Insets(0, 0, 0, 0);
         JButton cpMac = Ui.secondary("Mac", "copy", () -> showDirectCmd(false));
         cpMac.setToolTipText(ctx.m("tooltip.copy.mac.chrome"));
-        btnRow.add(cpMac, c);
+        btnRow.add(ratioWidth(cpMac), c);
         btnRow.setAlignmentX(LEFT_ALIGNMENT);
         btnRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
         routing.add(btnRow);
@@ -390,6 +391,13 @@ public final class HostsTab extends JPanel {
         return b;
     }
 
+    /** Zero preferred/minimum width (height 34) so the row's weights alone set the button's width. */
+    private static JButton ratioWidth(JButton b) {
+        b.setPreferredSize(new Dimension(0, 34));
+        b.setMinimumSize(new Dimension(0, 34));
+        return b;
+    }
+
     private JButton presetButton(String tooltip, boolean ua) {
         JButton b = new JButton(Ui.icon("list", 15, Ui.PREVIEW_TEXT));
         b.setToolTipText(tooltip);
@@ -402,6 +410,12 @@ public final class HostsTab extends JPanel {
             List<Store.Preset> presets = ctx.read(() -> List.copyOf(ua
                     ? ctx.rawStore().data.settings.uaPresets : ctx.rawStore().data.settings.urlPresets));
             JPopupMenu m = new JPopupMenu();
+            PresetPreview preview = new PresetPreview(m);
+            m.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
+                @Override public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent ev) {}
+                @Override public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent ev) { preview.hide(); }
+                @Override public void popupMenuCanceled(javax.swing.event.PopupMenuEvent ev) { preview.hide(); }
+            });
             if (presets.isEmpty()) {
                 JMenuItem none = new JMenuItem(ctx.m(ua ? "hosts.ua.preset.empty" : "hosts.url.preset.empty"));
                 none.setEnabled(false);
@@ -409,7 +423,14 @@ public final class HostsTab extends JPanel {
             }
             for (Store.Preset p : presets) {
                 JMenuItem it = new JMenuItem(p.name);
-                it.setToolTipText(p.value);
+                // .ua-preset-menu .dropdown-item: inset 6px each side, rounded BC100 hover.
+                it.putClientProperty("FlatLaf.style", "selectionInsets:0,6,0,6; selectionArc:6;"
+                        + " selectionBackground:#dff2b8; selectionForeground:#3a6b10");
+                // Full value in a box pinned above the menu instead of the dark tooltip.
+                it.getModel().addChangeListener(ev -> {
+                    if (it.isArmed()) preview.show(it, p.value);
+                    else preview.hideIf(p.value);
+                });
                 it.addActionListener(a -> {
                     JTextField f = ua ? uaField : urlField;
                     f.setText(p.value);
@@ -421,6 +442,54 @@ public final class HostsTab extends JPanel {
             m.show(b, b.getWidth() - m.getPreferredSize().width, b.getHeight() + 2);
         });
         return b;
+    }
+
+    /**
+     * The hovered preset's full value in a white box just left of the open preset menu, its top
+     * level with the hovered item, shown through a {@link Popup} so it does not take the menu's
+     * selection away.
+     */
+    private static final class PresetPreview {
+        private static final int MIN_WIDTH = 520;
+        private final JPopupMenu menu;
+        private Popup popup;
+        private String shown;
+
+        PresetPreview(JPopupMenu menu) {
+            this.menu = menu;
+        }
+
+        void show(JMenuItem item, String value) {
+            hide();
+            if (!menu.isShowing()) return;
+            JTextArea a = new JTextArea(value);
+            a.setLineWrap(true);
+            a.setWrapStyleWord(true);
+            a.setEditable(false);
+            a.setFocusable(false);
+            a.setFont(Ui.mono(12f));
+            a.setForeground(Ui.PREVIEW_TEXT);
+            a.setBackground(Color.WHITE);
+            a.setBorder(new CompoundBorder(new LineBorder(Ui.BC300, 1, true), new EmptyBorder(6, 10, 6, 10)));
+            int w = MIN_WIDTH;
+            a.setSize(new Dimension(w, Short.MAX_VALUE));
+            a.setPreferredSize(new Dimension(w, a.getPreferredSize().height));
+            int x = menu.getLocationOnScreen().x - w - 4;
+            int y = item.getLocationOnScreen().y;
+            popup = PopupFactory.getSharedInstance().getPopup(menu, a, x, y);
+            popup.show();
+            shown = value;
+        }
+
+        void hideIf(String value) {
+            if (value.equals(shown)) hide();
+        }
+
+        void hide() {
+            if (popup != null) popup.hide();
+            popup = null;
+            shown = null;
+        }
     }
 
     private static JLabel sectionLabel(String text) {
@@ -507,7 +576,6 @@ public final class HostsTab extends JPanel {
         });
         swIncognito.onChange(on -> {
             putConf("incognito", on);
-            if (on) OeDialog.info(ctx, ctx.m("modal.udd.warn.title"), ctx.plain("hosts.incognito.warn"));
             updatePreviews();
         });
         swUa.onChange(on -> {

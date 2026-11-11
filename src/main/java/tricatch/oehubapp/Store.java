@@ -123,6 +123,15 @@ public final class Store {
         public Integer sidebarWidth;
         /** Desktop app: width of the right-hand panel (oeHosts launcher, oeProxy routes), shared likewise. */
         public Integer rightPanelWidth;
+        /**
+         * Desktop app: the main window's last normal (not maximized) bounds and whether it was
+         * maximized, restored at the next start. Null until the window has been moved or resized.
+         */
+        public Integer windowX;
+        public Integer windowY;
+        public Integer windowWidth;
+        public Integer windowHeight;
+        public boolean windowMaximized;
     }
 
     public static class Data {

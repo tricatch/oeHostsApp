@@ -30,6 +30,20 @@ oehubapp                              # 실행 (백그라운드로 뜨고, 로�
 - 업데이트는 같은 명령을 다시 실행합니다. 특정 버전은 `curl … | OEHUBAPP_VERSION=0.1.0 sh`처럼 지정합니다.
 - 삭제는 `curl -fsSL https://raw.githubusercontent.com/tricatch/oeHubApp/master/install.sh | sh -s -- --uninstall` 입니다. 명령·앱·메뉴 항목을 지우고 데이터 폴더는 남깁니다.
 
+### Windows (설치 스크립트)
+
+PowerShell에서 실행합니다.
+
+```
+irm https://raw.githubusercontent.com/tricatch/oeHubApp/master/install.ps1 | iex
+```
+
+- 최신 릴리스의 `oehubapp.jar`를 받아 체크섬을 확인한 뒤 `%LOCALAPPDATA%\Programs\oeHubApp\`에 둡니다.
+- 시작 메뉴에 **oeHubApp** 바로가기를 만들고, 설정 → 앱 목록에도 등록합니다. 시작 메뉴에서 실행하거나 작업 표시줄에 고정해 쓸 수 있습니다.
+- 바로가기는 설치된 `javaw.exe`로 jar를 실행합니다(서명 없는 exe는 Windows 스마트 앱 컨트롤이 막으므로 따로 만들지 않습니다). Java 21 이상이 필요하며, 없으면 `winget install EclipseAdoptium.Temurin.21.JRE`(또는 [Adoptium](https://adoptium.net/))로 설치한 뒤 다시 실행합니다. 다른 Java를 새로 설치했을 때도 다시 실행하면 바로가기가 그 Java를 가리킵니다.
+- 업데이트는 oeHubApp을 종료한 뒤 같은 명령을 다시 실행합니다. 특정 버전은 `$env:OEHUBAPP_VERSION='0.1.0'; irm … | iex`처럼 지정합니다.
+- 삭제는 설정 → 앱 → oeHubApp → 제거, 또는 `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/tricatch/oeHubApp/master/install.ps1))) -Uninstall` 입니다. 바로가기·앱 목록 항목·jar를 지우고 데이터 폴더(`%APPDATA%\oeHubApp`)는 남깁니다.
+
 ### 직접 실행 (Windows · macOS)
 
 [Java](https://adoptium.net/) 21 이상이 필요합니다. [릴리스](https://github.com/tricatch/oeHubApp/releases/latest)에서 `oehubapp.jar`를 받아 실행합니다.

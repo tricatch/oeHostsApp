@@ -28,7 +28,7 @@ class ChromeArgsTest {
     }
 
     @Test
-    void launchWordsOrderAndDelayedUrl() {
+    void launchWordsOrderAndUrl() {
         ChromeArgs.Options o = base();
         o.incognito = true;
         o.uaEnabled = true;
@@ -40,7 +40,7 @@ class ChromeArgsTest {
         List<String> words = ChromeLauncher.words(ChromeArgs.parts(o), "https://foo.oe/a'b");
         assertEquals(List.of("--host-resolver-rules=MAP foo.oe 127.0.0.1,MAP bar.oe 10.0.0.1", "--incognito",
                 "--user-agent=UA x", "--user-data-dir=%USERPROFILE%\\oe-chrome",
-                "data:text/html,<script>setTimeout(()=>location.replace('https://foo.oe/a\\'b'),1000)</script>"), words);
+                "https://foo.oe/a'b"), words);
         assertTrue(words.stream().allMatch(ChromeLauncher::allowed));
     }
 
@@ -52,6 +52,8 @@ class ChromeArgsTest {
             assertFalse(ChromeLauncher.allowed(w), w);
         }
         assertTrue(ChromeLauncher.allowed("about:blank"));
+        assertNull(ChromeLauncher.words(List.of(), "--remote-debugging-port=9222"));
+        assertNull(ChromeLauncher.words(List.of(), "foo.oe"));
         assertTrue(ChromeLauncher.allowed("--disable-sync"));
     }
 
@@ -75,6 +77,13 @@ class ChromeArgsTest {
         o.userDataDir = "$HOME/oe-chrome";
         assertEquals("open -na \"Google Chrome\" --args --incognito --user-data-dir=\"$HOME/oe-chrome\"", ChromeArgs.commandLine(o, false));
         assertEquals("open -na \"Google Chrome\"", ChromeArgs.commandLine(new ChromeArgs.Options(), false));
+        ChromeArgs.Options u = new ChromeArgs.Options();
+        u.urlEnabled = true;
+        u.url = "https://foo.oe/a?x=1&y='2'%20";
+        assertEquals("Start-Process \"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" -ArgumentList "
+                + "'https://foo.oe/a?x=1&y=''2''%20'", ChromeArgs.commandLine(u, true));
+        assertEquals("open -na \"Google Chrome\" --args 'https://foo.oe/a?x=1&y='\\''2'\\''%20'",
+                ChromeArgs.commandLine(u, false));
     }
 
     @Test

@@ -36,7 +36,7 @@ oeHubApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts / 
 ## Matching oeHub
 
 - The screens keep oeHub's look and behavior. Colors, sizes and wording come from oeHub's CSS and messages; when the oeHub counterpart changes, update the matching class here:
-  - `ChromeArgs` ↔ `static/js/chrome-launch-args.js` and `util.js` (`resolveUDD`, `wrapDelayedUrl`, `winArgQuote`, `macArgQuote`)
+  - `ChromeArgs` ↔ `static/js/chrome-launch-args.js` and `util.js` (`resolveUDD`, `winArgQuote`, `macArgQuote`). Deliberate difference: the start URL is passed as it is, not through `wrapDelayedUrl` (the delay only served oeHub's oeOID browser extension). This app does not use oeOID at all: no identifier header/codec setup, no extension hints in messages.
   - `HostsRules` ↔ `util.js` `parseHostsToMap` and the hosts page's `mergeSelectedProfiles`
   - `ui.HostsTab` ↔ `templates/oehub/hosts.pebble` (same `hostsConf` keys)
   - `ui.ProxyTab` ↔ `templates/oehub/proxy.pebble` (`validateSchema`, `buildMergedVirtualYaml`)
@@ -73,10 +73,17 @@ oeHubApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts / 
 - When a runtime library is added or bumped in `build.gradle.kts`, update the open-source list in `SettingsTab.LIBS` (README only points to it). Take the license from the library's POM/LICENSE, not from memory. The settings screen shows the resolved versions recorded in the jar at build time (`oehubapp-build.properties`).
 - License texts ship in the jar under `META-INF/licenses/<library>/` (`thirdPartyLicenses` task): dependency jars' own `META-INF/*LICENSE*`/`*NOTICE*` are moved there instead of overwriting each other at the jar root. For a new library whose jar carries no license file, add its upstream LICENSE (and NOTICE, if any) under `src/main/licenses/<library>/`; check with `unzip -Z1 build/libs/oehubapp.jar | grep META-INF/licenses/`.
 
+## Windows Installer (`install.ps1`)
+
+- Run as `irm …/install.ps1 | iex`; must work on Windows PowerShell 5.1 as well as PowerShell 7 (no `??`, ternary or other 7-only syntax). Errors `throw` instead of `exit`, which would close the user's window under `iex`.
+- Installs per user, no admin: the jar in `%LOCALAPPDATA%\Programs\oeHubApp`, a Start menu shortcut that runs the found `javaw.exe` with the jar (no .exe or wrapper, see Platform Constraints), and an `HKCU\…\Uninstall\oeHubApp` entry whose `UninstallString` runs the copy of the script kept in the install folder with `-Uninstall`. Uninstall keeps the data folder (`%APPDATA%\oeHubApp`).
+- The shortcut and Settings > Apps icon is `packaging/windows/oehubapp.ico`, fetched from master: sizes below 256 stored as 32-bit BMP, 256 as PNG (Windows decodes small PNG entries wrongly). Regenerate it from the same logo drawing as the macOS/Linux icons when the logo changes.
+- Test changes against a scratch `OEHUBAPP_HOME`, install then uninstall through the registered `UninstallString`, and check the shortcut and registry key are gone afterwards.
+
 ## Release
 
 - Tag = bare version (`0.1.0`, no `v`), the same as `version` in `build.gradle.kts`. Release assets: `oehubapp.jar` and `SHA256SUMS.txt` (`sha256sum` format, two spaces, no `*`). Keep both names exactly: `install.sh` downloads `releases/latest/download/oehubapp.jar` and verifies it against `SHA256SUMS.txt`. Release notes in Korean.
-- After publishing, download the jar back from the release and check its sha256, then run `install.sh` once with `OEHUBAPP_HOME`/`OEHUBAPP_BIN` pointing at a scratch folder.
+- After publishing, download the jar back from the release and check its sha256, then run `install.sh` once with `OEHUBAPP_HOME`/`OEHUBAPP_BIN` pointing at a scratch folder, and `install.ps1` likewise on Windows (install, then uninstall).
 - `install.sh` also makes `oeHubApp.app` on macOS (in `/Applications` when writable without sudo, else `~/Applications`; uninstall and reinstall remove only bundles carrying its bundle id) (a script bundle that runs the launcher with `--foreground`) and a `.desktop` entry on Linux, with icons fetched from `packaging/` on master. Those icons are the Dock icon drawing of `OeHubApp.dockIcon`; regenerate them if the logo changes.
 - `install.sh` must stay POSIX `sh` (macOS runs it with `/bin/sh`), must not need root, and keeps the user's data folder on `--uninstall`.
 

@@ -116,10 +116,18 @@ public final class ChromeArgs {
         Collections.sort(l);
     }
 
-    /** wrapDelayedUrl: opens the URL a second after start so the resolver rules are in place. */
-    public static String delayedUrl(String url) {
-        String safe = url.replace("\\", "\\\\").replace("<", "\\x3c").replace(">", "\\x3e").replace("'", "\\'");
-        return "data:text/html,<script>setTimeout(()=>location.replace('" + safe + "'),1000)</script>";
+    /**
+     * True for a start URL Chrome may be given directly: http(s), about: or chrome:. The URL is passed
+     * as it is (no delayed-load wrapper; that only served the oeHub browser extension), so anything
+     * else is refused, in particular a value starting with "-" that Chrome would read as a flag.
+     */
+    public static boolean isStartUrl(String url) {
+        return url.matches("(?s)^(https?://|about:|chrome://).*");
+    }
+
+    /** Single-quotes a word for a POSIX shell (a URL's ?, &, # and ' stay literal). */
+    private static String shQuote(String p) {
+        return "'" + p.replace("'", "'\\''") + "'";
     }
 
     public static String winQuote(String p) {
@@ -138,17 +146,20 @@ public final class ChromeArgs {
     /** buildChromeCommandLine: the launch as a command to paste (o.userDataDir resolved for that OS). */
     public static String commandLine(Options o, boolean win) {
         List<String> parts = parts(o);
-        if (o.urlEnabled && !o.url.isEmpty()) parts.add(delayedUrl(o.url));
+        String url = o.urlEnabled && !o.url.isEmpty() ? o.url : null;
         if (win) {
             String exe = "Start-Process \"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\"";
-            if (parts.isEmpty()) return exe;
             List<String> q = new ArrayList<>();
             for (String p : parts) q.add(winLaunchArg(p));
+            // Plain quoting: a URL's %xx escapes must not go through ExpandEnvironmentVariables.
+            if (url != null) q.add(winQuote(url));
+            if (q.isEmpty()) return exe;
             return exe + " -ArgumentList " + String.join(", ", q);
         }
-        if (parts.isEmpty()) return "open -na \"Google Chrome\"";
         List<String> q = new ArrayList<>();
         for (String p : parts) q.add(macQuote(p));
+        if (url != null) q.add(shQuote(url));
+        if (q.isEmpty()) return "open -na \"Google Chrome\"";
         return "open -na \"Google Chrome\" --args " + String.join(" ", q);
     }
 

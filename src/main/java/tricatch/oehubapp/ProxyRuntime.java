@@ -7,7 +7,6 @@ import tricatch.oe.proxy.exception.BadGatewayException;
 import tricatch.oe.proxy.exception.GatewayTimeoutException;
 import tricatch.oe.proxy.spi.ClientHints;
 import tricatch.oe.proxy.spi.ErrorPageRenderer;
-import tricatch.oe.proxy.spi.IdentifierCodec;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
@@ -29,9 +28,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * {@code ReverseProxySettings.init} + {@code ReverseProxyServer.startSslPassServer}): it starts
  * with the app and serves the merged YAML of the selected vhosts on https port 443.
  *
- * <p>Single owner: every request resolves to {@link #OWNER}, with or without an identifier header.
- * {@code setDefaultOwner} covers requests without one, and {@link SingleOwnerCodec} maps any
- * header value (oeHub's browser extension sends its own {@code X-OeHub-Oid}) to the same owner. The routes are read lazily
+ * <p>Single owner: every request resolves to {@link #OWNER} through {@code setDefaultOwner}. This
+ * app never names an identifier header ({@code setIdentifierHeaderName}), so the library reads none
+ * and oeHub's oeOID extension header {@code X-OeHub-Oid} is ignored. The routes are read lazily
  * through the {@code VirtualHostsLoader} SPI; {@link #reload} drops the cached table after an edit
  * and the next request reads the store again.
  */
@@ -356,7 +355,6 @@ public final class ProxyRuntime {
             // CaGenerator writes the key unencrypted (blank password), as oeHub's setup wizard does.
             ReverseProxyServer.setCaFiles(cert, key, "");
             ReverseProxyServer.setDefaultOwner(OWNER);
-            ReverseProxyServer.setIdentifierCodec(new SingleOwnerCodec());
             ReverseProxyServer.setVirtualHostsLoader((owner, clientIp) -> loadVirtualHosts(store));
             ReverseProxyServer.setErrorPageRenderer(new LoggingErrors(store));
 
@@ -408,23 +406,6 @@ public final class ProxyRuntime {
             return "(unreadable YAML: " + e.getMessage() + ")";
         }
         return out.size() + " domain(s): " + String.join("; ", out);
-    }
-
-    /**
-     * Every identifier value means {@link #OWNER}. This app has no accounts, so an identifier
-     * header (oeHub's extension adds an HMAC value the library's plain codec rejects, which would
-     * answer every request with "no virtual hosts") must not change which routes apply.
-     */
-    private static final class SingleOwnerCodec implements IdentifierCodec {
-        @Override
-        public String encode(long ownerId) {
-            return Long.toString(OWNER);
-        }
-
-        @Override
-        public Long decode(String value) {
-            return OWNER;
-        }
     }
 
     /**
