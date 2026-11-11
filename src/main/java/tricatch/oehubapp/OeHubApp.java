@@ -92,14 +92,15 @@ public final class OeHubApp {
     /**
      * The macOS Dock shows the Java icon unless the app sets its own through {@link Taskbar}; the
      * window icons do not reach it. The logo is drawn large (Dock icons are up to 1024px on Retina)
-     * with the standard margin of a Dock icon. Windows has no such feature and keeps the window icons.
+     * and fills the whole icon, with no margin, the same as packaging/macos/oehubapp.icns. Windows has
+     * no such feature and keeps the window icons.
      */
     private static void dockIcon() {
         if (!Taskbar.isTaskbarSupported() || !Taskbar.getTaskbar().isSupported(Taskbar.Feature.ICON_IMAGE)) return;
         BufferedImage img = new BufferedImage(1024, 1024, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = img.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        Ui.image("oe_logo_favicon.svg", 824, 824).paintIcon(null, g, 100, 100);
+        Ui.image("oe_logo_favicon.svg", 1024, 1024).paintIcon(null, g, 0, 0);
         g.dispose();
         try {
             Taskbar.getTaskbar().setIconImage(img);
