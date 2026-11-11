@@ -79,6 +79,30 @@ tasks.jar {
     }
 }
 
+/**
+ * META-INF/licenses/<library>/ for the jar: the LICENSE/NOTICE files each dependency jar carries,
+ * plus src/main/licenses/ for the libraries whose jars carry none (Netty, LittleProxy, SnakeYAML,
+ * ...). When a dependency is added, check its jar for license files and add a folder under
+ * src/main/licenses/ if it has none.
+ */
+val thirdPartyLicenses = tasks.register<Sync>("thirdPartyLicenses") {
+    into(layout.buildDirectory.dir("third-party-licenses"))
+    includeEmptyDirs = false
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+    configurations.runtimeClasspath.get().incoming.artifacts.artifacts.forEach { a ->
+        val lib = when (val id = a.id.componentIdentifier) {
+            is ModuleComponentIdentifier -> id.module
+            is ProjectComponentIdentifier -> id.projectName
+            else -> a.file.nameWithoutExtension
+        }
+        from(zipTree(a.file)) {
+            include("META-INF/*LICENSE*", "META-INF/*NOTICE*")
+            eachFile { path = "META-INF/licenses/$lib/$name" }
+        }
+    }
+    from("src/main/licenses") { into("META-INF/licenses") }
+}
+
 tasks.shadowJar {
     archiveFileName = "oehubapp.jar"
     manifest {
@@ -86,6 +110,11 @@ tasks.shadowJar {
     }
     // Signed dependencies (BouncyCastle) would fail signature checks once merged into one jar.
     exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/*.EC")
+    // Every library ships its own META-INF/LICENSE and NOTICE; merged into one jar they would
+    // overwrite each other, so they go into per-library folders instead (thirdPartyLicenses).
+    exclude("META-INF/*LICENSE*", "META-INF/*NOTICE*")
+    from(thirdPartyLicenses)
+    from("LICENSE")
 }
 
 // Desktop (Swing) app.

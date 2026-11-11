@@ -1123,7 +1123,27 @@ public final class SettingsTab extends JPanel {
                 {"oe-proxy", proxyVer == null ? "-" : proxyVer},
                 {"Java", System.getProperty("java.version") + " (" + System.getProperty("java.vendor") + ")"},
                 {"OS", System.getProperty("os.name") + " " + System.getProperty("os.version") + " (" + System.getProperty("os.arch") + ")"}}, v);
+        // The app's own license and source, as rows of the same table.
+        aboutRow(info, v.length, ctx.m("app.settings.about.license"), badge("MIT", MIT[0], MIT[1]));
+        aboutRow(info, v.length + 1, "GitHub", link(REPO_URL.substring("https://".length()), REPO_URL));
         return page(info);
+    }
+
+    private static final String REPO_URL = "https://github.com/tricatch/oeHubApp";
+
+    /** A label / component row under {@link #table}'s rows, in the same columns. */
+    private static void aboutRow(JPanel table, int row, String key, JComponent value) {
+        GridBagConstraints c = new GridBagConstraints();
+        c.anchor = GridBagConstraints.BASELINE_LEADING;
+        c.insets = new Insets(3, 0, 3, 16);
+        c.gridy = row;
+        c.gridx = 0;
+        JLabel k = new JLabel(key);
+        k.setFont(Ui.font(Font.BOLD, 12.5f));
+        k.setForeground(Ui.MUTED);
+        table.add(k, c);
+        c.gridx = 1;
+        table.add(value, c);
     }
 
     /** The bundled open-source libraries with their versions and licenses. */
@@ -1150,7 +1170,7 @@ public final class SettingsTab extends JPanel {
      */
     private static final List<Lib> LIBS = List.of(
             lib("Apache Commons Lang", "https://commons.apache.org/proper/commons-lang/", "org.apache.commons:commons-lang3", "Apache 2.0", APACHE),
-            lib("Ant-Style Path Matcher", "https://github.com/azagniotov/ant-style-path-matcher", "io.github.azagniotov:ant-style-path-matcher", "Apache 2.0", APACHE),
+            lib("Ant-Style Path Matcher", "https://github.com/azagniotov/ant-style-path-matcher", "io.github.azagniotov:ant-style-path-matcher", "MIT", MIT),
             lib("Bouncy Castle", "https://www.bouncycastle.org", "org.bouncycastle:bcprov-jdk18on", "MIT", MIT),
             lib("Caffeine", "https://github.com/ben-manes/caffeine", "com.github.ben-manes.caffeine:caffeine", "Apache 2.0", APACHE),
             lib("Checker Framework Qualifiers", "https://checkerframework.org", "org.checkerframework:checker-qual", "MIT", MIT),

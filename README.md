@@ -115,30 +115,8 @@ JDK 25가 있으면 됩니다(만들어진 jar는 Java 21 이상에서 실행).
 
 ## 오픈소스
 
-| 라이브러리 | 버전 | 라이선스 |
-|---|---|---|
-| [FlatLaf](https://github.com/JFormDesigner/FlatLaf) | 3.8 | Apache-2.0 |
-| [FlatLaf Extras](https://github.com/JFormDesigner/FlatLaf/tree/main/flatlaf-extras) | 3.8 | Apache-2.0 |
-| [JSVG](https://github.com/weisJ/jsvg) (FlatLaf Extras 의존성) | 2.2.0 | MIT |
-| [RSyntaxTextArea](https://github.com/bobbylight/RSyntaxTextArea) | 3.6.0 | BSD-3-Clause |
-| [Jackson Databind](https://github.com/FasterXML/jackson-databind) | 2.22.4 | Apache-2.0 |
-| [Jackson YAML](https://github.com/FasterXML/jackson-dataformats-text) | 2.22.4 | Apache-2.0 |
-| [SnakeYAML](https://bitbucket.org/snakeyaml/snakeyaml) (Jackson YAML 의존성) | 2.5 | Apache-2.0 |
-| [oe-proxy](https://github.com/tricatch/oeProxy) | 0.1.1 | MIT |
-| [gotpache-keytool](https://github.com/tricatch/gotpache-keytool) (oe-proxy 의존성) | 0.1.0 | MIT |
-| [Bouncy Castle](https://www.bouncycastle.org) (oe-proxy 의존성) | 1.85 | MIT |
-| [Caffeine](https://github.com/ben-manes/caffeine) (oe-proxy 의존성) | 3.1.8 | Apache-2.0 |
-| [Ant-Style Path Matcher](https://github.com/azagniotov/ant-style-path-matcher) (oe-proxy 의존성) | 1.0.0 | Apache-2.0 |
-| [Caffeine](https://github.com/ben-manes/caffeine)이 쓰는 [Checker Framework Qualifiers](https://checkerframework.org) | 3.37.0 | MIT |
-| [Error Prone Annotations](https://errorprone.info) (Caffeine·Guava 의존성) | 2.50.0 | Apache-2.0 |
-| [LittleProxy](https://github.com/LittleProxy/LittleProxy) (포워드 프록시) | 2.9.1 | Apache-2.0 |
-| [Netty](https://netty.io) (LittleProxy 의존성) | 4.2.17.Final | Apache-2.0 |
-| [Guava](https://github.com/google/guava) (LittleProxy 의존성) | 33.7.1-jre | Apache-2.0 |
-| [Apache Commons Lang](https://commons.apache.org/proper/commons-lang/) (LittleProxy 의존성) | 3.20.0 | Apache-2.0 |
-| [JSpecify](https://jspecify.dev) (Guava 의존성) | 1.0.1 | Apache-2.0 |
-| [J2ObjC Annotations](https://github.com/google/j2objc) (Guava 의존성) | 3.1 | Apache-2.0 |
-| [SLF4J Simple](https://www.slf4j.org/) | 2.0.17 | MIT |
-| [SLF4J API](https://www.slf4j.org/) (oe-proxy 의존성) | 2.0.18 | MIT |
-| [Lucide](https://lucide.dev/) 아이콘 | — | ISC |
+함께 들어 있는 라이브러리와 라이선스는 앱의 설정 → 일반 → 오픈 소스에서 볼 수 있고, 각 라이선스 전문은 jar 안의 `META-INF/licenses/`에 있습니다.
 
-앱의 설정 → 일반 → 오픈소스에도 같은 목록이 링크와 함께 나옵니다.
+## 라이선스
+
+[MIT](LICENSE)
