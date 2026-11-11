@@ -17,7 +17,18 @@ PC 한 대에서 hosts 프로필로 Chrome을 띄우고, 내장 역방향 프록
 
 ## 설치와 실행
 
-[Java](https://adoptium.net/) 21 이상이 필요합니다. `oehubapp.jar`를 받아 실행합니다.
+### macOS (Homebrew)
+
+```
+brew install tricatch/tap/oehubapp    # 설치 (Java가 없으면 함께 설치)
+oehubapp                              # 실행
+brew upgrade oehubapp                 # 새 버전으로 업데이트
+brew uninstall oehubapp               # 삭제 (데이터 폴더는 남음)
+```
+
+### 직접 실행 (Windows · macOS)
+
+[Java](https://adoptium.net/) 21 이상이 필요합니다. [릴리스](https://github.com/tricatch/oeHubApp/releases/latest)에서 `oehubapp.jar`를 받아 실행합니다.
 
 ```
 java -jar oehubapp.jar                          # 실행
