@@ -25,7 +25,7 @@ oehubapp                              # 실행 (백그라운드로 뜨고, 로�
 ```
 
 - 최신 릴리스의 `oehubapp.jar`를 받아 체크섬을 확인한 뒤 `~/.oehubapp/`에 두고, `~/.local/bin/oehubapp` 명령을 만듭니다. `~/.local/bin`이 PATH에 없으면 추가하는 방법을 알려 줍니다.
-- macOS에서는 `~/Applications/oeHubApp.app`도 만들어 Launchpad·Spotlight·Finder의 응용 프로그램에서 실행할 수 있습니다. Linux에서는 앱 메뉴에 oeHubApp 항목을 추가합니다.
+- macOS에서는 응용 프로그램 폴더(`/Applications`, 쓰기 권한이 없으면 `~/Applications`)에 `oeHubApp.app`도 만들어 Launchpad·Spotlight·Finder에서 실행할 수 있습니다. Linux에서는 앱 메뉴에 oeHubApp 항목을 추가합니다.
 - Java 21 이상이 필요합니다. 없으면 `brew install openjdk`(또는 [Adoptium](https://adoptium.net/))로 설치합니다. Homebrew의 openjdk는 PATH에 없어도 찾아 씁니다.
 - 업데이트는 같은 명령을 다시 실행합니다. 특정 버전은 `curl … | OEHUBAPP_VERSION=0.1.0 sh`처럼 지정합니다.
 - 삭제는 `curl -fsSL https://raw.githubusercontent.com/tricatch/oeHubApp/master/install.sh | sh -s -- --uninstall` 입니다. 명령·앱·메뉴 항목을 지우고 데이터 폴더는 남깁니다.

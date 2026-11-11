@@ -8,14 +8,23 @@
 #   OEHUBAPP_VERSION  release tag to install (default: the latest release)
 #   OEHUBAPP_HOME     where the jar goes   (default: ~/.oehubapp)
 #   OEHUBAPP_BIN      where the command goes (default: ~/.local/bin)
-#   OEHUBAPP_APPS     macOS: where oeHubApp.app goes (default: ~/Applications)
+#   OEHUBAPP_APPS     macOS: where oeHubApp.app goes (default: /Applications if writable, else ~/Applications)
 set -eu
 
 REPO="tricatch/oeHubApp"
 APP_HOME="${OEHUBAPP_HOME:-$HOME/.oehubapp}"
 BIN_DIR="${OEHUBAPP_BIN:-$HOME/.local/bin}"
 LAUNCHER="$BIN_DIR/oehubapp"
-MAC_APP="${OEHUBAPP_APPS:-$HOME/Applications}/oeHubApp.app"
+# /Applications (Finder's Applications folder) when it is writable without sudo, as it is for an
+# admin account; otherwise the per-user ~/Applications.
+if [ -n "${OEHUBAPP_APPS:-}" ]; then
+    APPS_DIR="$OEHUBAPP_APPS"
+elif [ -w /Applications ]; then
+    APPS_DIR=/Applications
+else
+    APPS_DIR="$HOME/Applications"
+fi
+MAC_APP="$APPS_DIR/oeHubApp.app"
 DESKTOP_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/applications/oehubapp.desktop"
 RAW="https://raw.githubusercontent.com/$REPO/master"
 MIN_JAVA=21
@@ -24,10 +33,20 @@ OS="$(uname -s)"
 say() { printf '%s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
+# Removes oeHubApp.app bundles this script made (checked by bundle id, so an unrelated app of the
+# same name is left alone) from the chosen folder and both default folders.
+remove_mac_apps() {
+    for app in "$MAC_APP" "/Applications/oeHubApp.app" "$HOME/Applications/oeHubApp.app"; do
+        [ "$app" = "${1:-}" ] && continue
+        grep -q 'io.github.tricatch.oehubapp' "$app/Contents/Info.plist" 2>/dev/null && rm -rf "$app"
+    done
+    return 0
+}
+
 if [ "${1:-}" = "--uninstall" ]; then
     rm -f "$APP_HOME/oehubapp.jar" "$APP_HOME/oehubapp.log" "$APP_HOME/oehubapp.icns" "$APP_HOME/oehubapp.png" "$LAUNCHER"
     rmdir "$APP_HOME" 2>/dev/null || true
-    [ "$OS" = "Darwin" ] && rm -rf "$MAC_APP"
+    [ "$OS" = "Darwin" ] && remove_mac_apps
     [ "$OS" = "Linux" ] && rm -f "$DESKTOP_FILE"
     say "oeHubApp removed. Your data folder was kept:"
     case "$OS" in
@@ -137,6 +156,8 @@ version="$(unzip -p "$APP_HOME/oehubapp.jar" META-INF/MANIFEST.MF 2>/dev/null | 
 # .desktop file on Linux. Both just run the launcher; a missing icon is not an error.
 if [ "$OS" = "Darwin" ]; then
     curl -fsL -o "$APP_HOME/oehubapp.icns" "$RAW/packaging/macos/oehubapp.icns" || rm -f "$APP_HOME/oehubapp.icns"
+    # An earlier install may have put it in the other folder; keep only one.
+    remove_mac_apps "$MAC_APP"
     rm -rf "$MAC_APP"
     mkdir -p "$MAC_APP/Contents/MacOS" "$MAC_APP/Contents/Resources"
     [ -f "$APP_HOME/oehubapp.icns" ] && cp "$APP_HOME/oehubapp.icns" "$MAC_APP/Contents/Resources/oehubapp.icns"
