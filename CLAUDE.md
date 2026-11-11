@@ -73,8 +73,9 @@ oeHubApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts / 
 
 ## Release
 
-- Tag = bare version (`0.1.0`, no `v`), the same as `version` in `build.gradle.kts`. Release assets: `oehubapp.jar` (this exact name: the Homebrew formula and README link `releases/latest/download/oehubapp.jar`) and `SHA256SUMS.txt` (`sha256sum` format). Release notes in Korean.
-- After publishing, update the Homebrew formula in `github.com/tricatch/homebrew-tap` (`Formula/oehubapp.rb`): `url` (tag in the path), `version` and `sha256` of the uploaded `oehubapp.jar`. Verify the sha256 against the asset downloaded back from GitHub, not the local build file.
+- Tag = bare version (`0.1.0`, no `v`), the same as `version` in `build.gradle.kts`. Release assets: `oehubapp.jar` and `SHA256SUMS.txt` (`sha256sum` format, two spaces, no `*`). Keep both names exactly: `install.sh` downloads `releases/latest/download/oehubapp.jar` and verifies it against `SHA256SUMS.txt`. Release notes in Korean.
+- After publishing, download the jar back from the release and check its sha256, then run `install.sh` once with `OEHUBAPP_HOME`/`OEHUBAPP_BIN` pointing at a scratch folder.
+- `install.sh` must stay POSIX `sh` (macOS runs it with `/bin/sh`), must not need root, and keeps the user's data folder on `--uninstall`.
 
 ## Documentation Language
 
