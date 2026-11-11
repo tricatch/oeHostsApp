@@ -71,6 +71,11 @@ oeHubApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts / 
 - When a runtime library is added or bumped in `build.gradle.kts`, update the open-source list in `SettingsTab.LIBS` (README only points to it). Take the license from the library's POM/LICENSE, not from memory. The settings screen shows the resolved versions recorded in the jar at build time (`oehubapp-build.properties`).
 - License texts ship in the jar under `META-INF/licenses/<library>/` (`thirdPartyLicenses` task): dependency jars' own `META-INF/*LICENSE*`/`*NOTICE*` are moved there instead of overwriting each other at the jar root. For a new library whose jar carries no license file, add its upstream LICENSE (and NOTICE, if any) under `src/main/licenses/<library>/`; check with `unzip -Z1 build/libs/oehubapp.jar | grep META-INF/licenses/`.
 
+## Release
+
+- Tag = bare version (`0.1.0`, no `v`), the same as `version` in `build.gradle.kts`. Release assets: `oehubapp.jar` (this exact name: the Homebrew formula and README link `releases/latest/download/oehubapp.jar`) and `SHA256SUMS.txt` (`sha256sum` format). Release notes in Korean.
+- After publishing, update the Homebrew formula in `github.com/tricatch/homebrew-tap` (`Formula/oehubapp.rb`): `url` (tag in the path), `version` and `sha256` of the uploaded `oehubapp.jar`. Verify the sha256 against the asset downloaded back from GitHub, not the local build file.
+
 ## Documentation Language
 
 - Source code comments are written in English.
