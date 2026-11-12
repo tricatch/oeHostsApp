@@ -1,26 +1,26 @@
-# oeHubApp
+# oeHostsApp
 
 > **CLAUDE.md update rule:** Record development rules and procedures only; user-facing description and usage belong in `README.md`. All text in this file is written in English.
 
-oeHubApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts / oeProxy / traffic-monitor screens. The sibling checkout `../oeHub` is the reference implementation; `../oeProxy` is the embedded reverse-proxy library.
+oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts / oeProxy / traffic-monitor screens. The sibling checkout `../oeHub` is the reference implementation; `../oeProxy` is the embedded reverse-proxy library.
 
 ## Build and Run
 
-- `./gradlew test` (unit tests), `./gradlew shadowJar` (→ `build/libs/oehubapp.jar`), `./gradlew run` (dev run).
+- `./gradlew test` (unit tests), `./gradlew shadowJar` (→ `build/libs/oehostsapp.jar`), `./gradlew run` (dev run).
 - JDK 25 toolchain, compiled with `--release 21` (oe-proxy uses virtual threads, so 21 is the floor). Do not raise the release level without a reason.
 - `settings.gradle.kts` uses `includeBuild("../oeProxy")` when that folder exists, otherwise Maven Central's `io.github.tricatch:oe-proxy`.
 
 ## Launch Options
 
-- App-specific JVM system properties are named `-Doehubapp.<name>` and read with `System.getProperty("oehubapp.<name>")`. Existing: `oehubapp.log` (log level), `oehubapp.shot` and `oehubapp.settings.page` (screenshot aid, below), `oehubapp.update.repo` and `oehubapp.agent.repo` (base URLs the app update and the oeHosts-Agent update use instead of the GitHub repositories; for testing against a local server).
+- App-specific JVM system properties are named `-Doehostsapp.<name>` and read with `System.getProperty("oehostsapp.<name>")`. Existing: `oehostsapp.log` (log level), `oehostsapp.shot` and `oehostsapp.settings.page` (screenshot aid, below), `oehostsapp.update.repo` and `oehostsapp.agent.repo` (base URLs the app update and the oeHosts-Agent update use instead of the GitHub repositories; for testing against a local server).
 - The only command-line argument is `--data DIR`. Document any new user-facing option in `README.md`.
 
 ## Verifying UI Changes
 
 - Verify a UI change by running the built jar in screenshot mode and looking at the images, not only by compiling:
-  `java -Duser.language=ko -Doehubapp.shot=<prefix> -jar build/libs/oehubapp.jar --data <scratch dir>`
+  `java -Duser.language=ko -Doehostsapp.shot=<prefix> -jar build/libs/oehostsapp.jar --data <scratch dir>`
   It saves each tab as `<prefix>-<n>.png` and each dialog listed in `MainWindow.screenshots()` as `<prefix>-d<n>.png`, then exits. Add a dialog there when you need to check it.
-- `-Doehubapp.settings.page=<id>` opens that settings page first (ids are the `Page` ids in `SettingsTab`).
+- `-Doehostsapp.settings.page=<id>` opens that settings page first (ids are the `Page` ids in `SettingsTab`).
 - Always use a scratch `--data` folder, never the user's real data folder. Check both `ko` and `en` when strings change.
 - The user often has their own instance running: it holds ports 443 and 36980 (the reverse and forward proxies then report "failed to start" in the test instance, which is expected) and its window may be on screen. Do not drive real mouse/keyboard input (e.g. `java.awt.Robot`) unless the test window is known to be the target; prefer screenshot mode.
 - Small changes do not need the full test suite; run the tests that cover the touched code.
@@ -61,7 +61,7 @@ oeHubApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts / 
 
 - Never hardcode UI strings; use `ctx.m("key", args...)` (`{0}`, `{1}` placeholders) or `ctx.plain(...)` for messages that carry HTML.
 - `i18n/messages_{en,ko}.properties` are copied from oeHub and trimmed to the keys this app uses. When bringing over more oeHub keys, add only the ones referenced.
-- App-specific strings go in `i18n/oehubapp_{en,ko}.properties` (prefix `app.`), which override `messages_*` keys of the same name. Do not keep a `messages_*` key that an `oehubapp_*` key shadows.
+- App-specific strings go in `i18n/oehostsapp_{en,ko}.properties` (prefix `app.`), which override `messages_*` keys of the same name. Do not keep a `messages_*` key that an `oehostsapp_*` key shadows.
 - Add every key to both `en` and `ko`. When a change stops using a key, delete it from both languages in the same change.
 - Tab names (OEHOSTS, OEPROXY, NETWORK) are product names and are not translated.
 - UI wording is the user's call: when asked to change a label, propose options first instead of applying one directly.
@@ -80,37 +80,37 @@ oeHubApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts / 
 
 ## Dependencies — License Listing
 
-- When a runtime library is added or bumped in `build.gradle.kts`, update the open-source list in `SettingsTab.LIBS` (README only points to it). Take the license from the library's POM/LICENSE, not from memory. The settings screen shows the resolved versions recorded in the jar at build time (`oehubapp-build.properties`).
-- License texts ship in the jar under `META-INF/licenses/<library>/` (`thirdPartyLicenses` task): dependency jars' own `META-INF/*LICENSE*`/`*NOTICE*` are moved there instead of overwriting each other at the jar root. For a new library whose jar carries no license file, add its upstream LICENSE (and NOTICE, if any) under `src/main/licenses/<library>/`; check with `unzip -Z1 build/libs/oehubapp.jar | grep META-INF/licenses/`.
+- When a runtime library is added or bumped in `build.gradle.kts`, update the open-source list in `SettingsTab.LIBS` (README only points to it). Take the license from the library's POM/LICENSE, not from memory. The settings screen shows the resolved versions recorded in the jar at build time (`oehostsapp-build.properties`).
+- License texts ship in the jar under `META-INF/licenses/<library>/` (`thirdPartyLicenses` task): dependency jars' own `META-INF/*LICENSE*`/`*NOTICE*` are moved there instead of overwriting each other at the jar root. For a new library whose jar carries no license file, add its upstream LICENSE (and NOTICE, if any) under `src/main/licenses/<library>/`; check with `unzip -Z1 build/libs/oehostsapp.jar | grep META-INF/licenses/`.
 
 ## Self-Update
 
-- `Update` checks at every start: the latest version is the tag `<repo>/releases/latest` redirects to (no GitHub API). The result shows only on Settings → General → About. It downloads `releases/download/<tag>/oehubapp.jar` to `oehubapp.jar.new` next to the installed jar and rejects it unless the SHA-256 matches `SHA256SUMS.txt`, the manifest's `Implementation-Version` equals the tag, and the jar contains `UpdateHelper`. So every release must keep those asset names and a tag equal to `version`.
+- `Update` checks at every start: the latest version is the tag `<repo>/releases/latest` redirects to (no GitHub API). The result shows only on Settings → General → About. It downloads `releases/download/<tag>/oehostsapp.jar` to `oehostsapp.jar.new` next to the installed jar and rejects it unless the SHA-256 matches `SHA256SUMS.txt`, the manifest's `Implementation-Version` equals the tag, and the jar contains `UpdateHelper`. So every release must keep those asset names and a tag equal to `version`.
 - `UpdateHelper` runs from the NEW jar with a command line built by the OLD version (`--apply PID TARGET -- COMMAND...`). That format is a contract between releases: never change it. It uses only the JDK, copies the jar to `.tmp` and moves it over the target (it cannot rename the `.new` jar it holds open on Windows), always starts the app again (the old version when the copy fails), and updates install.ps1's `DisplayVersion` with `reg.exe` only when the registered `InstallLocation` is the jar's folder.
 - Only a `.jar` in a writable folder updates itself (`Update.canSelfUpdate`); IDE and Gradle runs only report the version. Do not add an unsigned helper executable or script (see Platform Constraints).
-- Test an update end to end before releasing a change to either class: build an old and a new jar (bump `version` temporarily), serve the new one and its `SHA256SUMS.txt` from a local server that answers `/releases/latest` with a redirect, and drive it with `-Doehubapp.update.repo`. Run the relaunched app in screenshot mode (`-Doehubapp.shot`, inherited through the JVM options) so it exits by itself, then check `oehubapp-update.log` and the installed jar's version.
+- Test an update end to end before releasing a change to either class: build an old and a new jar (bump `version` temporarily), serve the new one and its `SHA256SUMS.txt` from a local server that answers `/releases/latest` with a redirect, and drive it with `-Doehostsapp.update.repo`. Run the relaunched app in screenshot mode (`-Doehostsapp.shot`, inherited through the JVM options) so it exits by itself, then check `oehostsapp-update.log` and the installed jar's version.
 
 ## Bundled oeHosts-Agent
 
 - The jar carries `/oehosts-agent.jar`, built from the sibling `../oeHostsAgent` checkout (an included build; `bundleAgent` in `build.gradle.kts` picks `build/libs/oehosts-agent-<its version>.jar`). Without the checkout the jar has no bundled agent and the app relies on the download below; do not vendor the agent jar into this repository.
-- `HostsAgent.start` runs at every start: it installs the bundled copy next to the installed app jar (data folder for IDE/Gradle runs) unless the agent there is the same version or newer, then checks `https://github.com/tricatch/oeHostsAgent` `releases/latest` in the background and installs that release's `oehosts-agent.jar` when newer (SHA-256 from its `SHA256SUMS.txt`, manifest version equal to the tag; `Update.latestVersion`/`Update.fetchAsset` do the HTTP part). `-Doehubapp.agent.repo=<url>` points the check at a test server.
+- `HostsAgent.start` runs at every start: it installs the bundled copy next to the installed app jar (data folder for IDE/Gradle runs) unless the agent there is the same version or newer, then checks `https://github.com/tricatch/oeHostsAgent` `releases/latest` in the background and installs that release's `oehosts-agent.jar` when newer (SHA-256 from its `SHA256SUMS.txt`, manifest version equal to the tag; `Update.latestVersion`/`Update.fetchAsset` do the HTTP part). `-Doehostsapp.agent.repo=<url>` points the check at a test server.
 - The file is always named `oehosts-agent.jar`: never put a version in it, because users paste the `-javaagent` path into IDEs and scripts and every update must keep that path valid.
 - A JVM running with the agent can keep the file locked on Windows: the replacement is then skipped (state `IN_USE`, check `PENDING`) and retried at the next start. Never fail the app start over the agent.
-- `install.sh` and `install.ps1` extract the same entry at install time and remove `oehosts-agent.jar` (and `oehubapp-update.log`) on uninstall; `install.ps1` only warns when the agent is locked.
+- `install.sh` and `install.ps1` extract the same entry at install time and remove `oehosts-agent.jar` (and `oehostsapp-update.log`) on uninstall; `install.ps1` only warns when the agent is locked.
 
 ## Windows Installer (`install.ps1`)
 
 - Run as `irm …/install.ps1 | iex`; must work on Windows PowerShell 5.1 as well as PowerShell 7 (no `??`, ternary or other 7-only syntax). Errors `throw` instead of `exit`, which would close the user's window under `iex`.
-- Installs per user, no admin: the jar in `%LOCALAPPDATA%\Programs\oeHubApp`, a Start menu shortcut that runs the found `javaw.exe` with the jar (no .exe or wrapper, see Platform Constraints), and an `HKCU\…\Uninstall\oeHubApp` entry whose `UninstallString` runs the copy of the script kept in the install folder with `-Uninstall`. Uninstall keeps the data folder (`%APPDATA%\oeHubApp`).
-- The shortcut and Settings > Apps icon is `packaging/windows/oehubapp.ico`, fetched from master: sizes below 256 stored as 32-bit BMP, 256 as PNG (Windows decodes small PNG entries wrongly). Regenerate it from the same logo drawing as the macOS/Linux icons when the logo changes.
-- Test changes against a scratch `OEHUBAPP_HOME`, install then uninstall through the registered `UninstallString`, and check the shortcut and registry key are gone afterwards.
-- That test replaces the developer's own Start menu shortcut and `HKCU\...\Uninstall\oeHubApp` entry (they are per user, not per `OEHUBAPP_HOME`). Back both up first (`reg export`, copy the `.lnk`) and restore them in a `finally` after the uninstall. `reg import` prints its success message to stderr, so do not run it under `$ErrorActionPreference = 'Stop'` with `2>&1`, or the restore stops halfway.
+- Installs per user, no admin: the jar in `%LOCALAPPDATA%\Programs\oeHostsApp`, a Start menu shortcut that runs the found `javaw.exe` with the jar (no .exe or wrapper, see Platform Constraints), and an `HKCU\…\Uninstall\oeHostsApp` entry whose `UninstallString` runs the copy of the script kept in the install folder with `-Uninstall`. Uninstall keeps the data folder (`%APPDATA%\oeHostsApp`).
+- The shortcut and Settings > Apps icon is `packaging/windows/oehostsapp.ico`, fetched from master: sizes below 256 stored as 32-bit BMP, 256 as PNG (Windows decodes small PNG entries wrongly). Regenerate it from the same logo drawing as the macOS/Linux icons when the logo changes.
+- Test changes against a scratch `OEHOSTSAPP_HOME`, install then uninstall through the registered `UninstallString`, and check the shortcut and registry key are gone afterwards.
+- That test replaces the developer's own Start menu shortcut and `HKCU\...\Uninstall\oeHostsApp` entry (they are per user, not per `OEHOSTSAPP_HOME`). Back both up first (`reg export`, copy the `.lnk`) and restore them in a `finally` after the uninstall. `reg import` prints its success message to stderr, so do not run it under `$ErrorActionPreference = 'Stop'` with `2>&1`, or the restore stops halfway.
 
 ## Release
 
-- Tag = bare version (`0.1.0`, no `v`), the same as `version` in `build.gradle.kts`. Release assets: `oehubapp.jar` and `SHA256SUMS.txt` (`sha256sum` format, two spaces, no `*`). Keep both names exactly: `install.sh` downloads `releases/latest/download/oehubapp.jar` and verifies it against `SHA256SUMS.txt`. Release notes in Korean.
-- After publishing, download the jar back from the release and check its sha256, then run `install.sh` once with `OEHUBAPP_HOME`/`OEHUBAPP_BIN` pointing at a scratch folder, and `install.ps1` likewise on Windows (install, then uninstall).
-- `install.sh` also makes `oeHubApp.app` on macOS (in `/Applications` when writable without sudo, else `~/Applications`; uninstall and reinstall remove only bundles carrying its bundle id) (a script bundle that runs the launcher with `--foreground`) and a `.desktop` entry on Linux, with icons fetched from `packaging/` on master. Those icons are the Dock icon drawing of `OeHubApp.dockIcon`; regenerate them if the logo changes.
+- Tag = bare version (`0.1.0`, no `v`), the same as `version` in `build.gradle.kts`. Release assets: `oehostsapp.jar` and `SHA256SUMS.txt` (`sha256sum` format, two spaces, no `*`). Keep both names exactly: `install.sh` downloads `releases/latest/download/oehostsapp.jar` and verifies it against `SHA256SUMS.txt`. Release notes in Korean.
+- After publishing, download the jar back from the release and check its sha256, then run `install.sh` once with `OEHOSTSAPP_HOME`/`OEHOSTSAPP_BIN` pointing at a scratch folder, and `install.ps1` likewise on Windows (install, then uninstall).
+- `install.sh` also makes `oeHostsApp.app` on macOS (in `/Applications` when writable without sudo, else `~/Applications`; uninstall and reinstall remove only bundles carrying its bundle id) (a script bundle that runs the launcher with `--foreground`) and a `.desktop` entry on Linux, with icons fetched from `packaging/` on master. Those icons are the Dock icon drawing of `OeHostsApp.dockIcon`; regenerate them if the logo changes.
 - `install.sh` must stay POSIX `sh` (macOS runs it with `/bin/sh`), must not need root, and keeps the user's data folder on `--uninstall`.
 
 ## Documentation Language

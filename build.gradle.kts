@@ -3,8 +3,8 @@ plugins {
     id("com.gradleup.shadow") version "9.6.1"
 }
 
-group = "tricatch.oehubapp"
-version = "0.1.3"
+group = "tricatch.oehostsapp"
+version = "0.1.0"
 
 repositories {
     mavenCentral()
@@ -45,7 +45,7 @@ tasks.test {
 }
 
 // Writes the app version and the resolved version of every runtime library into the jar
-// (/oehubapp-build.properties), so the About page shows the versions actually bundled - the
+// (/oehostsapp-build.properties), so the About page shows the versions actually bundled - the
 // merged shadow jar keeps no per-library manifests, and an IDE run has no manifest at all.
 val buildInfoDir = layout.buildDirectory.dir("generated/buildinfo")
 val buildInfo by tasks.registering {
@@ -69,7 +69,7 @@ val buildInfo by tasks.registering {
     inputs.property("deps", deps)
     outputs.dir(buildInfoDir)
     doLast {
-        val f = buildInfoDir.get().file("oehubapp-build.properties").asFile
+        val f = buildInfoDir.get().file("oehostsapp-build.properties").asFile
         f.parentFile.mkdirs()
         f.writeText("version=$appVersion\n${deps.get()}\n")
     }
@@ -97,7 +97,7 @@ sourceSets.main { resources.srcDir(bundleAgent) }
 
 tasks.jar {
     manifest {
-        attributes("Main-Class" to "tricatch.oehubapp.OeHubApp", "Implementation-Version" to project.version)
+        attributes("Main-Class" to "tricatch.oehostsapp.OeHostsApp", "Implementation-Version" to project.version)
     }
 }
 
@@ -126,9 +126,9 @@ val thirdPartyLicenses = tasks.register<Sync>("thirdPartyLicenses") {
 }
 
 tasks.shadowJar {
-    archiveFileName = "oehubapp.jar"
+    archiveFileName = "oehostsapp.jar"
     manifest {
-        attributes("Main-Class" to "tricatch.oehubapp.OeHubApp", "Implementation-Version" to project.version)
+        attributes("Main-Class" to "tricatch.oehostsapp.OeHostsApp", "Implementation-Version" to project.version)
     }
     // Signed dependencies (BouncyCastle) would fail signature checks once merged into one jar.
     exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/*.EC")
@@ -142,5 +142,5 @@ tasks.shadowJar {
 // Desktop (Swing) app.
 tasks.register<JavaExec>("run") {
     classpath = sourceSets.main.get().runtimeClasspath
-    mainClass = "tricatch.oehubapp.OeHubApp"
+    mainClass = "tricatch.oehostsapp.OeHostsApp"
 }

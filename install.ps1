@@ -1,11 +1,11 @@
-# Installs (or updates) oeHubApp on Windows from the GitHub release.
+# Installs (or updates) oeHostsApp on Windows from the GitHub release.
 #
-#   irm https://raw.githubusercontent.com/tricatch/oeHubApp/master/install.ps1 | iex
-#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/tricatch/oeHubApp/master/install.ps1))) -Uninstall
+#   irm https://raw.githubusercontent.com/tricatch/oeHostsApp/master/install.ps1 | iex
+#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/tricatch/oeHostsApp/master/install.ps1))) -Uninstall
 #
 # Environment:
-#   OEHUBAPP_VERSION  release tag to install (default: the latest release)
-#   OEHUBAPP_HOME     where the jar goes (default: %LOCALAPPDATA%\Programs\oeHubApp)
+#   OEHOSTSAPP_VERSION  release tag to install (default: the latest release)
+#   OEHOSTSAPP_HOME     where the jar goes (default: %LOCALAPPDATA%\Programs\oeHostsApp)
 #
 # No .exe is made (Windows Smart App Control blocks unsigned ones): the Start menu shortcut runs
 # the installed, signed javaw.exe with the jar. The app is also listed in Settings > Apps, where
@@ -17,21 +17,21 @@ param([switch]$Uninstall)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$Repo = 'tricatch/oeHubApp'
+$Repo = 'tricatch/oeHostsApp'
 $Raw = "https://raw.githubusercontent.com/$Repo/master"
 $MinJava = 21
-$UninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\oeHubApp'
-$AppHome = if ($env:OEHUBAPP_HOME) { $env:OEHUBAPP_HOME } else { Join-Path $env:LOCALAPPDATA 'Programs\oeHubApp' }
-# Uninstall removes what was installed, wherever OEHUBAPP_HOME pointed at the time.
-if ($Uninstall -and -not $env:OEHUBAPP_HOME) {
+$UninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\oeHostsApp'
+$AppHome = if ($env:OEHOSTSAPP_HOME) { $env:OEHOSTSAPP_HOME } else { Join-Path $env:LOCALAPPDATA 'Programs\oeHostsApp' }
+# Uninstall removes what was installed, wherever OEHOSTSAPP_HOME pointed at the time.
+if ($Uninstall -and -not $env:OEHOSTSAPP_HOME) {
     $recorded = (Get-ItemProperty -Path $UninstallKey -Name InstallLocation -ErrorAction SilentlyContinue).InstallLocation
     if ($recorded) { $AppHome = $recorded }
 }
-$Jar = Join-Path $AppHome 'oehubapp.jar'
-$Ico = Join-Path $AppHome 'oehubapp.ico'
+$Jar = Join-Path $AppHome 'oehostsapp.jar'
+$Ico = Join-Path $AppHome 'oehostsapp.ico'
 $Agent = Join-Path $AppHome 'oehosts-agent.jar'
 $Script = Join-Path $AppHome 'install.ps1'
-$Shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'oeHubApp.lnk'
+$Shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'oeHostsApp.lnk'
 
 function Fail($msg) {
     Write-Host "error: $msg" -ForegroundColor Red
@@ -47,11 +47,11 @@ if ($Uninstall) {
             Remove-Item -LiteralPath $f -Force -ErrorAction Stop
         } catch [System.Management.Automation.ItemNotFoundException] {
         } catch {
-            Fail "could not remove $f - close oeHubApp and try again"
+            Fail "could not remove $f - close oeHostsApp and try again"
         }
     }
     # A Java application still running with -javaagent keeps the agent locked: warn, do not stop.
-    foreach ($f in @($Agent, (Join-Path $AppHome 'oehubapp-update.log'))) {
+    foreach ($f in @($Agent, (Join-Path $AppHome 'oehostsapp-update.log'))) {
         try {
             Remove-Item -LiteralPath $f -Force -ErrorAction Stop
         } catch [System.Management.Automation.ItemNotFoundException] {
@@ -62,8 +62,8 @@ if ($Uninstall) {
     if ((Test-Path -LiteralPath $AppHome) -and -not (Get-ChildItem -LiteralPath $AppHome -Force)) {
         Remove-Item -LiteralPath $AppHome -Force
     }
-    Write-Host 'oeHubApp removed. Your data folder was kept:'
-    Write-Host "  $(Join-Path $env:APPDATA 'oeHubApp')"
+    Write-Host 'oeHostsApp removed. Your data folder was kept:'
+    Write-Host "  $(Join-Path $env:APPDATA 'oeHostsApp')"
     return
 }
 
@@ -125,20 +125,20 @@ function Find-Javaw {
     return $best
 }
 
-$base = if ($env:OEHUBAPP_VERSION) {
-    "https://github.com/$Repo/releases/download/$($env:OEHUBAPP_VERSION)"
+$base = if ($env:OEHOSTSAPP_VERSION) {
+    "https://github.com/$Repo/releases/download/$($env:OEHOSTSAPP_VERSION)"
 } else {
     "https://github.com/$Repo/releases/latest/download"
 }
 
-$tmp = Join-Path ([IO.Path]::GetTempPath()) ("oehubapp-" + [guid]::NewGuid().ToString('N'))
+$tmp = Join-Path ([IO.Path]::GetTempPath()) ("oehostsapp-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tmp | Out-Null
 try {
-    Write-Host ("Downloading oeHubApp" + $(if ($env:OEHUBAPP_VERSION) { " $($env:OEHUBAPP_VERSION)" } else { '' }) + " ...")
-    $tmpJar = Join-Path $tmp 'oehubapp.jar'
+    Write-Host ("Downloading oeHostsApp" + $(if ($env:OEHOSTSAPP_VERSION) { " $($env:OEHOSTSAPP_VERSION)" } else { '' }) + " ...")
+    $tmpJar = Join-Path $tmp 'oehostsapp.jar'
     $sums = Join-Path $tmp 'SHA256SUMS.txt'
     try {
-        Invoke-WebRequest -UseBasicParsing -Uri "$base/oehubapp.jar" -OutFile $tmpJar
+        Invoke-WebRequest -UseBasicParsing -Uri "$base/oehostsapp.jar" -OutFile $tmpJar
         Invoke-WebRequest -UseBasicParsing -Uri "$base/SHA256SUMS.txt" -OutFile $sums
     } catch {
         Fail "download failed from ${base}: $($_.Exception.Message)"
@@ -147,9 +147,9 @@ try {
     $expected = $null
     foreach ($line in Get-Content -LiteralPath $sums) {
         $parts = $line.Trim() -split '\s+'
-        if ($parts.Count -ge 2 -and $parts[1].TrimStart('*') -match 'oehubapp\.jar$') { $expected = $parts[0].ToLower() }
+        if ($parts.Count -ge 2 -and $parts[1].TrimStart('*') -match 'oehostsapp\.jar$') { $expected = $parts[0].ToLower() }
     }
-    if (-not $expected) { Fail 'no checksum for oehubapp.jar in SHA256SUMS.txt' }
+    if (-not $expected) { Fail 'no checksum for oehostsapp.jar in SHA256SUMS.txt' }
     $actual = (Get-FileHash -LiteralPath $tmpJar -Algorithm SHA256).Hash.ToLower()
     if ($actual -ne $expected) { Fail "checksum mismatch (expected $expected, got $actual)" }
 
@@ -157,7 +157,7 @@ try {
     try {
         Move-Item -LiteralPath $tmpJar -Destination $Jar -Force
     } catch {
-        Fail "could not replace $Jar - close oeHubApp and run the installer again"
+        Fail "could not replace $Jar - close oeHostsApp and run the installer again"
     }
 } finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
@@ -175,7 +175,7 @@ try {
     Write-Host "warning: could not save the uninstaller ($($_.Exception.Message))" -ForegroundColor Yellow
 }
 try {
-    Invoke-WebRequest -UseBasicParsing -Uri "$Raw/packaging/windows/oehubapp.ico" -OutFile $Ico
+    Invoke-WebRequest -UseBasicParsing -Uri "$Raw/packaging/windows/oehostsapp.ico" -OutFile $Ico
 } catch {
     Remove-Item -LiteralPath $Ico -Force -ErrorAction SilentlyContinue
 }
@@ -218,7 +218,7 @@ if ($javaw) {
     $lnk.TargetPath = $javaw
     $lnk.Arguments = "-jar `"$Jar`""
     $lnk.WorkingDirectory = $AppHome
-    $lnk.Description = 'oeHubApp'
+    $lnk.Description = 'oeHostsApp'
     if (Test-Path -LiteralPath $Ico) { $lnk.IconLocation = "$Ico,0" }
     $lnk.Save()
 }
@@ -227,7 +227,7 @@ New-Item -Path $UninstallKey -Force | Out-Null
 $uninstallCmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$Script`" -Uninstall"
 $sizeKb = [int]((Get-ChildItem -LiteralPath $AppHome -File | Measure-Object -Property Length -Sum).Sum / 1KB)
 $values = @{
-    DisplayName     = 'oeHubApp'
+    DisplayName     = 'oeHostsApp'
     DisplayVersion  = $(if ($version) { $version } else { '0' })
     Publisher       = 'tricatch'
     InstallLocation = $AppHome
@@ -240,9 +240,9 @@ Set-ItemProperty -Path $UninstallKey -Name NoModify -Value 1 -Type DWord
 Set-ItemProperty -Path $UninstallKey -Name NoRepair -Value 1 -Type DWord
 Set-ItemProperty -Path $UninstallKey -Name EstimatedSize -Value $sizeKb -Type DWord
 
-Write-Host "Installed oeHubApp $version to $AppHome"
+Write-Host "Installed oeHostsApp $version to $AppHome"
 if ($javaw) {
-    Write-Host "Start menu: oeHubApp  ($Shortcut)"
+    Write-Host "Start menu: oeHostsApp  ($Shortcut)"
     Write-Host "Java: $javaw"
 } else {
     Write-Host ''
@@ -250,4 +250,4 @@ if ($javaw) {
     Write-Host '  Install it (e.g. winget install EclipseAdoptium.Temurin.21.JRE, or https://adoptium.net/),'
     Write-Host '  then run this installer again.'
 }
-Write-Host 'Uninstall: Settings > Apps > oeHubApp, or run this installer with -Uninstall.'
+Write-Host 'Uninstall: Settings > Apps > oeHostsApp, or run this installer with -Uninstall.'

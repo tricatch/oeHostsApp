@@ -1,4 +1,4 @@
-# oeHubApp
+# oeHostsApp
 
 PC 한 대에서 **hosts 프로필로 Chrome을 띄우고**, 내장 역방향 프록시로 **도메인을 로컬·개발 서버에 연결하고**, 그 **트래픽을 들여다보는** 데스크톱 앱입니다.
 
@@ -44,19 +44,19 @@ PC 한 대에서 **hosts 프로필로 Chrome을 띄우고**, 내장 역방향 �
 ### macOS · Linux
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/tricatch/oeHubApp/master/install.sh | sh
-oehubapp    # 실행 (백그라운드로 뜨고, 로그는 ~/.oehubapp/oehubapp.log)
+curl -fsSL https://raw.githubusercontent.com/tricatch/oeHostsApp/master/install.sh | sh
+oehostsapp    # 실행 (백그라운드로 뜨고, 로그는 ~/.oehostsapp/oehostsapp.log)
 ```
 
-- 최신 릴리스의 `oehubapp.jar`를 받아 체크섬을 확인한 뒤 `~/.oehubapp/`에 두고, `~/.local/bin/oehubapp` 명령을 만듭니다. `~/.local/bin`이 PATH에 없으면 추가하는 방법을 알려 줍니다.
-- **macOS**: 응용 프로그램 폴더(`/Applications`, 쓰기 권한이 없으면 `~/Applications`)에 `oeHubApp.app`도 만들어 Launchpad·Spotlight·Finder에서 실행할 수 있습니다.
-- **Linux**: 앱 메뉴에 oeHubApp 항목을 추가합니다.
+- 최신 릴리스의 `oehostsapp.jar`를 받아 체크섬을 확인한 뒤 `~/.oehostsapp/`에 두고, `~/.local/bin/oehostsapp` 명령을 만듭니다. `~/.local/bin`이 PATH에 없으면 추가하는 방법을 알려 줍니다.
+- **macOS**: 응용 프로그램 폴더(`/Applications`, 쓰기 권한이 없으면 `~/Applications`)에 `oeHostsApp.app`도 만들어 Launchpad·Spotlight·Finder에서 실행할 수 있습니다.
+- **Linux**: 앱 메뉴에 oeHostsApp 항목을 추가합니다.
 
 | 작업 | 명령 |
 |---|---|
 | 업데이트 | 앱 안에서 업데이트([업데이트](#업데이트) 참고), 또는 설치 명령을 다시 실행 |
-| 특정 버전 설치 | `curl … \| OEHUBAPP_VERSION=0.1.0 sh` |
-| 삭제 | `curl -fsSL https://raw.githubusercontent.com/tricatch/oeHubApp/master/install.sh \| sh -s -- --uninstall` |
+| 특정 버전 설치 | `curl … \| OEHOSTSAPP_VERSION=0.1.0 sh` |
+| 삭제 | `curl -fsSL https://raw.githubusercontent.com/tricatch/oeHostsApp/master/install.sh \| sh -s -- --uninstall` |
 
 삭제하면 명령·앱·메뉴 항목을 지우고 데이터 폴더는 남깁니다.
 
@@ -65,42 +65,42 @@ oehubapp    # 실행 (백그라운드로 뜨고, 로그는 ~/.oehubapp/oehubapp.
 PowerShell에서 실행합니다.
 
 ```powershell
-irm https://raw.githubusercontent.com/tricatch/oeHubApp/master/install.ps1 | iex
+irm https://raw.githubusercontent.com/tricatch/oeHostsApp/master/install.ps1 | iex
 ```
 
-- 최신 릴리스의 `oehubapp.jar`를 받아 체크섬을 확인한 뒤 `%LOCALAPPDATA%\Programs\oeHubApp\`에 둡니다.
-- 시작 메뉴에 **oeHubApp** 바로가기를 만들고 설정 → 앱 목록에도 등록합니다. 시작 메뉴에서 실행하거나 작업 표시줄에 고정해 쓸 수 있습니다.
+- 최신 릴리스의 `oehostsapp.jar`를 받아 체크섬을 확인한 뒤 `%LOCALAPPDATA%\Programs\oeHostsApp\`에 둡니다.
+- 시작 메뉴에 **oeHostsApp** 바로가기를 만들고 설정 → 앱 목록에도 등록합니다. 시작 메뉴에서 실행하거나 작업 표시줄에 고정해 쓸 수 있습니다.
 - 바로가기는 설치된 `javaw.exe`로 jar를 실행합니다. 서명 없는 exe는 Windows 스마트 앱 컨트롤이 막기 때문에 exe는 따로 만들지 않습니다.
 - Java를 새로 설치했거나 다른 Java로 바꿨다면 설치 명령을 다시 실행하세요. 바로가기가 그 Java를 가리키게 됩니다.
 
 | 작업 | 명령 |
 |---|---|
-| 업데이트 | 앱 안에서 업데이트([업데이트](#업데이트) 참고), 또는 oeHubApp을 종료한 뒤 설치 명령을 다시 실행 |
-| 특정 버전 설치 | `$env:OEHUBAPP_VERSION='0.1.0'; irm … \| iex` |
-| 삭제 | 설정 → 앱 → oeHubApp → 제거, 또는<br>`& ([scriptblock]::Create((irm https://raw.githubusercontent.com/tricatch/oeHubApp/master/install.ps1))) -Uninstall` |
+| 업데이트 | 앱 안에서 업데이트([업데이트](#업데이트) 참고), 또는 oeHostsApp을 종료한 뒤 설치 명령을 다시 실행 |
+| 특정 버전 설치 | `$env:OEHOSTSAPP_VERSION='0.1.0'; irm … \| iex` |
+| 삭제 | 설정 → 앱 → oeHostsApp → 제거, 또는<br>`& ([scriptblock]::Create((irm https://raw.githubusercontent.com/tricatch/oeHostsApp/master/install.ps1))) -Uninstall` |
 
-삭제하면 바로가기·앱 목록 항목·jar를 지우고 데이터 폴더(`%APPDATA%\oeHubApp`)는 남깁니다.
+삭제하면 바로가기·앱 목록 항목·jar를 지우고 데이터 폴더(`%APPDATA%\oeHostsApp`)는 남깁니다.
 
 ### jar 직접 실행
 
-[릴리스](https://github.com/tricatch/oeHubApp/releases/latest)에서 `oehubapp.jar`를 받아 실행합니다.
+[릴리스](https://github.com/tricatch/oeHostsApp/releases/latest)에서 `oehostsapp.jar`를 받아 실행합니다.
 
 ```sh
-java -jar oehubapp.jar                          # 실행
-javaw -jar oehubapp.jar                         # Windows에서 콘솔 창 없이
-java -jar oehubapp.jar --data D:\oehub-data     # 데이터 폴더를 따로 지정
-java -Doehubapp.log=debug -jar oehubapp.jar     # 콘솔 로그를 더 자세히
+java -jar oehostsapp.jar                          # 실행
+javaw -jar oehostsapp.jar                         # Windows에서 콘솔 창 없이
+java -jar oehostsapp.jar --data D:\oehub-data     # 데이터 폴더를 따로 지정
+java -Doehostsapp.log=debug -jar oehostsapp.jar     # 콘솔 로그를 더 자세히
 ```
 
 ### 업데이트
 
 앱은 시작할 때마다 GitHub에 새 릴리스가 있는지 확인하고, 결과를 **설정 → 일반 → 정보**의 *업데이트* 줄에 보여 줍니다. 다른 화면에는 알림을 띄우지 않습니다.
 
-- 새 버전이 있으면 **업데이트**를 누릅니다. 새 `oehubapp.jar`를 내려받아 릴리스의 `SHA256SUMS.txt`로 확인한 뒤 앱을 종료하고, 설치된 jar를 바꿔서 다시 실행합니다. 데이터는 그대로 남습니다.
+- 새 버전이 있으면 **업데이트**를 누릅니다. 새 `oehostsapp.jar`를 내려받아 릴리스의 `SHA256SUMS.txt`로 확인한 뒤 앱을 종료하고, 설치된 jar를 바꿔서 다시 실행합니다. 데이터는 그대로 남습니다.
 - 다시 시작하는 몇 초 동안 리버스 프록시와 포워드 프록시가 멈춥니다.
 - **릴리스 노트**를 누르면 그 버전의 릴리스 페이지가 열립니다. **업데이트 확인**으로 다시 확인할 수도 있습니다.
 - 앱 안에서 업데이트하려면 설치 스크립트로 설치했거나, jar가 쓰기 권한이 있는 폴더에서 `java -jar`로 실행 중이어야 합니다. 그렇지 않으면 새 버전 안내만 보여 주니 설치 명령을 다시 실행하세요.
-- 업데이트 과정은 jar 옆의 `oehubapp-update.log`에 기록됩니다.
+- 업데이트 과정은 jar 옆의 `oehostsapp-update.log`에 기록됩니다.
 
 ### 실행할 때 알아 둘 점
 
@@ -149,7 +149,7 @@ java -Doehubapp.log=debug -jar oehubapp.jar     # 콘솔 로그를 더 자세히
   - 어느 항목을 골라도 `127.0.0.1:포트`는 항상 열려 있습니다. Chrome 런처가 이 주소를 쓰기 때문입니다. 실제로 열린 주소는 화면 아래 **접속 주소**에 모두 나옵니다.
 - **인증**에서 **Basic 인증**을 고르고 사용자 이름과 비밀번호를 넣은 뒤 **다시 시작**을 누르면, 다른 기기는 접속할 때 사용자 이름과 비밀번호를 입력해야 합니다.
   - 이 PC의 `127.0.0.1`로 들어오는 요청(Chrome 런처)은 묻지 않습니다.
-  - 비밀번호는 암호화되지 않은 채 전달되고, 데이터 파일(`oehubapp.json`)과 설정을 포함한 백업 ZIP에도 그대로 저장됩니다. 다른 곳에서 쓰는 비밀번호는 쓰지 마세요.
+  - 비밀번호는 암호화되지 않은 채 전달되고, 데이터 파일(`oehostsapp.json`)과 설정을 포함한 백업 ZIP에도 그대로 저장됩니다. 다른 곳에서 쓰는 비밀번호는 쓰지 마세요.
   - **모든 네트워크**에 Basic 인증을 켜면, 다시 시작할 때 있던 랜카드 주소마다 따로 엽니다. 나중에 연결한 네트워크는 다시 시작해야 열립니다.
 
 > ⚠️ 다른 기기 접속을 켜고 인증을 쓰지 않으면 같은 네트워크의 누구나 이 프록시를 쓸 수 있습니다. 믿을 수 있는 네트워크에서만 켜세요.
@@ -209,11 +209,11 @@ java -javaagent:<설치 폴더>/oehosts-agent.jar=http://127.0.0.1:36981/hosts/<
 ```
 
 - Gradle은 `jvmArgs`, Maven은 `-DargLine`, IntelliJ는 실행 구성의 VM options에 같은 옵션을 넣습니다. 경로에 공백이 있으면 옵션 전체를 따옴표로 감싸서 복사합니다.
-- 에이전트 파일은 앱 jar 옆의 `oehosts-agent.jar`입니다. 설치 스크립트로 설치했다면 macOS·Linux는 `~/.oehubapp/`, Windows는 `%LOCALAPPDATA%\Programs\oeHubApp\`입니다.
+- 에이전트 파일은 앱 jar 옆의 `oehosts-agent.jar`입니다. 설치 스크립트로 설치했다면 macOS·Linux는 `~/.oehostsapp/`, Windows는 `%LOCALAPPDATA%\Programs\oeHostsApp\`입니다.
 - 앱 jar에 에이전트가 들어 있어서 설치하면 바로 생깁니다(설치 스크립트가 미리 꺼내 두고, 앱도 시작할 때 확인합니다). 인터넷이 안 되는 곳에서도 쓸 수 있습니다.
 - 앱은 시작할 때마다 [oeHosts-Agent 릴리스](https://github.com/tricatch/oeHostsAgent/releases)를 확인해, 더 새 버전이 있으면 내려받아 체크섬을 확인한 뒤 바꿉니다. 결과는 설정 화면의 *최신 릴리스* 줄에 나옵니다. 앱 안에 든 버전이 더 오래됐으면 이미 받은 새 버전을 되돌리지 않습니다.
-- 파일 이름에 버전이 없어서, 업데이트돼도 경로가 그대로입니다. 한 번 넣은 옵션은 고치지 않아도 됩니다. 에이전트를 바꾸는 데 oeHubApp을 다시 시작할 필요는 없지만, 실행 중인 Java 애플리케이션은 다시 시작해야 새 버전을 씁니다.
-- Windows에서 그 에이전트로 실행 중인 Java 애플리케이션이 있으면 파일이 잠겨 있어 바꾸지 못합니다. 이때는 이전 버전을 계속 쓰고, 그 애플리케이션을 닫은 뒤 oeHubApp을 다시 시작하면 바뀝니다. 설정 화면에 *이전 버전 사용 중*으로 표시됩니다.
+- 파일 이름에 버전이 없어서, 업데이트돼도 경로가 그대로입니다. 한 번 넣은 옵션은 고치지 않아도 됩니다. 에이전트를 바꾸는 데 oeHostsApp을 다시 시작할 필요는 없지만, 실행 중인 Java 애플리케이션은 다시 시작해야 새 버전을 씁니다.
+- Windows에서 그 에이전트로 실행 중인 Java 애플리케이션이 있으면 파일이 잠겨 있어 바꾸지 못합니다. 이때는 이전 버전을 계속 쓰고, 그 애플리케이션을 닫은 뒤 oeHostsApp을 다시 시작하면 바뀝니다. 설정 화면에 *이전 버전 사용 중*으로 표시됩니다.
 - 애플리케이션이 시작될 때 웹 서비스가 실행 중이어야 합니다. 에이전트는 60초마다 프로필을 다시 받습니다. 받지 못하면 직전 매핑을 계속 쓰고, 처음부터 받지 못했으면 매핑 없이 실행합니다. 애플리케이션을 멈추지는 않습니다.
 
 ### oeProxy — 도메인을 백엔드로 연결
@@ -266,11 +266,11 @@ oeProxy가 HTTPS 도메인을 처리하려면 브라우저가 앱의 CA를 신�
 
 | OS | 위치 |
 |---|---|
-| Windows | `%APPDATA%\oeHubApp\oehubapp.json` |
-| macOS | `~/Library/Application Support/oeHubApp/oehubapp.json` |
-| 그 밖 | `~/.config/oeHubApp/oehubapp.json` |
+| Windows | `%APPDATA%\oeHostsApp\oehostsapp.json` |
+| macOS | `~/Library/Application Support/oeHostsApp/oehostsapp.json` |
+| 그 밖 | `~/.config/oeHostsApp/oehostsapp.json` |
 
-- 프로필·vhost·옵션·설정이 모두 이 파일 하나에 저장되고, 저장할 때마다 이전 내용은 `oehubapp.json.bak`으로 남습니다.
+- 프로필·vhost·옵션·설정이 모두 이 파일 하나에 저장되고, 저장할 때마다 이전 내용은 `oehostsapp.json.bak`으로 남습니다.
 - CA 인증서는 같은 폴더의 `root-ca/`에 있습니다.
 - 처음 실행할 때 이전 이름(oeHosts)으로 쓰던 데이터가 있으면 가져옵니다. 이전 파일은 읽기만 합니다.
 - `--data`로 다른 폴더를 지정하면 빈 상태로 시작합니다.
@@ -304,22 +304,22 @@ CA 인증서는 하나뿐이라 어느 방식이든 덮어씁니다.
 
 | 증상 | 확인할 것 |
 |---|---|
-| oeProxy 아래에 "프록시 시작 실패" | 마우스를 올리면 이유가 나옵니다. 대부분 443 포트를 다른 프로그램(이미 실행 중인 다른 oeHubApp, IIS 등)이 쓰는 경우입니다. 그 프로그램을 끄고 설정 → oeProxy → 리버스 프록시에서 **다시 시작**합니다. |
+| oeProxy 아래에 "프록시 시작 실패" | 마우스를 올리면 이유가 나옵니다. 대부분 443 포트를 다른 프로그램(이미 실행 중인 다른 oeHostsApp, IIS 등)이 쓰는 경우입니다. 그 프로그램을 끄고 설정 → oeProxy → 리버스 프록시에서 **다시 시작**합니다. |
 | 브라우저 인증서 경고 | CA를 신뢰 저장소에 등록했는지 확인합니다. 등록 후에는 브라우저를 다시 시작합니다. |
 | 404 페이지 | 맞는 라우트가 없습니다. vhost 스위치와 ROUTES를 확인합니다. |
 | 502 / 504 페이지 | 백엔드에 연결하지 못했습니다. |
 | SwitchHosts가 공유 URL을 못 받음 | 설정 → 일반 → 웹 서비스의 상태를 확인합니다. "시작 실패"면 다른 프로그램이 포트를 쓰는 경우이니 포트를 바꿔 **다시 시작**하고 URL을 다시 복사합니다. 404면 그 프로필의 공유가 꺼져 있습니다. |
 | Chrome이 새 옵션 없이 뜸 | 같은 프로필의 Chrome이 이미 떠 있던 경우입니다. 앱이 묻는 확인에서 닫고 다시 실행을 고릅니다. |
-| 업데이트가 실패하거나 다시 실행되지 않음 | 정보 화면의 오류 내용과 jar 옆의 `oehubapp-update.log`를 확인합니다. 회사망처럼 GitHub에 접속할 수 없는 곳에서는 확인도 실패합니다. 이때는 설치 명령을 다시 실행해 업데이트합니다. 교체에 실패하면 원래 버전으로 다시 실행됩니다. |
+| 업데이트가 실패하거나 다시 실행되지 않음 | 정보 화면의 오류 내용과 jar 옆의 `oehostsapp-update.log`를 확인합니다. 회사망처럼 GitHub에 접속할 수 없는 곳에서는 확인도 실패합니다. 이때는 설치 명령을 다시 실행해 업데이트합니다. 교체에 실패하면 원래 버전으로 다시 실행됩니다. |
 
-원인을 더 자세히 보려면 `java -jar oehubapp.jar`(필요하면 `-Doehubapp.log=debug`)로 실행해 콘솔 로그를 확인하세요. 404·502·504가 났을 때의 라우트 목록과 원인이 나옵니다. 설치 스크립트로 설치한 macOS·Linux에서는 `~/.oehubapp/oehubapp.log`에 로그가 남습니다.
+원인을 더 자세히 보려면 `java -jar oehostsapp.jar`(필요하면 `-Doehostsapp.log=debug`)로 실행해 콘솔 로그를 확인하세요. 404·502·504가 났을 때의 라우트 목록과 원인이 나옵니다. 설치 스크립트로 설치한 macOS·Linux에서는 `~/.oehostsapp/oehostsapp.log`에 로그가 남습니다.
 
 ## 직접 빌드
 
 JDK 25가 필요합니다. 만들어진 jar는 Java 21 이상에서 실행됩니다.
 
 ```sh
-./gradlew shadowJar    # build/libs/oehubapp.jar
+./gradlew shadowJar    # build/libs/oehostsapp.jar
 ```
 
 oeHosts-Agent는 옆 폴더 `../oeHostsAgent`([저장소](https://github.com/tricatch/oeHostsAgent))에서 함께 빌드해 jar 안에 넣습니다. 그 폴더가 없으면 에이전트 없이 빌드되고, 앱이 처음 시작할 때 최신 릴리스를 내려받습니다.
@@ -327,4 +327,4 @@ oeHosts-Agent는 옆 폴더 `../oeHostsAgent`([저장소](https://github.com/tri
 ## 오픈소스 · 라이선스
 
 - 함께 들어 있는 라이브러리와 라이선스는 앱의 설정 → 일반 → 오픈 소스에서 볼 수 있고, 각 라이선스 전문은 jar 안의 `META-INF/licenses/`에 있습니다.
-- oeHubApp은 [MIT](LICENSE) 라이선스로 배포됩니다.
+- oeHostsApp은 [MIT](LICENSE) 라이선스로 배포됩니다.

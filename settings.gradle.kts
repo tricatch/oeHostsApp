@@ -1,10 +1,10 @@
-rootProject.name = "oeHubApp"
+rootProject.name = "oeHostsApp"
 
 // oe-proxy is developed in the sibling ../oeProxy checkout (same arrangement as oeHub). When it is
 // present Gradle builds it and substitutes it for io.github.tricatch:oe-proxy; otherwise the
 // published artifact is used.
 if (file("../oeProxy").isDirectory) includeBuild("../oeProxy")
 
-// oeHosts-Agent is developed in the sibling ../oeHostsAgent checkout and ships inside oehubapp.jar
+// oeHosts-Agent is developed in the sibling ../oeHostsAgent checkout and ships inside oehostsapp.jar
 // (build.gradle.kts, bundleAgent). Without the checkout the jar is built without it.
 if (file("../oeHostsAgent").isDirectory) includeBuild("../oeHostsAgent")

@@ -1,31 +1,31 @@
 #!/bin/sh
-# Installs (or updates) oeHubApp from the GitHub release.
+# Installs (or updates) oeHostsApp from the GitHub release.
 #
-#   curl -fsSL https://raw.githubusercontent.com/tricatch/oeHubApp/master/install.sh | sh
-#   curl -fsSL https://raw.githubusercontent.com/tricatch/oeHubApp/master/install.sh | sh -s -- --uninstall
+#   curl -fsSL https://raw.githubusercontent.com/tricatch/oeHostsApp/master/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/tricatch/oeHostsApp/master/install.sh | sh -s -- --uninstall
 #
 # Environment:
-#   OEHUBAPP_VERSION  release tag to install (default: the latest release)
-#   OEHUBAPP_HOME     where the jar goes   (default: ~/.oehubapp)
-#   OEHUBAPP_BIN      where the command goes (default: ~/.local/bin)
-#   OEHUBAPP_APPS     macOS: where oeHubApp.app goes (default: /Applications if writable, else ~/Applications)
+#   OEHOSTSAPP_VERSION  release tag to install (default: the latest release)
+#   OEHOSTSAPP_HOME     where the jar goes   (default: ~/.oehostsapp)
+#   OEHOSTSAPP_BIN      where the command goes (default: ~/.local/bin)
+#   OEHOSTSAPP_APPS     macOS: where oeHostsApp.app goes (default: /Applications if writable, else ~/Applications)
 set -eu
 
-REPO="tricatch/oeHubApp"
-APP_HOME="${OEHUBAPP_HOME:-$HOME/.oehubapp}"
-BIN_DIR="${OEHUBAPP_BIN:-$HOME/.local/bin}"
-LAUNCHER="$BIN_DIR/oehubapp"
+REPO="tricatch/oeHostsApp"
+APP_HOME="${OEHOSTSAPP_HOME:-$HOME/.oehostsapp}"
+BIN_DIR="${OEHOSTSAPP_BIN:-$HOME/.local/bin}"
+LAUNCHER="$BIN_DIR/oehostsapp"
 # /Applications (Finder's Applications folder) when it is writable without sudo, as it is for an
 # admin account; otherwise the per-user ~/Applications.
-if [ -n "${OEHUBAPP_APPS:-}" ]; then
-    APPS_DIR="$OEHUBAPP_APPS"
+if [ -n "${OEHOSTSAPP_APPS:-}" ]; then
+    APPS_DIR="$OEHOSTSAPP_APPS"
 elif [ -w /Applications ]; then
     APPS_DIR=/Applications
 else
     APPS_DIR="$HOME/Applications"
 fi
-MAC_APP="$APPS_DIR/oeHubApp.app"
-DESKTOP_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/applications/oehubapp.desktop"
+MAC_APP="$APPS_DIR/oeHostsApp.app"
+DESKTOP_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/applications/oehostsapp.desktop"
 RAW="https://raw.githubusercontent.com/$REPO/master"
 MIN_JAVA=21
 OS="$(uname -s)"
@@ -33,33 +33,33 @@ OS="$(uname -s)"
 say() { printf '%s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
-# Removes oeHubApp.app bundles this script made (checked by bundle id, so an unrelated app of the
+# Removes oeHostsApp.app bundles this script made (checked by bundle id, so an unrelated app of the
 # same name is left alone) from the chosen folder and both default folders.
 remove_mac_apps() {
-    for app in "$MAC_APP" "/Applications/oeHubApp.app" "$HOME/Applications/oeHubApp.app"; do
+    for app in "$MAC_APP" "/Applications/oeHostsApp.app" "$HOME/Applications/oeHostsApp.app"; do
         [ "$app" = "${1:-}" ] && continue
-        grep -q 'io.github.tricatch.oehubapp' "$app/Contents/Info.plist" 2>/dev/null && rm -rf "$app"
+        grep -q 'io.github.tricatch.oehostsapp' "$app/Contents/Info.plist" 2>/dev/null && rm -rf "$app"
     done
     return 0
 }
 
 if [ "${1:-}" = "--uninstall" ]; then
-    rm -f "$APP_HOME/oehubapp.jar" "$APP_HOME/oehosts-agent.jar" "$APP_HOME/oehubapp-update.log" "$APP_HOME/oehubapp.log" "$APP_HOME/oehubapp.icns" "$APP_HOME/oehubapp.png" "$LAUNCHER"
+    rm -f "$APP_HOME/oehostsapp.jar" "$APP_HOME/oehosts-agent.jar" "$APP_HOME/oehostsapp-update.log" "$APP_HOME/oehostsapp.log" "$APP_HOME/oehostsapp.icns" "$APP_HOME/oehostsapp.png" "$LAUNCHER"
     rmdir "$APP_HOME" 2>/dev/null || true
     [ "$OS" = "Darwin" ] && remove_mac_apps
     [ "$OS" = "Linux" ] && rm -f "$DESKTOP_FILE"
-    say "oeHubApp removed. Your data folder was kept:"
+    say "oeHostsApp removed. Your data folder was kept:"
     case "$OS" in
-        Darwin) say "  ~/Library/Application Support/oeHubApp" ;;
-        *) say "  ~/.config/oeHubApp" ;;
+        Darwin) say "  ~/Library/Application Support/oeHostsApp" ;;
+        *) say "  ~/.config/oeHostsApp" ;;
     esac
     exit 0
 fi
 
 command -v curl >/dev/null 2>&1 || die "curl is required"
 
-if [ -n "${OEHUBAPP_VERSION:-}" ]; then
-    BASE="https://github.com/$REPO/releases/download/$OEHUBAPP_VERSION"
+if [ -n "${OEHOSTSAPP_VERSION:-}" ]; then
+    BASE="https://github.com/$REPO/releases/download/$OEHOSTSAPP_VERSION"
 else
     BASE="https://github.com/$REPO/releases/latest/download"
 fi
@@ -67,26 +67,26 @@ fi
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
-say "Downloading oeHubApp${OEHUBAPP_VERSION:+ $OEHUBAPP_VERSION} ..."
-curl -fL --progress-bar -o "$TMP/oehubapp.jar" "$BASE/oehubapp.jar" || die "download failed: $BASE/oehubapp.jar"
+say "Downloading oeHostsApp${OEHOSTSAPP_VERSION:+ $OEHOSTSAPP_VERSION} ..."
+curl -fL --progress-bar -o "$TMP/oehostsapp.jar" "$BASE/oehostsapp.jar" || die "download failed: $BASE/oehostsapp.jar"
 curl -fsSL -o "$TMP/SHA256SUMS.txt" "$BASE/SHA256SUMS.txt" || die "download failed: $BASE/SHA256SUMS.txt"
 
-expected="$(awk '$2 ~ /oehubapp\.jar$/ { print $1 }' "$TMP/SHA256SUMS.txt")"
-[ -n "$expected" ] || die "no checksum for oehubapp.jar in SHA256SUMS.txt"
+expected="$(awk '$2 ~ /oehostsapp\.jar$/ { print $1 }' "$TMP/SHA256SUMS.txt")"
+[ -n "$expected" ] || die "no checksum for oehostsapp.jar in SHA256SUMS.txt"
 if command -v shasum >/dev/null 2>&1; then
-    actual="$(shasum -a 256 "$TMP/oehubapp.jar" | awk '{ print $1 }')"
+    actual="$(shasum -a 256 "$TMP/oehostsapp.jar" | awk '{ print $1 }')"
 elif command -v sha256sum >/dev/null 2>&1; then
-    actual="$(sha256sum "$TMP/oehubapp.jar" | awk '{ print $1 }')"
+    actual="$(sha256sum "$TMP/oehostsapp.jar" | awk '{ print $1 }')"
 else
     die "shasum or sha256sum is required to verify the download"
 fi
 [ "$actual" = "$expected" ] || die "checksum mismatch (expected $expected, got $actual)"
 
 mkdir -p "$APP_HOME" "$BIN_DIR"
-mv -f "$TMP/oehubapp.jar" "$APP_HOME/oehubapp.jar"
+mv -f "$TMP/oehostsapp.jar" "$APP_HOME/oehostsapp.jar"
 # oeHosts-Agent ships inside the jar; the app also copies it out at every start (and so keeps it
 # up to date). Copied here too so it is in place before the first start (needs unzip).
-if command -v unzip >/dev/null 2>&1 && unzip -p "$APP_HOME/oehubapp.jar" oehosts-agent.jar > "$TMP/oehosts-agent.jar" 2>/dev/null         && [ -s "$TMP/oehosts-agent.jar" ]; then
+if command -v unzip >/dev/null 2>&1 && unzip -p "$APP_HOME/oehostsapp.jar" oehosts-agent.jar > "$TMP/oehosts-agent.jar" 2>/dev/null         && [ -s "$TMP/oehosts-agent.jar" ]; then
     mv -f "$TMP/oehosts-agent.jar" "$APP_HOME/oehosts-agent.jar"
 fi
 
@@ -94,11 +94,11 @@ fi
 # Homebrew's openjdk is keg-only (not on PATH), hence the extra places.
 cat > "$LAUNCHER" <<'LAUNCHER_EOF'
 #!/bin/sh
-# oeHubApp launcher (written by install.sh). Starts the app in the background; the log goes to
-# __APP_HOME__/oehubapp.log. Arguments are passed to the app (e.g. --data DIR).
+# oeHostsApp launcher (written by install.sh). Starts the app in the background; the log goes to
+# __APP_HOME__/oehostsapp.log. Arguments are passed to the app (e.g. --data DIR).
 # --foreground runs it in this process instead (the macOS app bundle uses it, so the Dock ties
-# the window to oeHubApp.app).
-JAR="__APP_HOME__/oehubapp.jar"
+# the window to oeHostsApp.app).
+JAR="__APP_HOME__/oehostsapp.jar"
 MIN_JAVA=__MIN_JAVA__
 
 java_major() {
@@ -129,25 +129,25 @@ if [ "${1:-}" = "--find-java" ]; then
 fi
 
 JAVA="$(find_java)" || {
-    echo "oeHubApp needs Java $MIN_JAVA or later." >&2
+    echo "oeHostsApp needs Java $MIN_JAVA or later." >&2
     echo "  macOS: brew install openjdk   (or https://adoptium.net/)" >&2
     exit 1
 }
-[ -f "$JAR" ] || { echo "oeHubApp is not installed: $JAR is missing" >&2; exit 1; }
+[ -f "$JAR" ] || { echo "oeHostsApp is not installed: $JAR is missing" >&2; exit 1; }
 
-OPTS="-Dapple.awt.application.name=oeHubApp"
+OPTS="-Dapple.awt.application.name=oeHostsApp"
 if [ "$(uname -s)" = "Darwin" ]; then
-    OPTS="$OPTS -Xdock:name=oeHubApp"
-    [ -f "__APP_HOME__/oehubapp.icns" ] && OPTS="$OPTS -Xdock:icon=__APP_HOME__/oehubapp.icns"
+    OPTS="$OPTS -Xdock:name=oeHostsApp"
+    [ -f "__APP_HOME__/oehostsapp.icns" ] && OPTS="$OPTS -Xdock:icon=__APP_HOME__/oehostsapp.icns"
 fi
 
 if [ "${1:-}" = "--foreground" ]; then
     shift
-    exec "$JAVA" $OPTS -jar "$JAR" "$@" >"__APP_HOME__/oehubapp.log" 2>&1
+    exec "$JAVA" $OPTS -jar "$JAR" "$@" >"__APP_HOME__/oehostsapp.log" 2>&1
 fi
 # Detached so closing the terminal does not close the app. A second start just brings the
 # running window to the front (the app allows one instance per data folder).
-nohup "$JAVA" $OPTS -jar "$JAR" "$@" >"__APP_HOME__/oehubapp.log" 2>&1 &
+nohup "$JAVA" $OPTS -jar "$JAR" "$@" >"__APP_HOME__/oehostsapp.log" 2>&1 &
 LAUNCHER_EOF
 
 esc_home="$(printf '%s' "$APP_HOME" | sed 's/[&|\\]/\\&/g')"
@@ -155,27 +155,27 @@ sed -e "s|__APP_HOME__|$esc_home|g" -e "s|__MIN_JAVA__|$MIN_JAVA|g" "$LAUNCHER" 
 mv -f "$TMP/launcher" "$LAUNCHER"
 chmod +x "$LAUNCHER"
 
-version="$(unzip -p "$APP_HOME/oehubapp.jar" META-INF/MANIFEST.MF 2>/dev/null | sed -n 's/^Implementation-Version: *//p' | tr -d '\r')"
+version="$(unzip -p "$APP_HOME/oehostsapp.jar" META-INF/MANIFEST.MF 2>/dev/null | sed -n 's/^Implementation-Version: *//p' | tr -d '\r')"
 
-# An entry in the applications list: oeHubApp.app (Launchpad, Spotlight, Finder) on macOS, a
+# An entry in the applications list: oeHostsApp.app (Launchpad, Spotlight, Finder) on macOS, a
 # .desktop file on Linux. Both just run the launcher; a missing icon is not an error.
 if [ "$OS" = "Darwin" ]; then
-    curl -fsL -o "$APP_HOME/oehubapp.icns" "$RAW/packaging/macos/oehubapp.icns" || rm -f "$APP_HOME/oehubapp.icns"
+    curl -fsL -o "$APP_HOME/oehostsapp.icns" "$RAW/packaging/macos/oehostsapp.icns" || rm -f "$APP_HOME/oehostsapp.icns"
     # An earlier install may have put it in the other folder; keep only one.
     remove_mac_apps "$MAC_APP"
     rm -rf "$MAC_APP"
     mkdir -p "$MAC_APP/Contents/MacOS" "$MAC_APP/Contents/Resources"
-    [ -f "$APP_HOME/oehubapp.icns" ] && cp "$APP_HOME/oehubapp.icns" "$MAC_APP/Contents/Resources/oehubapp.icns"
+    [ -f "$APP_HOME/oehostsapp.icns" ] && cp "$APP_HOME/oehostsapp.icns" "$MAC_APP/Contents/Resources/oehostsapp.icns"
     cat > "$MAC_APP/Contents/Info.plist" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key><string>oeHubApp</string>
-    <key>CFBundleDisplayName</key><string>oeHubApp</string>
-    <key>CFBundleIdentifier</key><string>io.github.tricatch.oehubapp</string>
-    <key>CFBundleExecutable</key><string>oeHubApp</string>
-    <key>CFBundleIconFile</key><string>oehubapp</string>
+    <key>CFBundleName</key><string>oeHostsApp</string>
+    <key>CFBundleDisplayName</key><string>oeHostsApp</string>
+    <key>CFBundleIdentifier</key><string>io.github.tricatch.oehostsapp</string>
+    <key>CFBundleExecutable</key><string>oeHostsApp</string>
+    <key>CFBundleIconFile</key><string>oehostsapp</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>${version:-0}</string>
     <key>CFBundleVersion</key><string>${version:-0}</string>
@@ -184,35 +184,35 @@ if [ "$OS" = "Darwin" ]; then
 </dict>
 </plist>
 PLIST_EOF
-    printf '#!/bin/sh\nexec "%s" --foreground "$@"\n' "$LAUNCHER" > "$MAC_APP/Contents/MacOS/oeHubApp"
-    chmod +x "$MAC_APP/Contents/MacOS/oeHubApp"
+    printf '#!/bin/sh\nexec "%s" --foreground "$@"\n' "$LAUNCHER" > "$MAC_APP/Contents/MacOS/oeHostsApp"
+    chmod +x "$MAC_APP/Contents/MacOS/oeHostsApp"
     # Lets Launchpad/Spotlight pick it up (and the new icon) right away.
     LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
     [ -x "$LSREGISTER" ] && "$LSREGISTER" -f "$MAC_APP" >/dev/null 2>&1 || true
     touch "$MAC_APP"
 elif [ "$OS" = "Linux" ]; then
-    curl -fsL -o "$APP_HOME/oehubapp.png" "$RAW/packaging/linux/oehubapp.png" || rm -f "$APP_HOME/oehubapp.png"
+    curl -fsL -o "$APP_HOME/oehostsapp.png" "$RAW/packaging/linux/oehostsapp.png" || rm -f "$APP_HOME/oehostsapp.png"
     mkdir -p "$(dirname "$DESKTOP_FILE")"
     cat > "$DESKTOP_FILE" <<DESKTOP_EOF
 [Desktop Entry]
 Type=Application
-Name=oeHubApp
+Name=oeHostsApp
 Comment=Launch Chrome with hosts profiles, proxy domains to local backends, inspect traffic
 Exec="$LAUNCHER" %U
-Icon=$APP_HOME/oehubapp.png
+Icon=$APP_HOME/oehostsapp.png
 Categories=Development;Network;
 Terminal=false
 DESKTOP_EOF
 fi
 
-say "Installed oeHubApp ${version:-} to $APP_HOME"
+say "Installed oeHostsApp ${version:-} to $APP_HOME"
 say "Command: $LAUNCHER"
 [ "$OS" = "Darwin" ] && say "App:     $MAC_APP (Launchpad, Spotlight)"
 [ "$OS" = "Linux" ] && say "Menu:    $DESKTOP_FILE"
 
 if ! java_path="$("$LAUNCHER" --find-java)"; then
     say ""
-    say "Java $MIN_JAVA or later was not found. Install it, then run oehubapp:"
+    say "Java $MIN_JAVA or later was not found. Install it, then run oehostsapp:"
     say "  brew install openjdk        (or https://adoptium.net/)"
 else
     say "Java: $java_path"
@@ -227,4 +227,4 @@ case ":$PATH:" in
         ;;
 esac
 say ""
-say "Run: oehubapp"
+say "Run: oehostsapp"
