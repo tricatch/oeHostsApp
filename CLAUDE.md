@@ -94,6 +94,7 @@ oeHubApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts / 
 - Installs per user, no admin: the jar in `%LOCALAPPDATA%\Programs\oeHubApp`, a Start menu shortcut that runs the found `javaw.exe` with the jar (no .exe or wrapper, see Platform Constraints), and an `HKCU\…\Uninstall\oeHubApp` entry whose `UninstallString` runs the copy of the script kept in the install folder with `-Uninstall`. Uninstall keeps the data folder (`%APPDATA%\oeHubApp`).
 - The shortcut and Settings > Apps icon is `packaging/windows/oehubapp.ico`, fetched from master: sizes below 256 stored as 32-bit BMP, 256 as PNG (Windows decodes small PNG entries wrongly). Regenerate it from the same logo drawing as the macOS/Linux icons when the logo changes.
 - Test changes against a scratch `OEHUBAPP_HOME`, install then uninstall through the registered `UninstallString`, and check the shortcut and registry key are gone afterwards.
+- That test replaces the developer's own Start menu shortcut and `HKCU\...\Uninstall\oeHubApp` entry (they are per user, not per `OEHUBAPP_HOME`). Back both up first (`reg export`, copy the `.lnk`) and restore them in a `finally` after the uninstall. `reg import` prints its success message to stderr, so do not run it under `$ErrorActionPreference = 'Stop'` with `2>&1`, or the restore stops halfway.
 
 ## Release
 
