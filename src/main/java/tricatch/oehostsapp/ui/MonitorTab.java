@@ -1,8 +1,9 @@
 package tricatch.oehostsapp.ui;
 
+import tricatch.oehostsapp.proxy.ProxyMonitor;
+import tricatch.oehostsapp.store.Store;
+
 import com.fasterxml.jackson.databind.JsonNode;
-import tricatch.oehostsapp.ProxyMonitor;
-import tricatch.oehostsapp.Store;
 
 import javax.swing.*;
 import javax.swing.border.CompoundBorder;

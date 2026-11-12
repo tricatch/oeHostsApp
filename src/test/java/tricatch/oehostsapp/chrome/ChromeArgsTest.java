@@ -1,4 +1,4 @@
-package tricatch.oehostsapp;
+package tricatch.oehostsapp.chrome;
 
 import org.junit.jupiter.api.Test;
 

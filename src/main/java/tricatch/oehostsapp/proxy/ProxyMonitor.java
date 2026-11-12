@@ -1,4 +1,4 @@
-package tricatch.oehostsapp;
+package tricatch.oehostsapp.proxy;
 
 import tricatch.oe.proxy.ReverseProxyServer;
 import tricatch.oe.proxy.event.HttpEvent;

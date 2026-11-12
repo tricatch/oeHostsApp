@@ -1,4 +1,7 @@
-package tricatch.oehostsapp;
+package tricatch.oehostsapp.proxy;
+
+import tricatch.oehostsapp.hosts.HostsRules;
+import tricatch.oehostsapp.store.Store;
 
 import tricatch.oe.proxy.ReverseProxyServer;
 import io.github.tricatch.gotpache.cert.KeyTool;

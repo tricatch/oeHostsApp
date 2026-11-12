@@ -1,4 +1,6 @@
-package tricatch.oehostsapp;
+package tricatch.oehostsapp.hosts;
+
+import tricatch.oehostsapp.update.Update;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

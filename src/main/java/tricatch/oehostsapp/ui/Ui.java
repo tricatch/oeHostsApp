@@ -1,7 +1,8 @@
 package tricatch.oehostsapp.ui;
 
+import tricatch.oehostsapp.store.Store;
+
 import com.formdev.flatlaf.extras.FlatSVGIcon;
-import tricatch.oehostsapp.Store;
 
 import javax.swing.*;
 import javax.swing.border.Border;

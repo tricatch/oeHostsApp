@@ -1,4 +1,8 @@
-package tricatch.oehostsapp;
+package tricatch.oehostsapp.web;
+
+import tricatch.oehostsapp.hosts.HostsRules;
+import tricatch.oehostsapp.proxy.ForwardProxy;
+import tricatch.oehostsapp.store.Store;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;

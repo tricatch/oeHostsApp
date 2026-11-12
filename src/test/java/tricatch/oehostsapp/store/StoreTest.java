@@ -1,4 +1,4 @@
-package tricatch.oehostsapp;
+package tricatch.oehostsapp.store;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;

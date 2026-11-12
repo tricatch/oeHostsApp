@@ -1,4 +1,7 @@
-package tricatch.oehostsapp;
+package tricatch.oehostsapp.web;
+
+import tricatch.oehostsapp.Messages;
+import tricatch.oehostsapp.proxy.ProxyRuntime;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,7 +86,7 @@ public final class PhoneSetup {
     private static final java.util.regex.Pattern IPV4 = java.util.regex.Pattern.compile("\\d{1,3}(\\.\\d{1,3}){3}");
 
     /** Whether {@code host} (an IPv4 literal or localhost) is one of this PC's addresses. */
-    static boolean isOwnAddress(String host) {
+    public static boolean isOwnAddress(String host) {
         if ("localhost".equalsIgnoreCase(host)) return true;
         if (!IPV4.matcher(host).matches()) return false;
         try {

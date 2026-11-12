@@ -1,4 +1,4 @@
-package tricatch.oehostsapp;
+package tricatch.oehostsapp.chrome;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

@@ -1,4 +1,4 @@
-package tricatch.oehostsapp;
+package tricatch.oehostsapp.chrome;
 
 import java.util.ArrayList;
 import java.util.Collections;

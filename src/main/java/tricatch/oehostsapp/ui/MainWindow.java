@@ -1,7 +1,7 @@
 package tricatch.oehostsapp.ui;
 
 import tricatch.oehostsapp.OeHostsApp;
-import tricatch.oehostsapp.Store;
+import tricatch.oehostsapp.store.Store;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;

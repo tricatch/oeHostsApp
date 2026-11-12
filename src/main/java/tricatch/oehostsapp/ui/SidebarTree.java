@@ -1,6 +1,6 @@
 package tricatch.oehostsapp.ui;
 
-import tricatch.oehostsapp.Store;
+import tricatch.oehostsapp.store.Store;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;

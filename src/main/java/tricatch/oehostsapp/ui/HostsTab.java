@@ -1,9 +1,9 @@
 package tricatch.oehostsapp.ui;
 
-import tricatch.oehostsapp.ChromeArgs;
-import tricatch.oehostsapp.ChromeLauncher;
-import tricatch.oehostsapp.HostsRules;
-import tricatch.oehostsapp.Store;
+import tricatch.oehostsapp.chrome.ChromeArgs;
+import tricatch.oehostsapp.chrome.ChromeLauncher;
+import tricatch.oehostsapp.hosts.HostsRules;
+import tricatch.oehostsapp.store.Store;
 
 import javax.swing.*;
 import javax.swing.border.CompoundBorder;
@@ -696,7 +696,7 @@ public final class HostsTab extends JPanel {
         int port = ctx.read(() -> ctx.rawStore().data.settings.shareServerPort);
         String token = ctx.store(s -> s.shareToken(id));
         if (token == null) return;
-        String url = tricatch.oehostsapp.ShareServer.url(port, token, active.name);
+        String url = tricatch.oehostsapp.web.ShareServer.url(port, token, active.name);
         OeDialog.open(ctx, ctx.m("app.share.title", active.name), d -> {
             Switch sw = new Switch(active.shared, Ui.BC500);
             JLabel swLabel = new JLabel(ctx.m("app.share.switch"));
@@ -717,17 +717,17 @@ public final class HostsTab extends JPanel {
             // On the network too: the URL can name this PC by one of the addresses the web service
             // answers on, for SwitchHosts or an agent on another machine. 127.0.0.1 stays the default.
             JComboBox<String> host = null;
-            if (tricatch.oehostsapp.ShareServer.lan()) {
+            if (tricatch.oehostsapp.web.ShareServer.lan()) {
                 JComboBox<String> h = new JComboBox<>();
                 h.setFont(Ui.font(Font.PLAIN, 13f));
                 h.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878");
                 h.setFocusable(false);
-                h.addItem(tricatch.oehostsapp.ForwardProxy.LOOPBACK);
-                String bound = tricatch.oehostsapp.ShareServer.bind();
-                for (tricatch.oehostsapp.PhoneSetup.Lan l : tricatch.oehostsapp.PhoneSetup.addresses()) {
-                    if (tricatch.oehostsapp.ForwardProxy.ALL.equals(bound) || bound.equals(l.ip())) h.addItem(l.ip());
+                h.addItem(tricatch.oehostsapp.proxy.ForwardProxy.LOOPBACK);
+                String bound = tricatch.oehostsapp.web.ShareServer.bind();
+                for (tricatch.oehostsapp.web.PhoneSetup.Lan l : tricatch.oehostsapp.web.PhoneSetup.addresses()) {
+                    if (tricatch.oehostsapp.proxy.ForwardProxy.ALL.equals(bound) || bound.equals(l.ip())) h.addItem(l.ip());
                 }
-                h.addActionListener(e -> urlField.setText(tricatch.oehostsapp.ShareServer.url(
+                h.addActionListener(e -> urlField.setText(tricatch.oehostsapp.web.ShareServer.url(
                         String.valueOf(h.getSelectedItem()), port, token, active.name)));
                 JLabel hostLabel = new JLabel(ctx.m("app.share.host"));
                 hostLabel.setFont(Ui.font(Font.BOLD, 12.5f));
@@ -740,9 +740,9 @@ public final class HostsTab extends JPanel {
                 host = h;
             }
             parts.add(urlField);
-            if (tricatch.oehostsapp.ShareServer.state() == tricatch.oehostsapp.ShareServer.State.FAILED) {
+            if (tricatch.oehostsapp.web.ShareServer.state() == tricatch.oehostsapp.web.ShareServer.State.FAILED) {
                 JComponent w = OeDialog.warn(ctx.m("app.share.server.failed", port,
-                        String.valueOf(tricatch.oehostsapp.ShareServer.error())), null);
+                        String.valueOf(tricatch.oehostsapp.web.ShareServer.error())), null);
                 Dialogs.fixWidth(w, 580);
                 parts.add(w);
             }

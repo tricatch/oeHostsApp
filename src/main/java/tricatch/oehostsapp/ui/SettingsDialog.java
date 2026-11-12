@@ -1,6 +1,6 @@
 package tricatch.oehostsapp.ui;
 
-import tricatch.oehostsapp.Store;
+import tricatch.oehostsapp.store.Store;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -10,6 +10,12 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
 - JDK 25 toolchain, compiled with `--release 21` (oe-proxy uses virtual threads, so 21 is the floor). Do not raise the release level without a reason.
 - `settings.gradle.kts` uses `includeBuild("../oeProxy")` when that folder exists, otherwise Maven Central's `io.github.tricatch:oe-proxy`.
 
+## Packages
+
+- Code under `tricatch.oehostsapp` is split by feature: `store` (data file, backup, migration), `proxy` (forward/reverse proxy runtime, traffic monitor), `web` (web service, phone setup page), `hosts` (hosts rules, oeHosts-Agent), `chrome` (Chrome launch), `update` (self-update), `ui` (Swing screens). The root package keeps only app-wide classes (entry point, data folder, build info, messages, single instance).
+- Put a new class in the package of its feature, not in the root. Make a member `public` only when another package needs it.
+- `UpdateHelper` stays in the root package: its fully qualified name is a contract between releases (an older version looks it up by name in the new jar). Never rename or move it, and never move `OeHostsApp` (the `Main-Class`).
+
 ## Launch Options
 
 - App-specific JVM system properties are named `-Doehostsapp.<name>` and read with `System.getProperty("oehostsapp.<name>")`. Existing: `oehostsapp.log` (log level), `oehostsapp.shot` and `oehostsapp.settings.page` (screenshot aid, below), `oehostsapp.update.repo` and `oehostsapp.agent.repo` (base URLs the app update and the oeHosts-Agent update use instead of the GitHub repositories; for testing against a local server).

@@ -1,11 +1,11 @@
 package tricatch.oehostsapp.ui;
 
-import tricatch.oehostsapp.HostsAgent;
 import tricatch.oehostsapp.OeHostsApp;
-import tricatch.oehostsapp.ProxyRuntime;
-import tricatch.oehostsapp.ShareServer;
-import tricatch.oehostsapp.Store;
-import tricatch.oehostsapp.Update;
+import tricatch.oehostsapp.hosts.HostsAgent;
+import tricatch.oehostsapp.proxy.ProxyRuntime;
+import tricatch.oehostsapp.store.Store;
+import tricatch.oehostsapp.update.Update;
+import tricatch.oehostsapp.web.ShareServer;
 
 import javax.swing.*;
 import javax.swing.border.CompoundBorder;
@@ -595,7 +595,7 @@ public final class SettingsTab extends JPanel {
             user.setEnabled(on);
             password.setEnabled(on);
             authNote.setVisible(on);
-            boolean lan = !tricatch.oehostsapp.ForwardProxy.LOOPBACK.equals(bind.selected());
+            boolean lan = !tricatch.oehostsapp.proxy.ForwardProxy.LOOPBACK.equals(bind.selected());
             bind.warn.setVisible(lan);
         };
         authPassword.addItemListener(e -> {
@@ -642,7 +642,7 @@ public final class SettingsTab extends JPanel {
                 s.save();
             });
             ctx.fireSettingsChanged();
-            Thread.ofVirtual().name("fwdproxy-restart").start(tricatch.oehostsapp.ForwardProxy::restart);
+            Thread.ofVirtual().name("fwdproxy-restart").start(tricatch.oehostsapp.proxy.ForwardProxy::restart);
         });
         restart.setIconTextGap(5);
         // The result shows in the bottom bar, like the editors' save status.
@@ -658,21 +658,21 @@ public final class SettingsTab extends JPanel {
         v[2].setFont(Ui.font(Font.PLAIN, 12.5f));
         JTextArea addresses = multiLineCell(info, v[1]);
         Runnable refresh = () -> {
-            tricatch.oehostsapp.ForwardProxy.State s = tricatch.oehostsapp.ForwardProxy.state();
+            tricatch.oehostsapp.proxy.ForwardProxy.State s = tricatch.oehostsapp.proxy.ForwardProxy.state();
             v[0].setText(ctx.m(switch (s) {
                 case STOPPED -> "app.proxy.status.starting";
                 case RUNNING -> "app.settings.server.running";
                 case FAILED -> "app.settings.server.failed";
             }));
-            v[0].setForeground(s == tricatch.oehostsapp.ForwardProxy.State.RUNNING ? Ui.BC700
-                    : s == tricatch.oehostsapp.ForwardProxy.State.FAILED ? Ui.DANGER : Ui.MUTED);
-            int fp = tricatch.oehostsapp.ForwardProxy.port();
-            addresses.setText(fp > 0 ? String.join("\n", reachableAt(tricatch.oehostsapp.ForwardProxy.bind(), fp)) : "-");
+            v[0].setForeground(s == tricatch.oehostsapp.proxy.ForwardProxy.State.RUNNING ? Ui.BC700
+                    : s == tricatch.oehostsapp.proxy.ForwardProxy.State.FAILED ? Ui.DANGER : Ui.MUTED);
+            int fp = tricatch.oehostsapp.proxy.ForwardProxy.port();
+            addresses.setText(fp > 0 ? String.join("\n", reachableAt(tricatch.oehostsapp.proxy.ForwardProxy.bind(), fp)) : "-");
             info.revalidate();
-            String err = tricatch.oehostsapp.ForwardProxy.error();
-            errorRow(info, v[2], s == tricatch.oehostsapp.ForwardProxy.State.FAILED ? err : null);
+            String err = tricatch.oehostsapp.proxy.ForwardProxy.error();
+            errorRow(info, v[2], s == tricatch.oehostsapp.proxy.ForwardProxy.State.FAILED ? err : null);
         };
-        tricatch.oehostsapp.ForwardProxy.onChange(() -> SwingUtilities.invokeLater(refresh));
+        tricatch.oehostsapp.proxy.ForwardProxy.onChange(() -> SwingUtilities.invokeLater(refresh));
         refresh.run();
         // The address, port and authentication labels share one width, so their fields line up.
         JLabel nicLabel = label(ctx.m("app.settings.fwdproxy.nic"));
@@ -778,8 +778,8 @@ public final class SettingsTab extends JPanel {
 
     /**
      * Installing the CA on a mobile device: a QR code of the web service's certificate page
-     * ({@link tricatch.oehostsapp.PhoneSetup}), which the phone opens through the forward proxy
-     * ({@link tricatch.oehostsapp.ForwardProxy#webService}). Only the download; nothing is configured here.
+     * ({@link tricatch.oehostsapp.web.PhoneSetup}), which the phone opens through the forward proxy
+     * ({@link tricatch.oehostsapp.proxy.ForwardProxy#webService}). Only the download; nothing is configured here.
      */
     private JComponent mobilePage() {
         // The phone reaches the page through the forward proxy, so the proxy has to be open to the
@@ -789,7 +789,7 @@ public final class SettingsTab extends JPanel {
         JComponent webOff = OeDialog.warn(ctx.m("app.settings.phone.web.stopped"), null);
         JPanel webOffButtons = buttons(Ui.secondary(ctx.m("app.settings.phone.open.web"), "settings", () -> showPage("web")));
 
-        JComboBox<tricatch.oehostsapp.PhoneSetup.Lan> address = new JComboBox<>();
+        JComboBox<tricatch.oehostsapp.web.PhoneSetup.Lan> address = new JComboBox<>();
         address.setFont(Ui.font(Font.PLAIN, 13f));
         address.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878");
         address.setFocusable(false);
@@ -797,7 +797,7 @@ public final class SettingsTab extends JPanel {
             @Override
             public Component getListCellRendererComponent(JList<?> l, Object value, int i, boolean sel, boolean focus) {
                 super.getListCellRendererComponent(l, value, i, sel, focus);
-                if (value instanceof tricatch.oehostsapp.PhoneSetup.Lan a) setText(ctx.m("app.settings.bind.iface", a.ip(), a.iface()));
+                if (value instanceof tricatch.oehostsapp.web.PhoneSetup.Lan a) setText(ctx.m("app.settings.bind.iface", a.ip(), a.iface()));
                 return this;
             }
         });
@@ -826,26 +826,26 @@ public final class SettingsTab extends JPanel {
 
         Runnable fill = () -> {
             Object sel = address.getSelectedItem();
-            String ip = sel instanceof tricatch.oehostsapp.PhoneSetup.Lan a ? a.ip() : null;
-            int wp = ShareServer.port(), fp = tricatch.oehostsapp.ForwardProxy.port();
-            String url = ip == null || wp <= 0 ? null : tricatch.oehostsapp.PhoneSetup.pageUrl(ip, wp);
+            String ip = sel instanceof tricatch.oehostsapp.web.PhoneSetup.Lan a ? a.ip() : null;
+            int wp = ShareServer.port(), fp = tricatch.oehostsapp.proxy.ForwardProxy.port();
+            String url = ip == null || wp <= 0 ? null : tricatch.oehostsapp.web.PhoneSetup.pageUrl(ip, wp);
             v[0].setText(url == null ? "-" : url);
             steps.setText(ctx.m("app.settings.phone.steps", ip == null ? "-" : ip, fp > 0 ? String.valueOf(fp) : "-"));
             copyUrl.setEnabled(url != null);
             qr.setText(url);
         };
         Runnable refresh = () -> {
-            boolean fwdOn = tricatch.oehostsapp.ForwardProxy.state() == tricatch.oehostsapp.ForwardProxy.State.RUNNING
-                    && tricatch.oehostsapp.ForwardProxy.lan();
+            boolean fwdOn = tricatch.oehostsapp.proxy.ForwardProxy.state() == tricatch.oehostsapp.proxy.ForwardProxy.State.RUNNING
+                    && tricatch.oehostsapp.proxy.ForwardProxy.lan();
             boolean webOn = ShareServer.state() == ShareServer.State.RUNNING;
             // The addresses the proxy answers on: the phone sets one of them as its Wi-Fi proxy.
             Object prev = address.getSelectedItem();
-            String prevIp = prev instanceof tricatch.oehostsapp.PhoneSetup.Lan a ? a.ip() : null;
-            List<tricatch.oehostsapp.PhoneSetup.Lan> reachable = new ArrayList<>(tricatch.oehostsapp.PhoneSetup.addresses());
-            reachable.removeIf(a -> !answersOn(tricatch.oehostsapp.ForwardProxy.bind(), a.ip()));
+            String prevIp = prev instanceof tricatch.oehostsapp.web.PhoneSetup.Lan a ? a.ip() : null;
+            List<tricatch.oehostsapp.web.PhoneSetup.Lan> reachable = new ArrayList<>(tricatch.oehostsapp.web.PhoneSetup.addresses());
+            reachable.removeIf(a -> !answersOn(tricatch.oehostsapp.proxy.ForwardProxy.bind(), a.ip()));
             address.removeAllItems();
-            for (tricatch.oehostsapp.PhoneSetup.Lan a : reachable) address.addItem(a);
-            for (tricatch.oehostsapp.PhoneSetup.Lan a : reachable) if (a.ip().equals(prevIp)) address.setSelectedItem(a);
+            for (tricatch.oehostsapp.web.PhoneSetup.Lan a : reachable) address.addItem(a);
+            for (tricatch.oehostsapp.web.PhoneSetup.Lan a : reachable) if (a.ip().equals(prevIp)) address.setSelectedItem(a);
             fwdOff.setVisible(!fwdOn);
             fwdOffButtons.setVisible(!fwdOn);
             webOff.setVisible(!webOn);
@@ -857,14 +857,14 @@ public final class SettingsTab extends JPanel {
         };
         address.addActionListener(e -> fill.run());
         ShareServer.onChange(() -> SwingUtilities.invokeLater(refresh));
-        tricatch.oehostsapp.ForwardProxy.onChange(() -> SwingUtilities.invokeLater(refresh));
+        tricatch.oehostsapp.proxy.ForwardProxy.onChange(() -> SwingUtilities.invokeLater(refresh));
         refresh.run();
         return page(desc(ctx.m("app.settings.phone.desc")), fwdOff, fwdOffButtons, webOff, webOffButtons, noAddress, ready);
     }
 
     /** Whether a server bound to {@code bind} answers on {@code ip}. */
     private static boolean answersOn(String bind, String ip) {
-        return tricatch.oehostsapp.ForwardProxy.ALL.equals(bind) || bind.equals(ip);
+        return tricatch.oehostsapp.proxy.ForwardProxy.ALL.equals(bind) || bind.equals(ip);
     }
 
     /** Gives the labels of one form the same width (at least {@link #FORM_LABEL_WIDTH}), so their fields line up. */
@@ -918,11 +918,11 @@ public final class SettingsTab extends JPanel {
      */
     private List<String> reachableAt(String bind, int port) {
         List<String> out = new ArrayList<>();
-        out.add(tricatch.oehostsapp.ForwardProxy.LOOPBACK + ":" + port);
-        if (tricatch.oehostsapp.ForwardProxy.LOOPBACK.equals(bind)) return out;
-        boolean all = tricatch.oehostsapp.ForwardProxy.ALL.equals(bind);
+        out.add(tricatch.oehostsapp.proxy.ForwardProxy.LOOPBACK + ":" + port);
+        if (tricatch.oehostsapp.proxy.ForwardProxy.LOOPBACK.equals(bind)) return out;
+        boolean all = tricatch.oehostsapp.proxy.ForwardProxy.ALL.equals(bind);
         boolean found = false;
-        for (tricatch.oehostsapp.PhoneSetup.Lan l : tricatch.oehostsapp.PhoneSetup.addresses()) {
+        for (tricatch.oehostsapp.web.PhoneSetup.Lan l : tricatch.oehostsapp.web.PhoneSetup.addresses()) {
             if (!all && !l.ip().equals(bind)) continue;
             out.add(ctx.m("app.settings.bind.iface", l.ip() + ":" + port, l.iface()));
             found = true;
@@ -1012,16 +1012,16 @@ public final class SettingsTab extends JPanel {
         /** Lists this PC's networks again (each time the drop-down opens), keeping the choice. */
         void reload() {
             List<Choice> items = new ArrayList<>();
-            items.add(new Choice(tricatch.oehostsapp.ForwardProxy.LOOPBACK, ctx.m("app.settings.bind.local")));
+            items.add(new Choice(tricatch.oehostsapp.proxy.ForwardProxy.LOOPBACK, ctx.m("app.settings.bind.local")));
             boolean found = false;
-            for (tricatch.oehostsapp.PhoneSetup.Lan l : tricatch.oehostsapp.PhoneSetup.addresses()) {
+            for (tricatch.oehostsapp.web.PhoneSetup.Lan l : tricatch.oehostsapp.web.PhoneSetup.addresses()) {
                 items.add(new Choice(l.ip(), ctx.m("app.settings.bind.iface", l.ip(), l.iface())));
                 found |= l.ip().equals(selected);
             }
-            boolean special = tricatch.oehostsapp.ForwardProxy.LOOPBACK.equals(selected)
-                    || tricatch.oehostsapp.ForwardProxy.ALL.equals(selected);
+            boolean special = tricatch.oehostsapp.proxy.ForwardProxy.LOOPBACK.equals(selected)
+                    || tricatch.oehostsapp.proxy.ForwardProxy.ALL.equals(selected);
             if (!found && !special) items.add(new Choice(selected, ctx.m("app.settings.bind.iface.missing", selected)));
-            items.add(new Choice(tricatch.oehostsapp.ForwardProxy.ALL, ctx.m("app.settings.fwdproxy.bind.all")));
+            items.add(new Choice(tricatch.oehostsapp.proxy.ForwardProxy.ALL, ctx.m("app.settings.fwdproxy.bind.all")));
             filling = true;
             try {
                 combo.removeAllItems();
@@ -1037,7 +1037,7 @@ public final class SettingsTab extends JPanel {
 
         private void showWarn() {
             if (onChange != null) onChange.run();
-            else warn.setVisible(!tricatch.oehostsapp.ForwardProxy.LOOPBACK.equals(selected));
+            else warn.setVisible(!tricatch.oehostsapp.proxy.ForwardProxy.LOOPBACK.equals(selected));
             row.revalidate();
             row.repaint();
         }
@@ -1608,7 +1608,7 @@ public final class SettingsTab extends JPanel {
         return String.join(", ", n);
     }
 
-    /** Exports the chosen parts to one backup ZIP ({@link tricatch.oehostsapp.Backup}). */
+    /** Exports the chosen parts to one backup ZIP ({@link tricatch.oehostsapp.store.Backup}). */
     private void exportData(Parts p) {
         if (!p.any()) return;
         flushEdits.run();
@@ -1627,7 +1627,7 @@ public final class SettingsTab extends JPanel {
                     throw new java.io.UncheckedIOException(e);
                 }
             });
-            tricatch.oehostsapp.Backup.write(json, p.ca() ? ProxyRuntime.caDir() : null, out);
+            tricatch.oehostsapp.store.Backup.write(json, p.ca() ? ProxyRuntime.caDir() : null, out);
             ctx.toast(ctx.m("app.data.exported"));
         } catch (Exception e) {
             ctx.toast(ctx.m("app.data.export.failed"));
@@ -1648,9 +1648,9 @@ public final class SettingsTab extends JPanel {
         fc.setAcceptAllFileFilterUsed(false);
         fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("*.zip", "zip"));
         if (fc.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return;
-        tricatch.oehostsapp.Backup.Contents b;
+        tricatch.oehostsapp.store.Backup.Contents b;
         try {
-            b = tricatch.oehostsapp.Backup.read(fc.getSelectedFile().toPath());
+            b = tricatch.oehostsapp.store.Backup.read(fc.getSelectedFile().toPath());
         } catch (Exception e) {
             OeDialog.info(ctx, title, ctx.m("app.data.import.error.format"));
             return;

@@ -1,4 +1,8 @@
-package tricatch.oehostsapp;
+package tricatch.oehostsapp.proxy;
+
+import tricatch.oehostsapp.store.Store;
+import tricatch.oehostsapp.web.PhoneSetup;
+import tricatch.oehostsapp.web.ShareServer;
 
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
@@ -277,20 +281,6 @@ class ForwardProxyTest {
             out.flush();
             return new BufferedReader(new InputStreamReader(sock.getInputStream(), StandardCharsets.US_ASCII)).readLine();
         }
-    }
-
-    @Test
-    void picksThePhonePageLanguage() {
-        assertEquals("ko", PhoneSetup.lang("ko-KR,ko;q=0.9,en;q=0.8"));
-        assertEquals("en", PhoneSetup.lang("en-US,ko;q=0.5"));
-        assertEquals("en", PhoneSetup.lang("ja-JP"));
-        assertEquals("en", PhoneSetup.lang(null));
-        assertTrue(PhoneSetup.looksVirtual("vEthernet (WSL)"));
-        assertFalse(PhoneSetup.looksVirtual("Intel(R) Wi-Fi 6E AX211 160MHz"));
-        assertTrue(PhoneSetup.isOwnAddress("127.0.0.1"));
-        assertTrue(PhoneSetup.isOwnAddress("localhost"));
-        assertFalse(PhoneSetup.isOwnAddress("203.0.113.7"));
-        assertFalse(PhoneSetup.isOwnAddress("example.com"));
     }
 
     @Test

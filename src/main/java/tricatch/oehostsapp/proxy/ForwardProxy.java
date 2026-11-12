@@ -1,4 +1,9 @@
-package tricatch.oehostsapp;
+package tricatch.oehostsapp.proxy;
+
+import tricatch.oehostsapp.hosts.HostsRules;
+import tricatch.oehostsapp.store.Store;
+import tricatch.oehostsapp.web.PhoneSetup;
+import tricatch.oehostsapp.web.ShareServer;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpRequest;

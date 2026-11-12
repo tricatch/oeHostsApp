@@ -1,4 +1,4 @@
-package tricatch.oehostsapp;
+package tricatch.oehostsapp.hosts;
 
 import java.util.ArrayList;
 import java.util.HashSet;

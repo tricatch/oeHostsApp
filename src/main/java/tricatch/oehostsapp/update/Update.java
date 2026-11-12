@@ -1,4 +1,7 @@
-package tricatch.oehostsapp;
+package tricatch.oehostsapp.update;
+
+import tricatch.oehostsapp.OeHostsApp;
+import tricatch.oehostsapp.UpdateHelper;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -88,7 +91,7 @@ public final class Update {
     }
 
     /** The jar this app runs from, when it is a file in a writable folder; null otherwise. */
-    static Path installedJar() {
+    public static Path installedJar() {
         try {
             Path p = Path.of(Update.class.getProtectionDomain().getCodeSource().getLocation().toURI());
             if (!Files.isRegularFile(p) || !p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".jar")) return null;
@@ -177,7 +180,7 @@ public final class Update {
     }
 
     /** The tag {@code <repoUrl>/releases/latest} redirects to (a GitHub repository URL). */
-    static String latestVersion(String repoUrl) throws IOException, InterruptedException {
+    public static String latestVersion(String repoUrl) throws IOException, InterruptedException {
         HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
                 .followRedirects(HttpClient.Redirect.NEVER).build();
         HttpResponse<Void> r = http.send(request(repoUrl + "/releases/latest"), HttpResponse.BodyHandlers.discarding());
@@ -195,7 +198,7 @@ public final class Update {
      * numbers compared as numbers, anything else as text. A version that is not a release
      * ({@code dev}) is never older.
      */
-    static boolean isNewer(String latest, String current) {
+    public static boolean isNewer(String latest, String current) {
         if (latest == null || current == null || !Character.isDigit(current.charAt(0))) return false;
         String[] a = latest.split("\\.");
         String[] b = current.split("\\.");
@@ -242,7 +245,7 @@ public final class Update {
      * checks its SHA-256 against the release's {@code SHA256SUMS.txt}. On any failure nothing is
      * left at {@code out}.
      */
-    static void fetchAsset(String repoUrl, String tag, String asset, Path out, IntConsumer progress)
+    public static void fetchAsset(String repoUrl, String tag, String asset, Path out, IntConsumer progress)
             throws IOException, InterruptedException {
         HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
                 .followRedirects(HttpClient.Redirect.NORMAL).build();
@@ -332,7 +335,7 @@ public final class Update {
                 .header("User-Agent", "oeHostsApp/" + OeHostsApp.version()).GET().build();
     }
 
-    static String reason(Exception e) {
+    public static String reason(Exception e) {
         if (e instanceof java.net.http.HttpTimeoutException) return "timeout";
         if (e instanceof java.net.ConnectException || e instanceof java.nio.channels.UnresolvedAddressException
                 || e.getCause() instanceof java.nio.channels.UnresolvedAddressException) {

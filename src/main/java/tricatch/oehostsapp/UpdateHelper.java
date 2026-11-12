@@ -1,5 +1,7 @@
 package tricatch.oehostsapp;
 
+import tricatch.oehostsapp.update.Update;
+
 import java.io.File;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
@@ -21,7 +23,9 @@ import java.util.jar.JarFile;
  * the old version is started anyway, so the user is never left without the app.
  * <p>
  * The OLD version builds this command line and the NEW version's class runs it, so the argument
- * format is a contract between releases: keep it unchanged. Uses only the JDK (no logging library,
+ * format is a contract between releases: keep it unchanged. The class name is part of that
+ * contract too (the old version checks the new jar for it and starts it by name), so this class
+ * stays in the root package while the rest of the update code lives in {@code update}. Uses only the JDK (no logging library,
  * no AWT); its output goes to {@code oehostsapp-update.log} next to the jar.
  */
 public final class UpdateHelper {

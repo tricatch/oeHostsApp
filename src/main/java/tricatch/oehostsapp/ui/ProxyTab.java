@@ -1,5 +1,9 @@
 package tricatch.oehostsapp.ui;
 
+import tricatch.oehostsapp.hosts.HostsRules;
+import tricatch.oehostsapp.proxy.ProxyRuntime;
+import tricatch.oehostsapp.store.Store;
+
 import com.fasterxml.jackson.core.JsonLocation;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -10,9 +14,6 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
-import tricatch.oehostsapp.HostsRules;
-import tricatch.oehostsapp.ProxyRuntime;
-import tricatch.oehostsapp.Store;
 
 import javax.swing.*;
 import javax.swing.border.MatteBorder;

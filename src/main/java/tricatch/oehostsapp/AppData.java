@@ -1,5 +1,7 @@
 package tricatch.oehostsapp;
 
+import tricatch.oehostsapp.store.Store;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

@@ -1,4 +1,8 @@
-package tricatch.oehostsapp;
+package tricatch.oehostsapp.web;
+
+import tricatch.oehostsapp.Messages;
+import tricatch.oehostsapp.proxy.ProxyRuntime;
+import tricatch.oehostsapp.store.Store;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
