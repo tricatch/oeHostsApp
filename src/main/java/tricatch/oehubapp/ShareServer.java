@@ -10,23 +10,31 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 
 /**
- * Serves the shared oeHosts profiles as plain hosts text, for hosts managers that subscribe to a
- * URL (SwitchHosts' "Remote" entries): {@code GET http://127.0.0.1:<settings.shareServerPort>/hosts/<id>-<tag>/<name>},
- * the tag being an HMAC of the id under a key only this installation has ({@link Store#shareToken}).
- * The trailing name ({@link Store#shareSlug}) is only there for people and is ignored, so a
- * renamed profile keeps working under its old URL.
- * Only profiles whose {@link Store.Item#shared} is on are served; a wrong tag, an unknown id and a
- * profile whose sharing was turned off all answer the same 404, so ids cannot be probed. {@code ${PROXY_SVR}} / {@code ${LOCAL_SVR}} are filled in
- * ({@link HostsRules#resolvePlaceholders}), the same as everywhere else in the app.
+ * The web service: the app's built-in HTTP server. It serves
+ * <ul>
+ *   <li>the shared oeHosts profiles as plain hosts text, for hosts managers that subscribe to a URL
+ *   (SwitchHosts' "Remote" entries) and oeHosts-Agent: {@code GET /hosts/<id>-<tag>/<name>}, the tag
+ *   being an HMAC of the id under a key only this installation has ({@link Store#shareToken}). The
+ *   trailing name ({@link Store#shareSlug}) is only there for people and is ignored, so a renamed
+ *   profile keeps working under its old URL. Only profiles whose {@link Store.Item#shared} is on are
+ *   served; a wrong tag, an unknown id and a profile whose sharing was turned off all answer the same
+ *   404, so ids cannot be probed. {@code ${PROXY_SVR}} / {@code ${LOCAL_SVR}} are filled in
+ *   ({@link HostsRules#resolvePlaceholders}).</li>
+ *   <li>the phone setup page at {@code /} and the CA's public certificate ({@link PhoneSetup}).</li>
+ * </ul>
  *
- * <p>Bound to the loopback address only: its clients run on this PC. A request whose Host header is
- * not a loopback name is refused, so a web page cannot read the profiles through DNS rebinding.
+ * <p>Who can reach it is decided by the binding alone ({@code settings.shareServerBind}: 127.0.0.1,
+ * one of this PC's IPv4 addresses, or 0.0.0.0). 127.0.0.1 always has a listener of its own, because
+ * the share URLs given to programs on this PC use it. A request whose Host header is neither a
+ * loopback name nor one of this PC's own IP addresses is refused, so a web page cannot read the
+ * profiles through DNS rebinding.
  * Uses the JDK's built-in {@code com.sun.net.httpserver} (module jdk.httpserver), so no dependency.
  */
 public final class ShareServer {
@@ -38,11 +46,12 @@ public final class ShareServer {
     private static final Logger log = LoggerFactory.getLogger(ShareServer.class);
     private static final List<Runnable> listeners = new CopyOnWriteArrayList<>();
 
-    private static HttpServer server;
+    private static final List<HttpServer> servers = new ArrayList<>();
     private static Store store;
     private static volatile State state = State.STOPPED;
     private static volatile String error;
     private static volatile int port;
+    private static volatile String bind = ForwardProxy.LOOPBACK;
 
     private ShareServer() {}
 
@@ -60,54 +69,83 @@ public final class ShareServer {
         return port;
     }
 
+    /** The binding of the last start attempt: 127.0.0.1, one IPv4 address, or 0.0.0.0. */
+    public static String bind() {
+        return bind;
+    }
+
+    /** Whether the last start listened beyond this PC. */
+    public static boolean lan() {
+        return !ForwardProxy.LOOPBACK.equals(bind);
+    }
+
     /** Runs {@code r} (on the thread that changed it) whenever the state changes. */
     public static void onChange(Runnable r) {
         listeners.add(r);
     }
 
-    /** The URL a profile is shared at: its {@link Store#shareToken}, then its name as {@link Store#shareSlug}. */
+    /** The URL a profile is shared at on this PC (127.0.0.1). */
     public static String url(int port, String token, String name) {
-        return "http://127.0.0.1:" + port + PATH + token + "/" + Store.shareSlug(name);
+        return url(ForwardProxy.LOOPBACK, port, token, name);
     }
 
-    /** Starts on the port stored in the settings. */
+    /** The URL a profile is shared at on {@code host}: its {@link Store#shareToken}, then its name as {@link Store#shareSlug}. */
+    public static String url(String host, int port, String token, String name) {
+        return "http://" + host + ":" + port + PATH + token + "/" + Store.shareSlug(name);
+    }
+
+    /** Starts on the port and binding stored in the settings. */
     public static synchronized void start(Store s) {
         store = s;
         int p;
+        String b;
         synchronized (s) {
             p = s.data.settings.shareServerPort;
+            b = s.data.settings.shareServerBindAddress();
         }
         port = p;
+        bind = b;
         try {
-            HttpServer srv = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), p), 0);
-            srv.createContext(PATH, ShareServer::handle);
-            srv.createContext("/", ex -> {
-                try (ex) {
-                    respond(ex, 404, "not found\n");
-                }
-            });
-            srv.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
-            srv.start();
-            server = srv;
+            if (ForwardProxy.ALL.equals(b)) {
+                servers.add(listen(new InetSocketAddress(p)));
+            } else {
+                servers.add(listen(new InetSocketAddress(InetAddress.getLoopbackAddress(), p)));
+                // An address no longer on this PC fails here and shows as FAILED.
+                if (!ForwardProxy.LOOPBACK.equals(b)) servers.add(listen(new InetSocketAddress(InetAddress.getByName(b), p)));
+            }
             set(State.RUNNING, null);
-            log.info("share server on 127.0.0.1:{}", p);
+            log.info("web service on {}:{}", b, p);
         } catch (IOException | RuntimeException e) {
-            log.warn("share server failed to start on {}: {}", p, e.getMessage());
+            stopAll();
+            log.warn("web service failed to start on {}:{}: {}", b, p, e.getMessage());
             set(State.FAILED, e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
         }
     }
 
-    /** Stops and starts again on the port now stored in the settings (after it was saved). */
+    private static HttpServer listen(InetSocketAddress address) throws IOException {
+        HttpServer srv = HttpServer.create(address, 0);
+        srv.createContext(PATH, ShareServer::handle);
+        srv.createContext("/", ShareServer::handlePage);
+        srv.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        srv.start();
+        return srv;
+    }
+
+    /** Stops and starts again on the port and binding now stored in the settings (after they were saved). */
     public static synchronized void restart() {
         stop();
         if (store != null) start(store);
     }
 
     public static synchronized void stop() {
-        if (server == null) return;
-        server.stop(0);
-        server = null;
+        if (servers.isEmpty()) return;
+        stopAll();
         set(State.STOPPED, null);
+    }
+
+    private static void stopAll() {
+        for (HttpServer srv : servers) srv.stop(0);
+        servers.clear();
     }
 
     private static void set(State s, String err) {
@@ -116,18 +154,27 @@ public final class ShareServer {
         for (Runnable r : listeners) r.run();
     }
 
+    /**
+     * Refuses what the server never answers: a foreign Host header (403) or a method other than GET
+     * and HEAD (405). Returns whether the request may go on.
+     */
+    private static boolean admit(HttpExchange ex) throws IOException {
+        if (!allowedHost(ex.getRequestHeaders().getFirst("Host"))) {
+            respond(ex, 403, "forbidden\n");
+            return false;
+        }
+        String method = ex.getRequestMethod();
+        if (!"GET".equals(method) && !"HEAD".equals(method)) {
+            ex.getResponseHeaders().set("Allow", "GET, HEAD");
+            respond(ex, 405, "method not allowed\n");
+            return false;
+        }
+        return true;
+    }
+
     private static void handle(HttpExchange ex) throws IOException {
         try (ex) {
-            if (!loopbackHost(ex.getRequestHeaders().getFirst("Host"))) {
-                respond(ex, 403, "forbidden\n");
-                return;
-            }
-            String method = ex.getRequestMethod();
-            if (!"GET".equals(method) && !"HEAD".equals(method)) {
-                ex.getResponseHeaders().set("Allow", "GET, HEAD");
-                respond(ex, 405, "method not allowed\n");
-                return;
-            }
+            if (!admit(ex)) return;
             // <token>/<name>: the name is ignored (and may be missing).
             String token = ex.getRequestURI().getPath().substring(PATH.length());
             int slash = token.indexOf('/');
@@ -144,8 +191,25 @@ public final class ShareServer {
         }
     }
 
-    /** Host header names this server answers to: 127.0.0.1, localhost or [::1], with any port. */
-    static boolean loopbackHost(String host) {
+    /** The phone setup page and the CA certificate; any other path is 404. */
+    private static void handlePage(HttpExchange ex) throws IOException {
+        try (ex) {
+            if (!admit(ex)) return;
+            PhoneSetup.Reply r = PhoneSetup.respond(ex.getRequestURI().getPath(), ex.getRequestHeaders().getFirst("Accept-Language"));
+            if (r == null) {
+                respond(ex, 404, "not found\n");
+                return;
+            }
+            if (r.fileName() != null) ex.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + r.fileName() + "\"");
+            send(ex, r.status(), r.contentType(), r.body());
+        }
+    }
+
+    /**
+     * Host header names this server answers to, with any port: 127.0.0.1, localhost, [::1], or an
+     * IPv4 address of this PC (a phone or another PC that reached it over the network).
+     */
+    static boolean allowedHost(String host) {
         if (host == null) return false;
         String h = host.strip().toLowerCase(Locale.ROOT);
         if (h.startsWith("[")) {
@@ -154,12 +218,15 @@ public final class ShareServer {
         }
         int colon = h.indexOf(':');
         if (colon >= 0) h = h.substring(0, colon);
-        return h.equals("127.0.0.1") || h.equals("localhost");
+        return h.equals("127.0.0.1") || h.equals("localhost") || PhoneSetup.isOwnAddress(h);
     }
 
     private static void respond(HttpExchange ex, int status, String body) throws IOException {
-        byte[] b = body.getBytes(StandardCharsets.UTF_8);
-        ex.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
+        send(ex, status, "text/plain; charset=utf-8", body.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void send(HttpExchange ex, int status, String type, byte[] b) throws IOException {
+        ex.getResponseHeaders().set("Content-Type", type);
         ex.getResponseHeaders().set("Cache-Control", "no-store");
         boolean head = "HEAD".equals(ex.getRequestMethod());
         ex.sendResponseHeaders(status, head ? -1 : b.length);

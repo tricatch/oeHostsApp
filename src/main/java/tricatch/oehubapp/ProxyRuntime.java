@@ -49,7 +49,8 @@ public final class ProxyRuntime {
     private static volatile Store store;
     /** Whether startSslPassServer has succeeded once (later starts go through its own restart). */
     private static volatile boolean started;
-    private static volatile boolean lan = true;
+    /** The binding of the last (re)start: 127.0.0.1, one IPv4 address, or 0.0.0.0. */
+    private static volatile String bind = ForwardProxy.ALL;
     private static final List<Runnable> listeners = new CopyOnWriteArrayList<>();
     private static final Logger log = LoggerFactory.getLogger(ProxyRuntime.class);
     private static final ObjectMapper YAML = new ObjectMapper(new YAMLFactory());
@@ -76,18 +77,37 @@ public final class ProxyRuntime {
 
     /** Whether the last (re)start bound every network interface rather than 127.0.0.1. */
     public static boolean lan() {
-        return lan;
+        return !ForwardProxy.LOOPBACK.equals(bind);
     }
 
-    /** Applies the stored binding (settings.reverseProxyLan) to the library before a (re)start. */
-    private static boolean applyBinding(Store store) {
-        boolean all;
+    /** The binding of the last (re)start: 127.0.0.1, one IPv4 address, or 0.0.0.0. */
+    public static String bind() {
+        return bind;
+    }
+
+    /**
+     * Applies the stored binding (settings.reverseProxyBind) to the library before a (re)start:
+     * every interface, 127.0.0.1 only, or one network card's address together with 127.0.0.1 (the
+     * hosts profiles' {@code 127.0.0.1 domain} lines reach the proxy there). Returns the addresses
+     * to check before starting.
+     */
+    private static String[] applyBinding(Store store) throws IOException {
+        String b;
         synchronized (store) {
-            all = store.data.settings.reverseProxyLan;
+            b = store.data.settings.reverseProxyBindAddress();
         }
-        lan = all;
-        ReverseProxyServer.setBindAddress(all ? null : java.net.InetAddress.getLoopbackAddress());
-        return all;
+        bind = b;
+        java.net.InetAddress lo = java.net.InetAddress.getLoopbackAddress();
+        if (ForwardProxy.ALL.equals(b)) {
+            ReverseProxyServer.setBindAddresses();
+            return new String[]{"0.0.0.0", "::"};
+        }
+        if (ForwardProxy.LOOPBACK.equals(b)) {
+            ReverseProxyServer.setBindAddresses(lo);
+            return new String[]{ForwardProxy.LOOPBACK};
+        }
+        ReverseProxyServer.setBindAddresses(lo, java.net.InetAddress.getByName(b));
+        return new String[]{ForwardProxy.LOOPBACK, b};
     }
 
     /** {@code r} runs (on the starting thread) whenever the state changes. */
@@ -360,10 +380,10 @@ public final class ProxyRuntime {
 
             // SSLPassServer binds on an executor thread and only logs a failure there, so check the
             // port first to be able to show why the proxy is not running.
-            boolean all = applyBinding(store);
-            log.info("proxy starting on {}:{} (CA {})", all ? "*" : "127.0.0.1", port(), cert.toAbsolutePath());
+            String[] addresses = applyBinding(store);
+            log.info("proxy starting on {}:{} (CA {})", String.join(", ", addresses), port(), cert.toAbsolutePath());
             set(State.STARTING, null);
-            probePort(port(), all);
+            probePort(port(), addresses);
             ReverseProxyServer.startSslPassServer();
             started = true;
             set(State.RUNNING, null);
@@ -446,8 +466,8 @@ public final class ProxyRuntime {
      * this JVM's dual-stack [::] socket can both bind, and IPv4 connections to 127.0.0.1 then reach
      * the other program while this proxy looks healthy.
      */
-    private static void probePort(int port, boolean all) throws IOException {
-        for (String addr : all ? new String[]{"0.0.0.0", "::"} : new String[]{"127.0.0.1"}) {
+    private static void probePort(int port, String[] addresses) throws IOException {
+        for (String addr : addresses) {
             try (ServerSocket socket = new ServerSocket()) {
                 socket.setReuseAddress(false);
                 socket.bind(new InetSocketAddress(java.net.InetAddress.getByName(addr), port));

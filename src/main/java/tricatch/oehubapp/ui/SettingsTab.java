@@ -8,8 +8,10 @@ import tricatch.oehubapp.Store;
 import tricatch.oehubapp.Update;
 
 import javax.swing.*;
+import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
+import javax.swing.border.MatteBorder;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -81,20 +83,21 @@ public final class SettingsTab extends JPanel {
         this.relaunch = relaunch;
         this.reloadAll = reloadAll;
         this.flushEdits = flushEdits;
+        folders.add(new Folder("app.settings.folder.general", List.of(
+                new Page("about", "app.settings.about.title", this::aboutPage),
+                new Page("web", "app.settings.web.title", this::webPage),
+                new Page("fwd", "app.settings.fwdproxy.title", this::fwdProxyPage),
+                new Page("lang", "app.settings.lang.title", this::langPage),
+                new Page("data", "app.settings.data.title", this::dataPage),
+                new Page("licenses", "licenses.section.opensource", this::licensesPage))));
         folders.add(new Folder("app.settings.folder.hosts", List.of(
                 new Page("ua", "app.settings.ua.presets.title", () -> presetsPage(true)),
                 new Page("url", "app.settings.url.presets.title", () -> presetsPage(false)),
-                new Page("fwd", "app.settings.fwdproxy.title", this::fwdProxyPage),
-                new Page("share", "app.settings.share.title", this::sharePage),
                 new Page("agent", "app.settings.agent.title", this::agentPage))));
         folders.add(new Folder("app.settings.folder.proxy", List.of(
                 new Page("ca", "app.settings.ca.title", this::caPage),
+                new Page("mobile", "app.settings.phone.title", this::mobilePage),
                 new Page("server", "app.settings.server.title", this::serverPage))));
-        folders.add(new Folder("app.settings.folder.general", List.of(
-                new Page("lang", "app.settings.lang.title", this::langPage),
-                new Page("data", "app.settings.data.title", this::dataPage),
-                new Page("about", "app.settings.about.title", this::aboutPage),
-                new Page("licenses", "licenses.section.opensource", this::licensesPage))));
 
         list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
         list.setBackground(Color.WHITE);
@@ -124,7 +127,7 @@ public final class SettingsTab extends JPanel {
 
         add(Ui.sidebarSplit(ctx, sidebar, right), BorderLayout.CENTER);
         // -Doehubapp.settings.page=<id> opens another page first (screenshots of the other pages).
-        select(System.getProperty("oehubapp.settings.page", "ua"));
+        select(System.getProperty("oehubapp.settings.page", folders.get(0).pages().get(0).id()));
     }
 
     // ── Left list ───────────────────────────────────────────────
@@ -261,6 +264,51 @@ public final class SettingsTab extends JPanel {
         col.setLayout(new BoxLayout(col, BoxLayout.Y_AXIS));
         col.setBackground(Color.WHITE);
         col.setBorder(new EmptyBorder(18, 22, 18, 22));
+        stack(col, parts);
+        JScrollPane s = Ui.plainScroll(col);
+        s.getViewport().setBackground(Color.WHITE);
+        return s;
+    }
+
+    /**
+     * A page body whose single part fills the whole page height (when the page is taller than the
+     * part), so a divider drawn by the part reaches the bottom; scrollable like {@link #page}.
+     */
+    private static JComponent fullPage(JComponent body) {
+        class Fill extends JPanel implements Scrollable {
+            public Dimension getPreferredScrollableViewportSize() {
+                return getPreferredSize();
+            }
+
+            public int getScrollableUnitIncrement(Rectangle r, int o, int d) {
+                return 16;
+            }
+
+            public int getScrollableBlockIncrement(Rectangle r, int o, int d) {
+                return r.height;
+            }
+
+            public boolean getScrollableTracksViewportWidth() {
+                return true;
+            }
+
+            public boolean getScrollableTracksViewportHeight() {
+                return getParent() instanceof JViewport v && v.getHeight() > getPreferredSize().height;
+            }
+        }
+        JPanel p = new Fill();
+        p.setLayout(new BorderLayout());
+        p.setBackground(Color.WHITE);
+        // The same padding as page(): a divider in the body stops as far from the bottom as from the top.
+        p.setBorder(new EmptyBorder(18, 22, 18, 22));
+        p.add(body, BorderLayout.CENTER);
+        JScrollPane s = Ui.plainScroll(p);
+        s.getViewport().setBackground(Color.WHITE);
+        return s;
+    }
+
+    /** Adds {@code parts} to a vertical BoxLayout panel, 14px apart; a hidden part takes its gap with it. */
+    private static void stack(JPanel col, JComponent... parts) {
         for (int i = 0; i < parts.length; i++) {
             parts[i].setAlignmentX(LEFT_ALIGNMENT);
             if (i > 0) {
@@ -282,14 +330,80 @@ public final class SettingsTab extends JPanel {
             }
             col.add(parts[i]);
         }
-        JScrollPane s = Ui.plainScroll(col);
-        s.getViewport().setBackground(Color.WHITE);
-        return s;
+    }
+
+    /** A part of a page that is itself a column of parts (see {@link #stack}), kept at its natural height. */
+    private static JComponent column(JComponent... parts) {
+        JPanel col = new JPanel();
+        col.setLayout(new BoxLayout(col, BoxLayout.Y_AXIS));
+        col.setOpaque(false);
+        stack(col, parts);
+        JPanel top = new JPanel(new BorderLayout());
+        top.setOpaque(false);
+        top.add(col, BorderLayout.NORTH);
+        return top;
+    }
+
+    /** Buttons at the right end of their row, 6px apart: the action row of a page half. */
+    private static JPanel rightAligned(JComponent... buttons) {
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        p.setOpaque(false);
+        for (int i = 0; i < buttons.length; i++) {
+            if (i > 0) p.add(Box.createHorizontalStrut(6));
+            p.add(buttons[i]);
+        }
+        return p;
+    }
+
+    /** A thin horizontal rule between the sections of a page (description, settings, actions). */
+    private static JComponent line() {
+        JComponent l = new JComponent() {
+            // Extra room above and below the 1px line, on top of the usual gap between parts.
+            static final int MARGIN = 8;
+
+            @Override
+            protected void paintComponent(Graphics g) {
+                g.setColor(Ui.BORDER);
+                g.fillRect(0, MARGIN, getWidth(), 1);
+            }
+
+            @Override
+            public Dimension getPreferredSize() {
+                return new Dimension(0, MARGIN * 2 + 1);
+            }
+
+            @Override
+            public Dimension getMaximumSize() {
+                return new Dimension(Integer.MAX_VALUE, MARGIN * 2 + 1);
+            }
+        };
+        return l;
+    }
+
+    /** Two equal halves side by side; the right one is set off by a line, like a side panel. */
+    private static JComponent halves(JComponent left, JComponent right) {
+        JPanel p = new JPanel(new GridLayout(1, 2, 24, 0));
+        p.setOpaque(false);
+        right.setBorder(new CompoundBorder(new MatteBorder(0, 1, 0, 0, Ui.BORDER), new EmptyBorder(0, 20, 0, 0)));
+        p.add(left);
+        p.add(right);
+        return p;
+    }
+
+    /**
+     * A read-only text area whose caret never follows text changes. A text area built with its text
+     * moves the caret to the end and queues a scroll to it, which runs once the page is on screen
+     * and scrolls a tall page down; so the text is set only after the caret is told not to follow.
+     */
+    private static <T extends javax.swing.text.JTextComponent> T still(T t, String text) {
+        ((javax.swing.text.DefaultCaret) t.getCaret()).setUpdatePolicy(javax.swing.text.DefaultCaret.NEVER_UPDATE);
+        t.setText(text);
+        return Ui.copyable(t);
     }
 
     /** Gray explanatory text that wraps to the page width. */
     private static JComponent desc(String text) {
-        JTextArea a = Ui.copyable(new JTextArea(text));
+        JTextArea a = still(new JTextArea(), text);
         a.setLineWrap(true);
         a.setWrapStyleWord(true);
         a.setOpaque(false);
@@ -369,12 +483,12 @@ public final class SettingsTab extends JPanel {
             c.fill = GridBagConstraints.HORIZONTAL;
             // Selectable so a value (a path, the SHA-256) can be copied. A long one scrolls inside its
             // row when the page is narrow; the tooltip has it all.
-            values[i] = Ui.copyable(new JTextField(rows[i][1]) {
+            values[i] = still(new JTextField() {
                 @Override
                 public String getToolTipText() {
                     return getText();
                 }
-            });
+            }, rows[i][1]);
             ToolTipManager.sharedInstance().registerComponent(values[i]);
             values[i].setMinimumSize(new Dimension(40, 18));
             values[i].setFont(Ui.mono(12f));
@@ -383,46 +497,6 @@ public final class SettingsTab extends JPanel {
             c.fill = GridBagConstraints.NONE;
         }
         return p;
-    }
-
-    /** The "this PC only / every network" radio pair and the note shown while the latter is chosen. */
-    private record BindChoice(JPanel panel, JRadioButton all) {
-        boolean lan() {
-            return all.isSelected();
-        }
-    }
-
-    private BindChoice bindChoice(boolean lan, String warnKey) {
-        JRadioButton local = new JRadioButton(ctx.m("app.settings.bind.local"), !lan);
-        JRadioButton all = new JRadioButton(ctx.m("app.settings.bind.all"), lan);
-        ButtonGroup group = new ButtonGroup();
-        JPanel p = new JPanel();
-        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
-        p.setOpaque(false);
-        for (JRadioButton r : new JRadioButton[]{local, all}) {
-            r.setOpaque(false);
-            r.setFocusable(false);
-            r.setFont(Ui.font(Font.PLAIN, 13f));
-            r.setAlignmentX(LEFT_ALIGNMENT);
-            group.add(r);
-            p.add(r);
-        }
-        JComponent warn = desc(ctx.m(warnKey));
-        warn.setForeground(Ui.DANGER);
-        warn.setAlignmentX(LEFT_ALIGNMENT);
-        warn.setVisible(lan);
-        all.addItemListener(e -> {
-            warn.setVisible(all.isSelected());
-            p.revalidate();
-        });
-        p.add(Box.createVerticalStrut(4));
-        p.add(warn);
-        return new BindChoice(p, all);
-    }
-
-    /** The address a proxy is bound to: {@code 0.0.0.0:port} (every interface) or {@code 127.0.0.1:port}. */
-    private static String bound(boolean allInterfaces, int port) {
-        return (allInterfaces ? "0.0.0.0:" : "127.0.0.1:") + port;
     }
 
     // ── oeHosts pages ───────────────────────────────────────────
@@ -482,9 +556,55 @@ public final class SettingsTab extends JPanel {
         port.setFont(Ui.font(Font.PLAIN, 13f));
         port.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878; margin:4,8,4,8");
         port.setMaximumSize(new Dimension(140, 34));
-        // Where it listens: this PC only (the default) or every network interface.
-        BindChoice bind = bindChoice(ctx.read(() -> ctx.rawStore().data.settings.fwdproxyLan),
+        // Where it listens: this PC only (the default), one network card, or every interface.
+        NetworkChoice bind = new NetworkChoice(ctx.read(() -> ctx.rawStore().data.settings.fwdproxyBindAddress()),
                 "app.settings.fwdproxy.bind.all.warn");
+        // Authentication: none (the default) or Basic (username and password) other devices must send; the
+        // fields are usable only while that is chosen, and keep their text when switched off.
+        boolean authOn = ctx.read(() -> ctx.rawStore().data.settings.fwdproxyAuth);
+        JRadioButton authNone = new JRadioButton(ctx.m("app.settings.fwdproxy.auth.none"), !authOn);
+        JRadioButton authPassword = new JRadioButton(ctx.m("app.settings.fwdproxy.auth.password"), authOn);
+        ButtonGroup authGroup = new ButtonGroup();
+        for (JRadioButton r : new JRadioButton[]{authNone, authPassword}) {
+            r.setOpaque(false);
+            r.setFocusable(false);
+            r.setFont(Ui.font(Font.PLAIN, 13f));
+            authGroup.add(r);
+        }
+        JTextField user = new JTextField(ctx.read(() -> {
+            String u = ctx.rawStore().data.settings.fwdproxyUser;
+            return u == null ? "" : u;
+        }), 12);
+        user.setFont(Ui.font(Font.PLAIN, 13f));
+        user.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878; margin:4,8,4,8");
+        user.putClientProperty("JTextField.placeholderText", ctx.m("app.settings.fwdproxy.auth.user"));
+        user.setMaximumSize(new Dimension(180, 34));
+        JPasswordField password = new JPasswordField(ctx.read(() -> {
+            String pw = ctx.rawStore().data.settings.fwdproxyPassword;
+            return pw == null ? "" : pw;
+        }), 16);
+        password.setFont(Ui.font(Font.PLAIN, 13f));
+        password.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878; margin:4,8,4,8; showRevealButton:true");
+        password.putClientProperty("JTextField.placeholderText", ctx.m("app.settings.fwdproxy.auth.pw"));
+        password.setMaximumSize(new Dimension(220, 34));
+        JComponent authNote = desc(ctx.m("app.settings.fwdproxy.auth.note"));
+        // The network warning under the PC address shows for any address but 127.0.0.1, with or
+        // without a password; the note under the credentials only while Basic is chosen.
+        Runnable authState = () -> {
+            boolean on = authPassword.isSelected();
+            user.setEnabled(on);
+            password.setEnabled(on);
+            authNote.setVisible(on);
+            boolean lan = !tricatch.oehubapp.ForwardProxy.LOOPBACK.equals(bind.selected());
+            bind.warn.setVisible(lan);
+        };
+        authPassword.addItemListener(e -> {
+            authState.run();
+            if (authPassword.isSelected()) user.requestFocusInWindow();
+        });
+        authNone.addItemListener(e -> authState.run());
+        bind.onChange = authState;
+        authState.run();
         JLabel st = status();
         // Saves the port and the binding, then restarts the proxy with them; the state rows show the outcome.
         JButton restart = Ui.primary(ctx.m("app.settings.server.restart"), Ui.icon("refresh-cw", 13, new Color(0x2d4a14)), () -> {
@@ -498,11 +618,27 @@ public final class SettingsTab extends JPanel {
                 flash(st, ctx.m("app.settings.error.port"), true);
                 return;
             }
+            boolean auth = authPassword.isSelected();
+            String id = user.getText().strip();
+            String pw = new String(password.getPassword());
+            // In screen order: the username before the password.
+            if (auth && id.isEmpty()) {
+                flash(st, ctx.m("app.settings.error.fwdproxy.user"), true);
+                return;
+            }
+            if (auth && pw.isEmpty()) {
+                flash(st, ctx.m("app.settings.error.fwdproxy.password"), true);
+                return;
+            }
             int fp = p;
-            boolean toLan = bind.lan();
+            String to = bind.selected();
             ctx.storeRun(s -> {
                 s.data.settings.fwdproxyPort = fp;
-                s.data.settings.fwdproxyLan = toLan;
+                s.data.settings.putFwdproxyBind(to);
+                s.data.settings.fwdproxyAuth = auth;
+                // Empty fields with authentication off keep the stored username and password for next time.
+                if (!id.isEmpty()) s.data.settings.fwdproxyUser = id;
+                if (!pw.isEmpty()) s.data.settings.fwdproxyPassword = pw;
                 s.save();
             });
             ctx.fireSettingsChanged();
@@ -515,11 +651,12 @@ public final class SettingsTab extends JPanel {
         JTextField[] v = new JTextField[3];
         JPanel info = table(new String[][]{
                 {ctx.m("app.settings.server.state"), "-"},
-                {ctx.m("app.settings.server.port"), "-"},
+                {ctx.m("app.settings.fwdproxy.address"), "-"},
                 {ctx.m("app.settings.server.error"), "-"}}, v);
         // A word in the UI language: see serverPage.
         v[0].setFont(Ui.font(Font.BOLD, 12.5f));
         v[2].setFont(Ui.font(Font.PLAIN, 12.5f));
+        JTextArea addresses = multiLineCell(info, v[1]);
         Runnable refresh = () -> {
             tricatch.oehubapp.ForwardProxy.State s = tricatch.oehubapp.ForwardProxy.state();
             v[0].setText(ctx.m(switch (s) {
@@ -530,21 +667,51 @@ public final class SettingsTab extends JPanel {
             v[0].setForeground(s == tricatch.oehubapp.ForwardProxy.State.RUNNING ? Ui.BC700
                     : s == tricatch.oehubapp.ForwardProxy.State.FAILED ? Ui.DANGER : Ui.MUTED);
             int fp = tricatch.oehubapp.ForwardProxy.port();
-            v[1].setText(fp > 0 ? bound(tricatch.oehubapp.ForwardProxy.lan(), fp) : "-");
+            addresses.setText(fp > 0 ? String.join("\n", reachableAt(tricatch.oehubapp.ForwardProxy.bind(), fp)) : "-");
+            info.revalidate();
             String err = tricatch.oehubapp.ForwardProxy.error();
-            v[2].setText(s == tricatch.oehubapp.ForwardProxy.State.FAILED && err != null ? err : "-");
+            errorRow(info, v[2], s == tricatch.oehubapp.ForwardProxy.State.FAILED ? err : null);
         };
         tricatch.oehubapp.ForwardProxy.onChange(() -> SwingUtilities.invokeLater(refresh));
         refresh.run();
-        return page(desc(ctx.m("app.settings.fwdproxy.desc")), buttons(port), bind.panel(), buttons(restart), info);
+        // The address, port and authentication labels share one width, so their fields line up.
+        JLabel nicLabel = label(ctx.m("app.settings.fwdproxy.nic"));
+        JLabel portLabel = label(ctx.m("app.settings.fwdproxy.port"));
+        JLabel authLabel = label(ctx.m("app.settings.fwdproxy.auth"));
+        sameWidth(nicLabel, portLabel, authLabel);
+        bind.label(nicLabel);
+        // The same layout as the web service page: description | settings | action on the left,
+        // set apart by lines, the state on the right. Under the authentication choice, the username
+        // and password fields sit on a row of their own, starting where the fields above start.
+        int fieldsAt = nicLabel.getPreferredSize().width + 6;
+        JPanel authRow = buttons(authLabel, authNone, authPassword);
+        JPanel credentials = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        credentials.setOpaque(false);
+        credentials.setBorder(new EmptyBorder(0, fieldsAt, 0, 0));
+        user.setColumns(10);
+        password.setColumns(10);
+        credentials.add(user);
+        credentials.add(Box.createHorizontalStrut(6));
+        credentials.add(password);
+        for (JComponent c : new JComponent[]{bind.warn, authNote}) c.setBorder(new EmptyBorder(0, fieldsAt, 0, 0));
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        actions.setOpaque(false);
+        actions.add(restart);
+        return fullPage(halves(column(desc(ctx.m("app.settings.fwdproxy.desc")), line(), bind.row, bind.warn,
+                buttons(portLabel, port), authRow, credentials, authNote, line(), actions), column(info)));
     }
 
-    /** The oeHosts share server (ShareServer): its port, a restart button and its state, like fwdProxyPage. */
-    private JComponent sharePage() {
+    /**
+     * The web service ({@link ShareServer}): its PC address, port and state. Who can reach it directly
+     * is decided by its binding alone.
+     */
+    private JComponent webPage() {
         JTextField port = new JTextField(String.valueOf(ctx.read(() -> ctx.rawStore().data.settings.shareServerPort)), 8);
         port.setFont(Ui.font(Font.PLAIN, 13f));
         port.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878; margin:4,8,4,8");
         port.setMaximumSize(new Dimension(140, 34));
+        NetworkChoice bind = new NetworkChoice(ctx.read(() -> ctx.rawStore().data.settings.shareServerBindAddress()),
+                "app.settings.web.bind.warn");
         JLabel st = status();
         JButton restart = Ui.primary(ctx.m("app.settings.server.restart"), Ui.icon("refresh-cw", 13, new Color(0x2d4a14)), () -> {
             int p;
@@ -558,40 +725,322 @@ public final class SettingsTab extends JPanel {
                 return;
             }
             int sp = p;
+            String to = bind.selected();
             ctx.storeRun(s -> {
                 s.data.settings.shareServerPort = sp;
+                s.data.settings.shareServerBind = to;
                 s.save();
             });
             ctx.fireSettingsChanged();
-            Thread.ofVirtual().name("share-restart").start(ShareServer::restart);
+            Thread.ofVirtual().name("web-restart").start(ShareServer::restart);
         });
         restart.setIconTextGap(5);
-        metaStatus.add(st, "share");
-        metaPages.add("share");
-        JTextField[] v = new JTextField[3];
-        JPanel info = table(new String[][]{
+        metaStatus.add(st, "web");
+        metaPages.add("web");
+        JTextField[] sv = new JTextField[3];
+        JPanel serverInfo = table(new String[][]{
                 {ctx.m("app.settings.server.state"), "-"},
-                {ctx.m("app.settings.server.port"), "-"},
-                {ctx.m("app.settings.server.error"), "-"}}, v);
-        v[0].setFont(Ui.font(Font.BOLD, 12.5f));
-        v[2].setFont(Ui.font(Font.PLAIN, 12.5f));
+                {ctx.m("app.settings.fwdproxy.address"), "-"},
+                {ctx.m("app.settings.server.error"), "-"}}, sv);
+        sv[0].setFont(Ui.font(Font.BOLD, 12.5f));
+        sv[2].setFont(Ui.font(Font.PLAIN, 12.5f));
+        JTextArea serverAddresses = multiLineCell(serverInfo, sv[1]);
+        JLabel nicLabel = label(ctx.m("app.settings.fwdproxy.nic"));
+        JLabel portLabel = label(ctx.m("app.settings.fwdproxy.port"));
+        sameWidth(nicLabel, portLabel);
+        bind.label(nicLabel);
         Runnable refresh = () -> {
             ShareServer.State s = ShareServer.state();
-            v[0].setText(ctx.m(switch (s) {
+            sv[0].setText(ctx.m(switch (s) {
                 case STOPPED -> "app.proxy.status.starting";
                 case RUNNING -> "app.settings.server.running";
                 case FAILED -> "app.settings.server.failed";
             }));
-            v[0].setForeground(s == ShareServer.State.RUNNING ? Ui.BC700
-                    : s == ShareServer.State.FAILED ? Ui.DANGER : Ui.MUTED);
-            int sp = ShareServer.port();
-            v[1].setText(sp > 0 ? bound(false, sp) : "-");
+            sv[0].setForeground(s == ShareServer.State.RUNNING ? Ui.BC700 : s == ShareServer.State.FAILED ? Ui.DANGER : Ui.MUTED);
+            int wp = ShareServer.port();
+            serverAddresses.setText(wp > 0 ? String.join("\n", reachableAt(ShareServer.bind(), wp)) : "-");
             String err = ShareServer.error();
-            v[2].setText(s == ShareServer.State.FAILED && err != null ? err : "-");
+            errorRow(serverInfo, sv[2], s == ShareServer.State.FAILED ? err : null);
+            serverInfo.revalidate();
         };
         ShareServer.onChange(() -> SwingUtilities.invokeLater(refresh));
         refresh.run();
-        return page(desc(ctx.m("app.settings.share.desc")), buttons(port), buttons(restart), info);
+        // The description and settings on the left half, the server's state on the right.
+        // The warning starts where the drop-down does, under it rather than under the label.
+        bind.warn.setBorder(new EmptyBorder(0, nicLabel.getPreferredSize().width + 6, 0, 0));
+        // Left: description | settings | action, set apart by lines; right: the server's state.
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        actions.setOpaque(false);
+        actions.add(restart);
+        return fullPage(halves(column(desc(ctx.m("app.settings.web.desc")), line(), bind.row, bind.warn, buttons(portLabel, port),
+                line(), actions), column(serverInfo)));
+    }
+
+    /**
+     * Installing the CA on a mobile device: a QR code of the web service's certificate page
+     * ({@link tricatch.oehubapp.PhoneSetup}), which the phone opens through the forward proxy
+     * ({@link tricatch.oehubapp.ForwardProxy#webService}). Only the download; nothing is configured here.
+     */
+    private JComponent mobilePage() {
+        // The phone reaches the page through the forward proxy, so the proxy has to be open to the
+        // phone's network and the web service has to run (on 127.0.0.1 at least).
+        JComponent fwdOff = OeDialog.warn(ctx.m("app.settings.phone.off"), null);
+        JPanel fwdOffButtons = buttons(Ui.secondary(ctx.m("app.settings.phone.open.fwd"), "settings", () -> showPage("fwd")));
+        JComponent webOff = OeDialog.warn(ctx.m("app.settings.phone.web.stopped"), null);
+        JPanel webOffButtons = buttons(Ui.secondary(ctx.m("app.settings.phone.open.web"), "settings", () -> showPage("web")));
+
+        JComboBox<tricatch.oehubapp.PhoneSetup.Lan> address = new JComboBox<>();
+        address.setFont(Ui.font(Font.PLAIN, 13f));
+        address.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878");
+        address.setFocusable(false);
+        address.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> l, Object value, int i, boolean sel, boolean focus) {
+                super.getListCellRendererComponent(l, value, i, sel, focus);
+                if (value instanceof tricatch.oehubapp.PhoneSetup.Lan a) setText(ctx.m("app.settings.bind.iface", a.ip(), a.iface()));
+                return this;
+            }
+        });
+        JLabel addressLabel = label(ctx.m("app.settings.phone.address"));
+        sameWidth(addressLabel);
+        JPanel addressRow = buttons(addressLabel, address);
+        JComponent noAddress = OeDialog.warn(ctx.m("app.settings.phone.no.address"), null);
+
+        JTextField[] v = new JTextField[1];
+        JPanel info = table(new String[][]{{ctx.m("app.settings.phone.ca.url"), "-"}}, v);
+        JButton copyUrl = Ui.secondary(ctx.m("app.settings.phone.copy.url"), "copy", () -> {
+            OeDialog.copy(v[0].getText());
+            ctx.toast(ctx.m("app.settings.copied"));
+        });
+        QrCode qr = new QrCode(196);
+        qr.setBorder(new LineBorder(Ui.BORDER));
+        JPanel qrRow = new JPanel(new BorderLayout(18, 0));
+        qrRow.setOpaque(false);
+        JPanel qrWrap = new JPanel(new BorderLayout());
+        qrWrap.setOpaque(false);
+        qrWrap.add(qr, BorderLayout.NORTH);
+        qrRow.add(qrWrap, BorderLayout.WEST);
+        JTextArea steps = (JTextArea) desc("");
+        qrRow.add(steps, BorderLayout.CENTER);
+        JComponent ready = OeDialog.stack(14, addressRow, info, buttons(copyUrl), qrRow);
+
+        Runnable fill = () -> {
+            Object sel = address.getSelectedItem();
+            String ip = sel instanceof tricatch.oehubapp.PhoneSetup.Lan a ? a.ip() : null;
+            int wp = ShareServer.port(), fp = tricatch.oehubapp.ForwardProxy.port();
+            String url = ip == null || wp <= 0 ? null : tricatch.oehubapp.PhoneSetup.pageUrl(ip, wp);
+            v[0].setText(url == null ? "-" : url);
+            steps.setText(ctx.m("app.settings.phone.steps", ip == null ? "-" : ip, fp > 0 ? String.valueOf(fp) : "-"));
+            copyUrl.setEnabled(url != null);
+            qr.setText(url);
+        };
+        Runnable refresh = () -> {
+            boolean fwdOn = tricatch.oehubapp.ForwardProxy.state() == tricatch.oehubapp.ForwardProxy.State.RUNNING
+                    && tricatch.oehubapp.ForwardProxy.lan();
+            boolean webOn = ShareServer.state() == ShareServer.State.RUNNING;
+            // The addresses the proxy answers on: the phone sets one of them as its Wi-Fi proxy.
+            Object prev = address.getSelectedItem();
+            String prevIp = prev instanceof tricatch.oehubapp.PhoneSetup.Lan a ? a.ip() : null;
+            List<tricatch.oehubapp.PhoneSetup.Lan> reachable = new ArrayList<>(tricatch.oehubapp.PhoneSetup.addresses());
+            reachable.removeIf(a -> !answersOn(tricatch.oehubapp.ForwardProxy.bind(), a.ip()));
+            address.removeAllItems();
+            for (tricatch.oehubapp.PhoneSetup.Lan a : reachable) address.addItem(a);
+            for (tricatch.oehubapp.PhoneSetup.Lan a : reachable) if (a.ip().equals(prevIp)) address.setSelectedItem(a);
+            fwdOff.setVisible(!fwdOn);
+            fwdOffButtons.setVisible(!fwdOn);
+            webOff.setVisible(!webOn);
+            webOffButtons.setVisible(!webOn);
+            noAddress.setVisible(fwdOn && webOn && reachable.isEmpty());
+            ready.setVisible(fwdOn && webOn && !reachable.isEmpty());
+            fill.run();
+            ready.revalidate();
+        };
+        address.addActionListener(e -> fill.run());
+        ShareServer.onChange(() -> SwingUtilities.invokeLater(refresh));
+        tricatch.oehubapp.ForwardProxy.onChange(() -> SwingUtilities.invokeLater(refresh));
+        refresh.run();
+        return page(desc(ctx.m("app.settings.phone.desc")), fwdOff, fwdOffButtons, webOff, webOffButtons, noAddress, ready);
+    }
+
+    /** Whether a server bound to {@code bind} answers on {@code ip}. */
+    private static boolean answersOn(String bind, String ip) {
+        return tricatch.oehubapp.ForwardProxy.ALL.equals(bind) || bind.equals(ip);
+    }
+
+    /** Gives the labels of one form the same width (at least {@link #FORM_LABEL_WIDTH}), so their fields line up. */
+    private static void sameWidth(JLabel... labels) {
+        int w = FORM_LABEL_WIDTH;
+        for (JLabel l : labels) {
+            l.setFont(Ui.font(Font.BOLD, 12.5f));
+            w = Math.max(w, l.getPreferredSize().width + 10);
+        }
+        for (JLabel l : labels) l.setPreferredSize(new Dimension(w, l.getPreferredSize().height));
+    }
+
+    /** Label column width of the address / port forms. */
+    private static final int FORM_LABEL_WIDTH = 64;
+
+    /**
+     * The error row of a server's status {@link #table}: shown with {@code error} while there is one,
+     * hidden (label and value) otherwise.
+     */
+    private static void errorRow(JPanel table, JTextField field, String error) {
+        boolean show = error != null && !error.isBlank();
+        field.setText(show ? error : "");
+        GridBagLayout grid = (GridBagLayout) table.getLayout();
+        int row = grid.getConstraints(field).gridy;
+        // GridBagLayout skips hidden components, so the row takes no space.
+        for (Component c : table.getComponents()) {
+            if (grid.getConstraints(c).gridy == row) c.setVisible(show);
+        }
+        table.revalidate();
+    }
+
+    /**
+     * Replaces a {@link #table} value field with a text area in the same grid cell, for a value that
+     * can take several lines (every address while bound to 0.0.0.0).
+     */
+    private static JTextArea multiLineCell(JPanel table, JTextField field) {
+        JTextArea a = still(new JTextArea(), "-");
+        a.setOpaque(false);
+        a.setBorder(null);
+        a.setFont(field.getFont());
+        a.setForeground(field.getForeground());
+        GridBagConstraints cell = ((GridBagLayout) table.getLayout()).getConstraints(field);
+        table.remove(field);
+        table.add(a, cell);
+        return a;
+    }
+
+    /**
+     * The addresses a server (forward proxy, web service) answers on for {@code bind}: 127.0.0.1
+     * always, then the chosen address, or for 0.0.0.0 every IPv4 address, with the network card's name.
+     */
+    private List<String> reachableAt(String bind, int port) {
+        List<String> out = new ArrayList<>();
+        out.add(tricatch.oehubapp.ForwardProxy.LOOPBACK + ":" + port);
+        if (tricatch.oehubapp.ForwardProxy.LOOPBACK.equals(bind)) return out;
+        boolean all = tricatch.oehubapp.ForwardProxy.ALL.equals(bind);
+        boolean found = false;
+        for (tricatch.oehubapp.PhoneSetup.Lan l : tricatch.oehubapp.PhoneSetup.addresses()) {
+            if (!all && !l.ip().equals(bind)) continue;
+            out.add(ctx.m("app.settings.bind.iface", l.ip() + ":" + port, l.iface()));
+            found = true;
+        }
+        if (!all && !found) out.add(bind + ":" + port);
+        return out;
+    }
+
+    /**
+     * A server's address as a drop-down of this PC's networks: 127.0.0.1 (this PC only), each
+     * IPv4 address with its network card's name, and 0.0.0.0 (every interface). A stored address this
+     * PC no longer has stays in the list, marked, so the setting is visible rather than lost.
+     */
+    private final class NetworkChoice {
+        /** One entry of the drop-down: the address to bind and the text shown for it. */
+        private record Choice(String address, String text) {
+            @Override
+            public String toString() {
+                return text;
+            }
+        }
+
+        /** The widest the label / drop-down row grows on a wide page. */
+        private static final int ROW_MAX_WIDTH = 600;
+
+        /** The form label and the drop-down. */
+        final JPanel row;
+        /** The network-exposure warning, shown while the choice is not 127.0.0.1; placed by the page. */
+        final JComponent warn;
+        private final JComboBox<Choice> combo = new JComboBox<>();
+        private String selected;
+        /** Runs after the choice changes; the page decides which warning shows (it depends on the password too). */
+        Runnable onChange;
+        /** Set while the list is being refilled, so the refill does not count as the user's choice. */
+        private boolean filling;
+
+        NetworkChoice(String current, String warnKey) {
+            selected = current;
+            warn = desc(ctx.m(warnKey));
+            combo.setFont(Ui.font(Font.PLAIN, 13f));
+            combo.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878");
+            combo.setFocusable(false);
+            combo.addActionListener(e -> {
+                if (filling || !(combo.getSelectedItem() instanceof Choice c)) return;
+                selected = c.address();
+                showWarn();
+            });
+            // Label and drop-down: the drop-down takes what width is left (a long network card name is cut).
+            row = new JPanel(new BorderLayout(6, 0)) {
+                @Override
+                public Dimension getMaximumSize() {
+                    return new Dimension(ROW_MAX_WIDTH, getPreferredSize().height);
+                }
+            };
+            row.setOpaque(false);
+            row.add(combo, BorderLayout.CENTER);
+            // The networks are read again each time the list opens (a cable plugged in, another
+            // Wi-Fi since the page was built), so no refresh button is needed.
+            combo.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
+                @Override
+                public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) {
+                    reload();
+                }
+
+                @Override
+                public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {
+                }
+
+                @Override
+                public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) {
+                }
+            });
+            combo.setMinimumSize(new Dimension(80, combo.getPreferredSize().height));
+            warn.setForeground(Ui.DANGER);
+            reload();
+        }
+
+        String selected() {
+            return selected;
+        }
+
+        /** Puts the form label in front of the drop-down. */
+        void label(JLabel l) {
+            row.add(l, BorderLayout.WEST);
+        }
+
+        /** Lists this PC's networks again (each time the drop-down opens), keeping the choice. */
+        void reload() {
+            List<Choice> items = new ArrayList<>();
+            items.add(new Choice(tricatch.oehubapp.ForwardProxy.LOOPBACK, ctx.m("app.settings.bind.local")));
+            boolean found = false;
+            for (tricatch.oehubapp.PhoneSetup.Lan l : tricatch.oehubapp.PhoneSetup.addresses()) {
+                items.add(new Choice(l.ip(), ctx.m("app.settings.bind.iface", l.ip(), l.iface())));
+                found |= l.ip().equals(selected);
+            }
+            boolean special = tricatch.oehubapp.ForwardProxy.LOOPBACK.equals(selected)
+                    || tricatch.oehubapp.ForwardProxy.ALL.equals(selected);
+            if (!found && !special) items.add(new Choice(selected, ctx.m("app.settings.bind.iface.missing", selected)));
+            items.add(new Choice(tricatch.oehubapp.ForwardProxy.ALL, ctx.m("app.settings.fwdproxy.bind.all")));
+            filling = true;
+            try {
+                combo.removeAllItems();
+                for (Choice c : items) {
+                    combo.addItem(c);
+                    if (c.address().equals(selected)) combo.setSelectedItem(c);
+                }
+            } finally {
+                filling = false;
+            }
+            showWarn();
+        }
+
+        private void showWarn() {
+            if (onChange != null) onChange.run();
+            else warn.setVisible(!tricatch.oehubapp.ForwardProxy.LOOPBACK.equals(selected));
+            row.revalidate();
+            row.repaint();
+        }
     }
 
     /**
@@ -720,34 +1169,6 @@ public final class SettingsTab extends JPanel {
         return page(desc(ctx.m("app.settings.agent.desc")), info, missing, inUse, profileRow, none, option, actions, hint);
     }
 
-    /** {@code page} with {@code actions} at its bottom right, just above the bottom bar. */
-    private static JComponent withActions(JComponent page, JComponent... actions) {
-        return withActionRows(page, actions);
-    }
-
-    /** {@code page} with rows of buttons, each right-aligned, at its bottom right above the bottom bar. */
-    private static JComponent withActionRows(JComponent page, JComponent[]... rows) {
-        JPanel south = new JPanel();
-        south.setLayout(new BoxLayout(south, BoxLayout.Y_AXIS));
-        south.setBackground(Color.WHITE);
-        south.setBorder(new EmptyBorder(10, 22, 14, 22));
-        for (int r = 0; r < rows.length; r++) {
-            if (r > 0) south.add(Box.createVerticalStrut(8));
-            JPanel row = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
-            row.setOpaque(false);
-            for (int i = 0; i < rows[r].length; i++) {
-                if (i > 0) row.add(Box.createHorizontalStrut(8));
-                row.add(rows[r][i]);
-            }
-            south.add(row);
-        }
-        JPanel p = new JPanel(new BorderLayout());
-        p.add(page, BorderLayout.CENTER);
-        p.add(south, BorderLayout.SOUTH);
-        return p;
-    }
-
-
     private static String presetsText(List<Store.Preset> list) {
         StringBuilder b = new StringBuilder();
         for (Store.Preset p : list) b.append(p.name).append(" | ").append(p.value).append('\n');
@@ -764,14 +1185,19 @@ public final class SettingsTab extends JPanel {
     // ── oeProxy pages ───────────────────────────────────────────
 
     private JComponent caPage() {
-        JTextField[] v = new JTextField[6];
+        // The certificate's details on the left, its files on the right; refreshCa fills both
+        // through one array (details 0-3, files 4-5).
+        JTextField[] d = new JTextField[4];
         JPanel info = table(new String[][]{
                 {ctx.m("app.settings.ca.subject"), "-"},
                 {ctx.m("app.settings.ca.valid"), "-"},
                 {ctx.m("app.settings.ca.sha256"), "-"},
-                {ctx.m("app.settings.ca.trust"), "-"},
+                {ctx.m("app.settings.ca.trust"), "-"}}, d);
+        JTextField[] f = new JTextField[2];
+        JPanel files = table(new String[][]{
                 {ctx.m("app.settings.ca.file"), "-"},
-                {ctx.m("app.settings.ca.key"), "-"}}, v);
+                {ctx.m("app.settings.ca.key"), "-"}}, f);
+        JTextField[] v = {d[0], d[1], d[2], d[3], f[0], f[1]};
         JLabel st = status();
         // Registering is offered only while the OS does not trust the CA yet.
         JButton[] register = new JButton[2];
@@ -798,8 +1224,12 @@ public final class SettingsTab extends JPanel {
         // Messages go to the bottom bar; the buttons sit at the bottom right, the main action last.
         metaStatus.add(st, "ca");
         metaPages.add("ca");
-        // Actions on the current certificate sit under its rows; replacing it sits at the bottom right.
-        return withActions(page(desc(ctx.m("app.settings.ca.desc")), info, buttons(install, copyCmd, export, folder)), imp, regen);
+        // Left: the CA's actions (register it; save a copy; bring in or make another one).
+        // Right: its files and their folder.
+        return fullPage(halves(
+                column(desc(ctx.m("app.settings.ca.desc")), line(), info, line(), rightAligned(copyCmd, install),
+                        rightAligned(export, imp, regen)),
+                column(desc(ctx.m("app.settings.ca.files.desc")), line(), files, line(), rightAligned(folder))));
     }
 
     /** Fills the CA rows; returns whether the OS trusts the CA (null: no CA, or cannot be told). */
@@ -1048,18 +1478,24 @@ public final class SettingsTab extends JPanel {
     }
 
     private JComponent serverPage() {
-        // Where it listens: every network interface (the default, so phones can use it) or this PC only.
-        BindChoice bind = bindChoice(ctx.read(() -> ctx.rawStore().data.settings.reverseProxyLan),
+        // Where it listens: this PC only, one network card (with 127.0.0.1), or every interface (the default).
+        NetworkChoice bind = new NetworkChoice(ctx.read(() -> ctx.rawStore().data.settings.reverseProxyBindAddress()),
                 "app.settings.server.bind.all.warn");
+        JLabel nicLabel = label(ctx.m("app.settings.fwdproxy.nic"));
+        sameWidth(nicLabel);
+        bind.label(nicLabel);
+        bind.warn.setBorder(new EmptyBorder(0, nicLabel.getPreferredSize().width + 6, 0, 0));
         JTextField[] v = new JTextField[3];
         JPanel info = table(new String[][]{
                 {ctx.m("app.settings.server.state"), "-"},
-                {ctx.m("app.settings.server.port"), "-"},
+                {ctx.m("app.settings.fwdproxy.address"), "-"},
                 {ctx.m("app.settings.server.error"), "-"}}, v);
         // The status is a word in the UI language: Korean in the mono font falls back to a taller
         // glyph that the row cuts off at the top.
         v[0].setFont(Ui.font(Font.BOLD, 12.5f));
         v[2].setFont(Ui.font(Font.PLAIN, 12.5f));
+        // Every address it answers on, like the forward proxy and web service pages.
+        JTextArea addresses = multiLineCell(info, v[1]);
         Runnable refresh = () -> {
             ProxyRuntime.State s = ProxyRuntime.state();
             v[0].setText(ctx.m(switch (s) {
@@ -1068,22 +1504,25 @@ public final class SettingsTab extends JPanel {
                 case FAILED -> "app.settings.server.failed";
             }));
             v[0].setForeground(s == ProxyRuntime.State.RUNNING ? Ui.BC700 : s == ProxyRuntime.State.FAILED ? Ui.DANGER : Ui.MUTED);
-            v[1].setText(bound(ProxyRuntime.lan(), ProxyRuntime.port()));
-            v[2].setText(s == ProxyRuntime.State.FAILED && ProxyRuntime.error() != null ? ProxyRuntime.error() : "-");
+            addresses.setText(String.join("\n", reachableAt(ProxyRuntime.bind(), ProxyRuntime.port())));
+            info.revalidate();
+            errorRow(info, v[2], s == ProxyRuntime.State.FAILED ? ProxyRuntime.error() : null);
         };
         ProxyRuntime.onChange(() -> SwingUtilities.invokeLater(refresh));
         refresh.run();
         // Saves the binding, then restarts the proxy with it; the state rows show the outcome.
         JButton restart = Ui.primary(ctx.m("app.settings.server.restart"), Ui.icon("refresh-cw", 13, new Color(0x2d4a14)), () -> {
-            boolean toLan = bind.lan();
+            String to = bind.selected();
             ctx.storeRun(s -> {
-                s.data.settings.reverseProxyLan = toLan;
+                s.data.settings.putReverseProxyBind(to);
                 s.save();
             });
             ProxyRuntime.restart();
         });
         restart.setIconTextGap(5);
-        return page(desc(ctx.m("app.settings.server.desc")), bind.panel(), buttons(restart), info);
+        // Left: description | access choice | action; right: the state.
+        return fullPage(halves(column(desc(ctx.m("app.settings.server.desc")), line(), bind.row, bind.warn, line(), rightAligned(restart)),
+                column(info)));
     }
 
     // ── General pages ───────────────────────────────────────────
@@ -1135,9 +1574,15 @@ public final class SettingsTab extends JPanel {
             if (i > 0) checks.add(Box.createHorizontalStrut(18));
             checks.add(parts[i]);
         }
-        // Export / import first, then the data file itself, with a line between the two blocks.
-        return page(desc(ctx.m("app.data.desc")), checks, buttons(ex, in), separator(),
-                desc(ctx.m("app.settings.data.desc")), info, buttons(folder));
+        // Left: export / import (what changes data), description | choice | actions, set apart by
+        // lines; right: where the data file is (looking only).
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        actions.setOpaque(false);
+        actions.add(ex);
+        actions.add(Box.createHorizontalStrut(6));
+        actions.add(in);
+        return fullPage(halves(column(desc(ctx.m("app.data.desc")), line(), checks, line(), actions),
+                column(desc(ctx.m("app.settings.data.desc")), line(), info, line(), rightAligned(folder))));
     }
 
     /** The data page's check boxes, in {@link Parts} order. */
@@ -1161,21 +1606,6 @@ public final class SettingsTab extends JPanel {
         boolean[] on = {p.hosts(), p.vhosts(), p.settings(), p.ca()};
         for (int i = 0; i < on.length; i++) if (on[i]) n.add(ctx.m(DATA_PARTS[i]));
         return String.join(", ", n);
-    }
-
-    /** A full-width 1px line with some air around it, between two blocks of a page. */
-    private static JComponent separator() {
-        JPanel line = new JPanel() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                g.setColor(Ui.BORDER);
-                g.fillRect(0, getHeight() / 2, getWidth(), 1);
-            }
-        };
-        line.setOpaque(false);
-        line.setPreferredSize(new Dimension(10, 13));
-        line.setMaximumSize(new Dimension(Integer.MAX_VALUE, 13));
-        return line;
     }
 
     /** Exports the chosen parts to one backup ZIP ({@link tricatch.oehubapp.Backup}). */
@@ -1462,7 +1892,8 @@ public final class SettingsTab extends JPanel {
             lib("oe-proxy", "https://github.com/tricatch/oeProxy", "io.github.tricatch:oe-proxy", "MIT", MIT),
             lib("RSyntaxTextArea", "https://github.com/bobbylight/RSyntaxTextArea", "com.fifesoft:rsyntaxtextarea", "BSD 3-Clause", BSD),
             lib("SLF4J", "https://www.slf4j.org", "org.slf4j:slf4j-api", "MIT", MIT),
-            lib("SnakeYAML", "https://bitbucket.org/snakeyaml/snakeyaml", "org.yaml:snakeyaml", "Apache 2.0", APACHE));
+            lib("SnakeYAML", "https://bitbucket.org/snakeyaml/snakeyaml", "org.yaml:snakeyaml", "Apache 2.0", APACHE),
+            lib("ZXing", "https://github.com/zxing/zxing", "com.google.zxing:core", "Apache 2.0", APACHE));
 
     /** Name (a link to the homepage) / version / license badge rows. */
     private JComponent licenses() {

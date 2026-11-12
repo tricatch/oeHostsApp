@@ -67,7 +67,7 @@ class ShareServerTest {
         // Not shared (valid token), unknown, outside /hosts/.
         assertEquals(404, get(bare(port, s.shareToken(b.id))).statusCode());
         assertEquals(404, get(bare(port, "nope")).statusCode());
-        assertEquals(404, get("http://127.0.0.1:" + port + "/").statusCode());
+        assertEquals(404, get("http://127.0.0.1:" + port + "/elsewhere").statusCode());
 
         // Turning sharing off takes effect on the next request; edits show up likewise.
         s.updateContent(Store.Kind.HOSTS, a.id, "10.0.0.1 api.example.test\n");
@@ -105,13 +105,83 @@ class ShareServerTest {
     }
 
     @Test
-    void loopbackHostNames() {
-        assertTrue(ShareServer.loopbackHost("127.0.0.1:36981"));
-        assertTrue(ShareServer.loopbackHost("LOCALHOST"));
-        assertTrue(ShareServer.loopbackHost("[::1]:36981"));
-        assertFalse(ShareServer.loopbackHost("127.0.0.1.evil.example"));
-        assertFalse(ShareServer.loopbackHost("[::2]:1"));
-        assertFalse(ShareServer.loopbackHost(null));
+    void allowedHostNames() {
+        assertTrue(ShareServer.allowedHost("127.0.0.1:36981"));
+        assertTrue(ShareServer.allowedHost("LOCALHOST"));
+        assertTrue(ShareServer.allowedHost("[::1]:36981"));
+        assertFalse(ShareServer.allowedHost("127.0.0.1.evil.example"));
+        assertFalse(ShareServer.allowedHost("[::2]:1"));
+        assertFalse(ShareServer.allowedHost(null));
+        // This PC's own network address (a phone reaching it over Wi-Fi), but no other address.
+        for (PhoneSetup.Lan l : PhoneSetup.addresses()) assertTrue(ShareServer.allowedHost(l.ip() + ":36981"), l.ip());
+        assertFalse(ShareServer.allowedHost("203.0.113.7:36981"));
+    }
+
+    @Test
+    void servesThePhoneSetupPageAndTheCa() throws Exception {
+        Store s = Store.open(dir.resolve("data.json"), null);
+        s.data.settings.shareServerPort = freePort();
+        ShareServer.start(s);
+        assertEquals(ShareServer.State.RUNNING, ShareServer.state(), ShareServer.error());
+        String base = "http://127.0.0.1:" + ShareServer.port();
+        HttpClient client = HttpClient.newHttpClient();
+        try {
+            // No CA yet: the page opens, the download is a 404.
+            PhoneSetup.caCert = () -> null;
+            HttpResponse<String> page = client.send(HttpRequest.newBuilder(URI.create(base + "/"))
+                    .header("Accept-Language", "ko-KR,ko;q=0.9,en;q=0.8").build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, page.statusCode());
+            assertTrue(page.headers().firstValue("Content-Type").orElse("").startsWith("text/html"));
+            assertTrue(page.body().contains(PhoneSetup.CA_PATH));
+            assertTrue(page.body().contains(Messages.of("ko").get("app.phone.page.download")));
+            assertEquals(404, get(base + PhoneSetup.CA_PATH).statusCode());
+
+            // With a CA: its public certificate in DER, nothing else.
+            Path caDir = dir.resolve("ca");
+            new tricatch.oe.proxy.standalone.CaGenerator().generate(caDir, "Test CA", true);
+            PhoneSetup.caCert = () -> caDir.resolve("ca.cer");
+            HttpResponse<byte[]> ca = client.send(HttpRequest.newBuilder(URI.create(base + PhoneSetup.CA_PATH)).build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            assertEquals(200, ca.statusCode());
+            assertEquals("application/x-x509-ca-cert", ca.headers().firstValue("Content-Type").orElse(""));
+            assertTrue(ca.headers().firstValue("Content-Disposition").orElse("").contains("oehubapp-ca.crt"));
+            java.security.cert.X509Certificate x = (java.security.cert.X509Certificate)
+                    java.security.cert.CertificateFactory.getInstance("X.509").generateCertificate(new java.io.ByteArrayInputStream(ca.body()));
+            assertTrue(x.getSubjectX500Principal().getName().contains("Test CA"));
+            assertEquals(404, get(base + "/ca.pfx").statusCode());
+        } finally {
+            PhoneSetup.caCert = ProxyRuntime::caCert;
+        }
+    }
+
+    @Test
+    void bindsTheChosenAddressAndAlwaysLoopback() throws Exception {
+        java.util.List<PhoneSetup.Lan> lans = PhoneSetup.addresses();
+        org.junit.jupiter.api.Assumptions.assumeFalse(lans.isEmpty(), "no network card address on this machine");
+        String ip = lans.get(0).ip();
+        Store s = Store.open(dir.resolve("data.json"), null);
+        assertEquals("127.0.0.1", s.data.settings.shareServerBindAddress());
+        s.data.settings.shareServerPort = freePort();
+        s.data.settings.shareServerBind = ip;
+        ShareServer.start(s);
+        assertEquals(ShareServer.State.RUNNING, ShareServer.state(), ShareServer.error());
+        assertTrue(ShareServer.lan());
+        int port = ShareServer.port();
+        // Over the network address (the QR code's URL) and over 127.0.0.1 (share URLs on this PC).
+        assertEquals(200, get(PhoneSetup.pageUrl(ip, port)).statusCode());
+        assertEquals(200, get("http://127.0.0.1:" + port + "/").statusCode());
+
+        // Every interface.
+        s.data.settings.shareServerBind = "0.0.0.0";
+        ShareServer.restart();
+        assertEquals(ShareServer.State.RUNNING, ShareServer.state(), ShareServer.error());
+        assertEquals(200, get(PhoneSetup.pageUrl(ip, port)).statusCode());
+        assertEquals(200, get("http://127.0.0.1:" + port + "/").statusCode());
+
+        // An address this PC does not have: reported, not moved elsewhere.
+        s.data.settings.shareServerBind = "203.0.113.7";
+        ShareServer.restart();
+        assertEquals(ShareServer.State.FAILED, ShareServer.state());
     }
 
     @Test

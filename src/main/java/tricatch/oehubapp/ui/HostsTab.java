@@ -680,8 +680,9 @@ public final class HostsTab extends JPanel {
     }
 
     /**
-     * Sharing of the open profile for SwitchHosts and the like: a switch, the URL ShareServer serves
-     * it at, and Copy. Turning the switch on or off takes effect at once.
+     * Sharing of the open profile for SwitchHosts and the like: a switch, the URL the web service
+     * (ShareServer) serves it at (with a choice of this PC's address while it is on the network), and
+     * Copy. Turning the switch on or off takes effect at once.
      */
     /** The share dialog of the open profile (also used by MainWindow's screenshot mode). */
     void showShare() {
@@ -712,7 +713,33 @@ public final class HostsTab extends JPanel {
 
             JComponent desc = OeDialog.note(ctx.m("app.share.desc"));
             Dialogs.fixWidth(desc, 580);
-            List<JComponent> parts = new ArrayList<>(List.of(desc, swRow, urlField));
+            List<JComponent> parts = new ArrayList<>(List.of(desc, swRow));
+            // On the network too: the URL can name this PC by one of the addresses the web service
+            // answers on, for SwitchHosts or an agent on another machine. 127.0.0.1 stays the default.
+            JComboBox<String> host = null;
+            if (tricatch.oehubapp.ShareServer.lan()) {
+                JComboBox<String> h = new JComboBox<>();
+                h.setFont(Ui.font(Font.PLAIN, 13f));
+                h.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878");
+                h.setFocusable(false);
+                h.addItem(tricatch.oehubapp.ForwardProxy.LOOPBACK);
+                String bound = tricatch.oehubapp.ShareServer.bind();
+                for (tricatch.oehubapp.PhoneSetup.Lan l : tricatch.oehubapp.PhoneSetup.addresses()) {
+                    if (tricatch.oehubapp.ForwardProxy.ALL.equals(bound) || bound.equals(l.ip())) h.addItem(l.ip());
+                }
+                h.addActionListener(e -> urlField.setText(tricatch.oehubapp.ShareServer.url(
+                        String.valueOf(h.getSelectedItem()), port, token, active.name)));
+                JLabel hostLabel = new JLabel(ctx.m("app.share.host"));
+                hostLabel.setFont(Ui.font(Font.BOLD, 12.5f));
+                hostLabel.setForeground(Ui.MUTED);
+                JPanel hostRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+                hostRow.setOpaque(false);
+                hostRow.add(hostLabel);
+                hostRow.add(h);
+                parts.add(hostRow);
+                host = h;
+            }
+            parts.add(urlField);
             if (tricatch.oehubapp.ShareServer.state() == tricatch.oehubapp.ShareServer.State.FAILED) {
                 JComponent w = OeDialog.warn(ctx.m("app.share.server.failed", port,
                         String.valueOf(tricatch.oehubapp.ShareServer.error())), null);
@@ -722,13 +749,15 @@ public final class HostsTab extends JPanel {
             d.body(OeDialog.stack(12, parts.toArray(new JComponent[0])));
 
             JButton copy = d.button(ctx.m("app.share.copy"), true, () -> {
-                OeDialog.copy(url);
+                OeDialog.copy(urlField.getText());
                 ctx.toast(ctx.m("app.share.copied"));
             });
             d.button(ctx.m("btn.close"), false, d::dispose);
+            JComboBox<String> hostChoice = host;
             Runnable sync = () -> {
                 urlField.setEnabled(sw.isOn());
                 copy.setEnabled(sw.isOn());
+                if (hostChoice != null) hostChoice.setEnabled(sw.isOn());
             };
             sw.onChange(on -> {
                 Store.Item r = ctx.store(s -> s.setShared(id, on));

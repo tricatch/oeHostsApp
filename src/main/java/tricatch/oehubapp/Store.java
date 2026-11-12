@@ -101,12 +101,79 @@ public final class Store {
     public static class Settings {
         public String proxySvr = DEFAULT_PROXY_SVR;
         public int fwdproxyPort = DEFAULT_FWDPROXY_PORT;
-        /** Desktop app: forward proxy on every network interface (0.0.0.0) instead of 127.0.0.1 only. */
+        /**
+         * Older data: forward proxy on every network interface (0.0.0.0) instead of 127.0.0.1 only. Read
+         * when {@link #fwdproxyBind} is null, and kept in step with it so an older version still opens
+         * the proxy to the network when this one does.
+         */
         public boolean fwdproxyLan;
+        /**
+         * Desktop app: the address the forward proxy listens on: {@code 127.0.0.1}, one of this PC's
+         * IPv4 addresses (one network card), or {@code 0.0.0.0} (every interface). Null in older data.
+         */
+        public String fwdproxyBind;
+
+        /**
+         * Desktop app: whether the forward proxy asks other devices for {@link #fwdproxyUser} and
+         * {@link #fwdproxyPassword} (Basic proxy authentication). Requests to 127.0.0.1 are never asked.
+         */
+        public boolean fwdproxyAuth;
+        /** Desktop app: the forward proxy username and password; kept when authentication is turned off again. */
+        public String fwdproxyUser;
+        public String fwdproxyPassword;
+
+        /** The username and password the forward proxy asks for, or null when it asks for none. */
+        public String[] fwdproxyCredentials() {
+            if (!fwdproxyAuth || fwdproxyUser == null || fwdproxyUser.isEmpty()
+                    || fwdproxyPassword == null || fwdproxyPassword.isEmpty()) {
+                return null;
+            }
+            return new String[]{fwdproxyUser, fwdproxyPassword};
+        }
+
+        /** {@link #fwdproxyBind}, or what the older {@link #fwdproxyLan} meant when it is not set. */
+        public String fwdproxyBindAddress() {
+            if (fwdproxyBind != null && !fwdproxyBind.isBlank()) return fwdproxyBind.strip();
+            return fwdproxyLan ? ForwardProxy.ALL : ForwardProxy.LOOPBACK;
+        }
+
+        /** Stores the forward proxy address, and the older flag next to it. */
+        public void putFwdproxyBind(String bind) {
+            fwdproxyBind = bind;
+            fwdproxyLan = !ForwardProxy.LOOPBACK.equals(bind);
+        }
         /** Desktop app: reverse proxy on every network interface (the default) instead of 127.0.0.1 only. */
         public boolean reverseProxyLan = true;
-        /** Desktop app: port of the oeHosts share server ({@link ShareServer}, 127.0.0.1 only). */
+        /**
+         * Desktop app: the reverse proxy's binding: 127.0.0.1, one of this PC's IPv4 addresses
+         * (127.0.0.1 is opened next to it), or 0.0.0.0. Null in older data, which
+         * {@link #reverseProxyLan} then decides (every interface by default).
+         */
+        public String reverseProxyBind;
+
+        /** {@link #reverseProxyBind}, or what the older {@link #reverseProxyLan} meant when it is not set. */
+        public String reverseProxyBindAddress() {
+            if (reverseProxyBind != null && !reverseProxyBind.isBlank()) return reverseProxyBind.strip();
+            return reverseProxyLan ? ForwardProxy.ALL : ForwardProxy.LOOPBACK;
+        }
+
+        /** Stores the reverse proxy address, and the older flag next to it for older versions. */
+        public void putReverseProxyBind(String bind) {
+            reverseProxyBind = bind;
+            reverseProxyLan = !ForwardProxy.LOOPBACK.equals(bind);
+        }
+        /** Desktop app: port of the web service ({@link ShareServer}: hosts sharing, phone setup page). */
         public int shareServerPort = DEFAULT_SHARE_PORT;
+        /**
+         * Desktop app: the web service's binding: 127.0.0.1 (the default), one of this PC's IPv4
+         * addresses, or 0.0.0.0. Null in older data, which means 127.0.0.1.
+         */
+        public String shareServerBind;
+
+        /** {@link #shareServerBind}, or 127.0.0.1 when it is not set. */
+        public String shareServerBindAddress() {
+            return shareServerBind == null || shareServerBind.isBlank() ? ForwardProxy.LOOPBACK : shareServerBind.strip();
+        }
         public List<Preset> uaPresets = new ArrayList<>();
         public List<Preset> urlPresets = new ArrayList<>();
         /**

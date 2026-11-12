@@ -23,7 +23,8 @@ tasks.withType<JavaCompile> {
 }
 
 dependencies {
-    implementation("io.github.tricatch:oe-proxy:0.2.0")
+    // 0.3.0: setBindAddresses (the reverse proxy on a network card plus 127.0.0.1).
+    implementation("io.github.tricatch:oe-proxy:0.3.0")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.22.4")
     implementation("org.slf4j:slf4j-simple:2.0.17")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.4")
@@ -32,6 +33,8 @@ dependencies {
     implementation("com.fifesoft:rsyntaxtextarea:3.6.0")
     // Forward proxy (same version as oeHub).
     implementation("io.github.littleproxy:littleproxy:2.9.1")
+    // QR code on the phone setup page (pure Java, no native parts).
+    implementation("com.google.zxing:core:3.5.4")
 
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
