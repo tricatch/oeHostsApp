@@ -12,7 +12,7 @@ oeHubApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts / 
 
 ## Launch Options
 
-- App-specific JVM system properties are named `-Doehubapp.<name>` and read with `System.getProperty("oehubapp.<name>")`. Existing: `oehubapp.log` (log level), `oehubapp.shot` and `oehubapp.settings.page` (screenshot aid, below).
+- App-specific JVM system properties are named `-Doehubapp.<name>` and read with `System.getProperty("oehubapp.<name>")`. Existing: `oehubapp.log` (log level), `oehubapp.shot` and `oehubapp.settings.page` (screenshot aid, below), `oehubapp.update.repo` and `oehubapp.agent.repo` (base URLs the app update and the oeHosts-Agent update use instead of the GitHub repositories; for testing against a local server).
 - The only command-line argument is `--data DIR`. Document any new user-facing option in `README.md`.
 
 ## Verifying UI Changes
@@ -72,6 +72,21 @@ oeHubApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts / 
 
 - When a runtime library is added or bumped in `build.gradle.kts`, update the open-source list in `SettingsTab.LIBS` (README only points to it). Take the license from the library's POM/LICENSE, not from memory. The settings screen shows the resolved versions recorded in the jar at build time (`oehubapp-build.properties`).
 - License texts ship in the jar under `META-INF/licenses/<library>/` (`thirdPartyLicenses` task): dependency jars' own `META-INF/*LICENSE*`/`*NOTICE*` are moved there instead of overwriting each other at the jar root. For a new library whose jar carries no license file, add its upstream LICENSE (and NOTICE, if any) under `src/main/licenses/<library>/`; check with `unzip -Z1 build/libs/oehubapp.jar | grep META-INF/licenses/`.
+
+## Self-Update
+
+- `Update` checks at every start: the latest version is the tag `<repo>/releases/latest` redirects to (no GitHub API). The result shows only on Settings → General → About. It downloads `releases/download/<tag>/oehubapp.jar` to `oehubapp.jar.new` next to the installed jar and rejects it unless the SHA-256 matches `SHA256SUMS.txt`, the manifest's `Implementation-Version` equals the tag, and the jar contains `UpdateHelper`. So every release must keep those asset names and a tag equal to `version`.
+- `UpdateHelper` runs from the NEW jar with a command line built by the OLD version (`--apply PID TARGET -- COMMAND...`). That format is a contract between releases: never change it. It uses only the JDK, copies the jar to `.tmp` and moves it over the target (it cannot rename the `.new` jar it holds open on Windows), always starts the app again (the old version when the copy fails), and updates install.ps1's `DisplayVersion` with `reg.exe` only when the registered `InstallLocation` is the jar's folder.
+- Only a `.jar` in a writable folder updates itself (`Update.canSelfUpdate`); IDE and Gradle runs only report the version. Do not add an unsigned helper executable or script (see Platform Constraints).
+- Test an update end to end before releasing a change to either class: build an old and a new jar (bump `version` temporarily), serve the new one and its `SHA256SUMS.txt` from a local server that answers `/releases/latest` with a redirect, and drive it with `-Doehubapp.update.repo`. Run the relaunched app in screenshot mode (`-Doehubapp.shot`, inherited through the JVM options) so it exits by itself, then check `oehubapp-update.log` and the installed jar's version.
+
+## Bundled oeHosts-Agent
+
+- The jar carries `/oehosts-agent.jar`, built from the sibling `../oeHostsAgent` checkout (an included build; `bundleAgent` in `build.gradle.kts` picks `build/libs/oehosts-agent-<its version>.jar`). Without the checkout the jar has no bundled agent and the app relies on the download below; do not vendor the agent jar into this repository.
+- `HostsAgent.start` runs at every start: it installs the bundled copy next to the installed app jar (data folder for IDE/Gradle runs) unless the agent there is the same version or newer, then checks `https://github.com/tricatch/oeHostsAgent` `releases/latest` in the background and installs that release's `oehosts-agent.jar` when newer (SHA-256 from its `SHA256SUMS.txt`, manifest version equal to the tag; `Update.latestVersion`/`Update.fetchAsset` do the HTTP part). `-Doehubapp.agent.repo=<url>` points the check at a test server.
+- The file is always named `oehosts-agent.jar`: never put a version in it, because users paste the `-javaagent` path into IDEs and scripts and every update must keep that path valid.
+- A JVM running with the agent can keep the file locked on Windows: the replacement is then skipped (state `IN_USE`, check `PENDING`) and retried at the next start. Never fail the app start over the agent.
+- `install.sh` and `install.ps1` extract the same entry at install time and remove `oehosts-agent.jar` (and `oehubapp-update.log`) on uninstall; `install.ps1` only warns when the agent is locked.
 
 ## Windows Installer (`install.ps1`)
 

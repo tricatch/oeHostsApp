@@ -29,6 +29,7 @@ if ($Uninstall -and -not $env:OEHUBAPP_HOME) {
 }
 $Jar = Join-Path $AppHome 'oehubapp.jar'
 $Ico = Join-Path $AppHome 'oehubapp.ico'
+$Agent = Join-Path $AppHome 'oehosts-agent.jar'
 $Script = Join-Path $AppHome 'install.ps1'
 $Shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'oeHubApp.lnk'
 
@@ -47,6 +48,15 @@ if ($Uninstall) {
         } catch [System.Management.Automation.ItemNotFoundException] {
         } catch {
             Fail "could not remove $f - close oeHubApp and try again"
+        }
+    }
+    # A Java application still running with -javaagent keeps the agent locked: warn, do not stop.
+    foreach ($f in @($Agent, (Join-Path $AppHome 'oehubapp-update.log'))) {
+        try {
+            Remove-Item -LiteralPath $f -Force -ErrorAction Stop
+        } catch [System.Management.Automation.ItemNotFoundException] {
+        } catch {
+            Write-Host "warning: could not remove $f - a Java application may still be using it" -ForegroundColor Yellow
         }
     }
     if ((Test-Path -LiteralPath $AppHome) -and -not (Get-ChildItem -LiteralPath $AppHome -Force)) {
@@ -181,6 +191,19 @@ try {
             try { $manifest = $reader.ReadToEnd() } finally { $reader.Dispose() }
             if ($manifest -match '(?m)^Implementation-Version:\s*(\S+)') { $version = $Matches[1] }
         }
+    } finally {
+        $zip.Dispose()
+    }
+} catch {}
+
+# oeHosts-Agent ships inside the jar; the app also copies it out at every start (and so keeps it
+# up to date). Copied here too so it is in place before the first start. A Java application
+# running with -javaagent keeps the old file locked; the app replaces it on a later start.
+try {
+    $zip = [IO.Compression.ZipFile]::OpenRead($Jar)
+    try {
+        $entry = $zip.GetEntry('oehosts-agent.jar')
+        if ($entry) { [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $Agent, $true) }
     } finally {
         $zip.Dispose()
     }

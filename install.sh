@@ -44,7 +44,7 @@ remove_mac_apps() {
 }
 
 if [ "${1:-}" = "--uninstall" ]; then
-    rm -f "$APP_HOME/oehubapp.jar" "$APP_HOME/oehubapp.log" "$APP_HOME/oehubapp.icns" "$APP_HOME/oehubapp.png" "$LAUNCHER"
+    rm -f "$APP_HOME/oehubapp.jar" "$APP_HOME/oehosts-agent.jar" "$APP_HOME/oehubapp-update.log" "$APP_HOME/oehubapp.log" "$APP_HOME/oehubapp.icns" "$APP_HOME/oehubapp.png" "$LAUNCHER"
     rmdir "$APP_HOME" 2>/dev/null || true
     [ "$OS" = "Darwin" ] && remove_mac_apps
     [ "$OS" = "Linux" ] && rm -f "$DESKTOP_FILE"
@@ -84,6 +84,11 @@ fi
 
 mkdir -p "$APP_HOME" "$BIN_DIR"
 mv -f "$TMP/oehubapp.jar" "$APP_HOME/oehubapp.jar"
+# oeHosts-Agent ships inside the jar; the app also copies it out at every start (and so keeps it
+# up to date). Copied here too so it is in place before the first start (needs unzip).
+if command -v unzip >/dev/null 2>&1 && unzip -p "$APP_HOME/oehubapp.jar" oehosts-agent.jar > "$TMP/oehosts-agent.jar" 2>/dev/null         && [ -s "$TMP/oehosts-agent.jar" ]; then
+    mv -f "$TMP/oehosts-agent.jar" "$APP_HOME/oehosts-agent.jar"
+fi
 
 # The launcher looks for Java each time it runs, so a Java installed or upgraded later is found.
 # Homebrew's openjdk is keg-only (not on PATH), hence the extra places.

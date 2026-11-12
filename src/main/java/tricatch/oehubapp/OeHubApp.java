@@ -68,10 +68,14 @@ public final class OeHubApp {
         UIManager.put("ToolTip.foreground", java.awt.Color.WHITE);
         dockIcon();
         Store store = AppData.open(dataDir);
+        HostsAgent.start(dataDir);
         ProxyRuntime.start(dataDir, store);
         Thread.ofVirtual().name("fwdproxy-start").start(() -> ForwardProxy.start(store));
         Thread.ofVirtual().name("share-start").start(() -> ShareServer.start(store));
         SwingUtilities.invokeLater(() -> MainWindow.open(store));
+        Update.setAppArgs(args);
+        Update.cleanUp();
+        Update.checkInBackground();
         instance.watchFocusRequests(MainWindow::bringToFront);
     }
 

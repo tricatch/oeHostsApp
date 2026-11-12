@@ -132,15 +132,22 @@ public final class MainWindow {
         });
     }
 
+    /** Saves the window state and pending edits, then ends the process (window close, update restart). */
+    public static void quit() {
+        if (shown != null) {
+            shown.saveWindowState();
+            shown.flush();
+        }
+        System.exit(0);
+    }
+
     /** What the window needs once, whatever is shown in it. */
     private static void setUpFrame(JFrame frame) {
         frame.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         frame.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
-                shown.saveWindowState();
-                shown.flush();
-                System.exit(0);
+                quit();
             }
         });
         List<Image> icons = new ArrayList<>();

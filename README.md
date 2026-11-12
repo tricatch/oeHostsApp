@@ -54,7 +54,7 @@ oehubapp    # 실행 (백그라운드로 뜨고, 로그는 ~/.oehubapp/oehubapp.
 
 | 작업 | 명령 |
 |---|---|
-| 업데이트 | 설치 명령을 다시 실행 |
+| 업데이트 | 앱 안에서 업데이트([업데이트](#업데이트) 참고), 또는 설치 명령을 다시 실행 |
 | 특정 버전 설치 | `curl … \| OEHUBAPP_VERSION=0.1.0 sh` |
 | 삭제 | `curl -fsSL https://raw.githubusercontent.com/tricatch/oeHubApp/master/install.sh \| sh -s -- --uninstall` |
 
@@ -75,7 +75,7 @@ irm https://raw.githubusercontent.com/tricatch/oeHubApp/master/install.ps1 | iex
 
 | 작업 | 명령 |
 |---|---|
-| 업데이트 | oeHubApp을 종료한 뒤 설치 명령을 다시 실행 |
+| 업데이트 | 앱 안에서 업데이트([업데이트](#업데이트) 참고), 또는 oeHubApp을 종료한 뒤 설치 명령을 다시 실행 |
 | 특정 버전 설치 | `$env:OEHUBAPP_VERSION='0.1.0'; irm … \| iex` |
 | 삭제 | 설정 → 앱 → oeHubApp → 제거, 또는<br>`& ([scriptblock]::Create((irm https://raw.githubusercontent.com/tricatch/oeHubApp/master/install.ps1))) -Uninstall` |
 
@@ -91,6 +91,16 @@ javaw -jar oehubapp.jar                         # Windows에서 콘솔 창 없�
 java -jar oehubapp.jar --data D:\oehub-data     # 데이터 폴더를 따로 지정
 java -Doehubapp.log=debug -jar oehubapp.jar     # 콘솔 로그를 더 자세히
 ```
+
+### 업데이트
+
+앱은 시작할 때마다 GitHub에 새 릴리스가 있는지 확인하고, 결과를 **설정 → 일반 → 정보**의 *업데이트* 줄에 보여 줍니다. 다른 화면에는 알림을 띄우지 않습니다.
+
+- 새 버전이 있으면 **업데이트**를 누릅니다. 새 `oehubapp.jar`를 내려받아 릴리스의 `SHA256SUMS.txt`로 확인한 뒤 앱을 종료하고, 설치된 jar를 바꿔서 다시 실행합니다. 데이터는 그대로 남습니다.
+- 다시 시작하는 몇 초 동안 리버스 프록시와 포워드 프록시가 멈춥니다.
+- **릴리스 노트**를 누르면 그 버전의 릴리스 페이지가 열립니다. **업데이트 확인**으로 다시 확인할 수도 있습니다.
+- 앱 안에서 업데이트하려면 설치 스크립트로 설치했거나, jar가 쓰기 권한이 있는 폴더에서 `java -jar`로 실행 중이어야 합니다. 그렇지 않으면 새 버전 안내만 보여 주니 설치 명령을 다시 실행하세요.
+- 업데이트 과정은 jar 옆의 `oehubapp-update.log`에 기록됩니다.
 
 ### 실행할 때 알아 둘 점
 
@@ -153,6 +163,26 @@ http://127.0.0.1:36981/hosts/<프로필 ID>-<서명>/<프로필 이름>
 - 공유를 켠 프로필만 제공되고, 왼쪽 목록에 공유 아이콘이 붙습니다. 공유를 끄면 그 URL은 404가 됩니다.
 - 프로필을 고치면 SwitchHosts가 다음에 새로 고칠 때 반영됩니다. `${PROXY_SVR}`은 `127.0.0.1`로 바뀌어 나갑니다.
 - 공유 서버는 이 PC에서만(127.0.0.1) 접속할 수 있습니다. 포트는 설정 → oeHosts → 공유 서버에서 바꾸고 **다시 시작**을 누릅니다.
+
+### oeHosts — Java 애플리케이션에 적용 (oeHosts-Agent)
+
+공유한 프로필의 호스트를 Java 애플리케이션 하나에만 적용하는 에이전트(oeHosts-Agent)가 앱에 들어 있습니다. OS의 hosts 파일을 고치지 않고, Chrome 없이 서버·배치·테스트 같은 Java 프로그램에서 호스트를 바꿔 쓸 때 사용합니다. JDK 8, 11, 17, 18 이상에서 동작합니다.
+
+1. 위 방법으로 쓸 프로필의 공유를 켭니다.
+2. 설정 → oeHosts → **Java 에이전트**에서 프로필을 고르고 **옵션 복사**를 누릅니다.
+3. 복사한 옵션을 애플리케이션의 JVM 옵션에 넣습니다.
+
+```sh
+java -javaagent:<설치 폴더>/oehosts-agent.jar=http://127.0.0.1:36981/hosts/<ID>-<서명>/<이름> -jar app.jar
+```
+
+- Gradle은 `jvmArgs`, Maven은 `-DargLine`, IntelliJ는 실행 구성의 VM options에 같은 옵션을 넣습니다. 경로에 공백이 있으면 옵션 전체를 따옴표로 감싸서 복사합니다.
+- 에이전트 파일은 앱 jar 옆의 `oehosts-agent.jar`입니다. 설치 스크립트로 설치했다면 macOS·Linux는 `~/.oehubapp/`, Windows는 `%LOCALAPPDATA%\Programs\oeHubApp\`입니다.
+- 앱 jar에 에이전트가 들어 있어서 설치하면 바로 생깁니다(설치 스크립트가 미리 꺼내 두고, 앱도 시작할 때 확인합니다). 인터넷이 안 되는 곳에서도 쓸 수 있습니다.
+- 앱은 시작할 때마다 [oeHosts-Agent 릴리스](https://github.com/tricatch/oeHostsAgent/releases)를 확인해, 더 새 버전이 있으면 내려받아 체크섬을 확인한 뒤 바꿉니다. 결과는 설정 화면의 *최신 릴리스* 줄에 나옵니다. 앱 안에 든 버전이 더 오래됐으면 이미 받은 새 버전을 되돌리지 않습니다.
+- 파일 이름에 버전이 없어서, 업데이트돼도 경로가 그대로입니다. 한 번 넣은 옵션은 고치지 않아도 됩니다. 에이전트를 바꾸는 데 oeHubApp을 다시 시작할 필요는 없지만, 실행 중인 Java 애플리케이션은 다시 시작해야 새 버전을 씁니다.
+- Windows에서 그 에이전트로 실행 중인 Java 애플리케이션이 있으면 파일이 잠겨 있어 바꾸지 못합니다. 이때는 이전 버전을 계속 쓰고, 그 애플리케이션을 닫은 뒤 oeHubApp을 다시 시작하면 바뀝니다. 설정 화면에 *이전 버전 사용 중*으로 표시됩니다.
+- 애플리케이션이 시작될 때 공유 서버가 실행 중이어야 합니다. 에이전트는 60초마다 프로필을 다시 받습니다. 받지 못하면 직전 매핑을 계속 쓰고, 처음부터 받지 못했으면 매핑 없이 실행합니다. 애플리케이션을 멈추지는 않습니다.
 
 ### oeProxy — 도메인을 백엔드로 연결
 
@@ -247,6 +277,7 @@ CA 인증서는 하나뿐이라 어느 방식이든 덮어씁니다.
 | 502 / 504 페이지 | 백엔드에 연결하지 못했습니다. |
 | SwitchHosts가 공유 URL을 못 받음 | 설정 → oeHosts → 공유 서버의 상태를 확인합니다. "시작 실패"면 다른 프로그램이 포트를 쓰는 경우이니 포트를 바꿔 **다시 시작**하고 URL을 다시 복사합니다. 404면 그 프로필의 공유가 꺼져 있습니다. |
 | Chrome이 새 옵션 없이 뜸 | 같은 프로필의 Chrome이 이미 떠 있던 경우입니다. 앱이 묻는 확인에서 닫고 다시 실행을 고릅니다. |
+| 업데이트가 실패하거나 다시 실행되지 않음 | 정보 화면의 오류 내용과 jar 옆의 `oehubapp-update.log`를 확인합니다. 회사망처럼 GitHub에 접속할 수 없는 곳에서는 확인도 실패합니다. 이때는 설치 명령을 다시 실행해 업데이트합니다. 교체에 실패하면 원래 버전으로 다시 실행됩니다. |
 
 원인을 더 자세히 보려면 `java -jar oehubapp.jar`(필요하면 `-Doehubapp.log=debug`)로 실행해 콘솔 로그를 확인하세요. 404·502·504가 났을 때의 라우트 목록과 원인이 나옵니다. 설치 스크립트로 설치한 macOS·Linux에서는 `~/.oehubapp/oehubapp.log`에 로그가 남습니다.
 
@@ -257,6 +288,8 @@ JDK 25가 필요합니다. 만들어진 jar는 Java 21 이상에서 실행됩니
 ```sh
 ./gradlew shadowJar    # build/libs/oehubapp.jar
 ```
+
+oeHosts-Agent는 옆 폴더 `../oeHostsAgent`([저장소](https://github.com/tricatch/oeHostsAgent))에서 함께 빌드해 jar 안에 넣습니다. 그 폴더가 없으면 에이전트 없이 빌드되고, 앱이 처음 시작할 때 최신 릴리스를 내려받습니다.
 
 ## 오픈소스 · 라이선스
 

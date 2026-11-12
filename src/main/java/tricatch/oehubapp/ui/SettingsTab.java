@@ -1,9 +1,11 @@
 package tricatch.oehubapp.ui;
 
+import tricatch.oehubapp.HostsAgent;
 import tricatch.oehubapp.OeHubApp;
 import tricatch.oehubapp.ProxyRuntime;
 import tricatch.oehubapp.ShareServer;
 import tricatch.oehubapp.Store;
+import tricatch.oehubapp.Update;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -83,7 +85,8 @@ public final class SettingsTab extends JPanel {
                 new Page("ua", "app.settings.ua.presets.title", () -> presetsPage(true)),
                 new Page("url", "app.settings.url.presets.title", () -> presetsPage(false)),
                 new Page("fwd", "app.settings.fwdproxy.title", this::fwdProxyPage),
-                new Page("share", "app.settings.share.title", this::sharePage))));
+                new Page("share", "app.settings.share.title", this::sharePage),
+                new Page("agent", "app.settings.agent.title", this::agentPage))));
         folders.add(new Folder("app.settings.folder.proxy", List.of(
                 new Page("ca", "app.settings.ca.title", this::caPage),
                 new Page("server", "app.settings.server.title", this::serverPage))));
@@ -260,7 +263,23 @@ public final class SettingsTab extends JPanel {
         col.setBorder(new EmptyBorder(18, 22, 18, 22));
         for (int i = 0; i < parts.length; i++) {
             parts[i].setAlignmentX(LEFT_ALIGNMENT);
-            if (i > 0) col.add(Box.createVerticalStrut(14));
+            if (i > 0) {
+                // The gap above a part hides with it, so a hidden part leaves no hole.
+                Component gap = Box.createVerticalStrut(14);
+                gap.setVisible(parts[i].isVisible());
+                parts[i].addComponentListener(new java.awt.event.ComponentAdapter() {
+                    @Override
+                    public void componentShown(java.awt.event.ComponentEvent e) {
+                        gap.setVisible(true);
+                    }
+
+                    @Override
+                    public void componentHidden(java.awt.event.ComponentEvent e) {
+                        gap.setVisible(false);
+                    }
+                });
+                col.add(gap);
+            }
             col.add(parts[i]);
         }
         JScrollPane s = Ui.plainScroll(col);
@@ -573,6 +592,132 @@ public final class SettingsTab extends JPanel {
         ShareServer.onChange(() -> SwingUtilities.invokeLater(refresh));
         refresh.run();
         return page(desc(ctx.m("app.settings.share.desc")), buttons(port), buttons(restart), info);
+    }
+
+    /**
+     * oeHosts-Agent: where the app installed it, its version and update check, and the
+     * {@code -javaagent} option for a shared profile, ready to copy into a Java command line or an
+     * IDE's VM options. Follows {@link HostsAgent} as it changes (a release downloaded at start).
+     */
+    private JComponent agentPage() {
+        JTextField[] v = new JTextField[4];
+        JPanel info = table(new String[][]{
+                {ctx.m("app.settings.agent.file"), "-"},
+                {ctx.m("app.settings.agent.version"), "-"},
+                {ctx.m("app.settings.server.state"), "-"},
+                {ctx.m("app.settings.agent.latest"), "-"}}, v);
+        v[2].setFont(Ui.font(Font.BOLD, 12.5f));
+        v[3].setFont(Ui.font(Font.PLAIN, 12.5f));
+
+        // Shared profiles only: the agent reads a profile through its share URL.
+        record Shared(String name, String url) {
+            @Override
+            public String toString() {
+                return name;
+            }
+        }
+        JComboBox<Shared> profile = new JComboBox<>();
+        profile.setFont(Ui.font(Font.PLAIN, 13f));
+        profile.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878");
+        profile.setFocusable(false);
+        JLabel profileLabel = new JLabel(ctx.m("app.settings.agent.profile"));
+        profileLabel.setFont(Ui.font(Font.BOLD, 12.5f));
+        profileLabel.setForeground(Ui.MUTED);
+        JPanel profileRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        profileRow.setOpaque(false);
+        profileRow.add(profileLabel);
+        profileRow.add(Box.createHorizontalStrut(10));
+        profileRow.add(profile);
+
+        JTextArea option = OeDialog.script("");
+        option.setColumns(0);
+        JComponent none = desc(ctx.m("app.settings.agent.noshared"));
+        JComponent inUse = desc(ctx.m("app.settings.agent.inuse"));
+        JComponent missing = OeDialog.warn(ctx.m("app.settings.agent.missing"), null);
+        JLabel st = status();
+        JButton copy = Ui.primary(ctx.m("app.settings.agent.copy"), Ui.icon("copy", 13, new Color(0x2d4a14)), () -> {
+            OeDialog.copy(option.getText());
+            ok(st, ctx.m("app.settings.copied"));
+        });
+        copy.setIconTextGap(5);
+        JButton folder = Ui.secondary(ctx.m("app.settings.agent.folder"), "folder-open", () -> {
+            if (HostsAgent.path() != null) openFolder(HostsAgent.path().getParent());
+        });
+        JPanel actions = buttons(copy, folder);
+        JComponent hint = desc(ctx.m("app.settings.agent.hint"));
+        metaStatus.add(st, "agent");
+        metaPages.add("agent");
+
+        boolean[] usable = {false};
+        Runnable showOption = () -> {
+            Shared sel = (Shared) profile.getSelectedItem();
+            String url = sel == null ? ctx.m("app.settings.agent.url.placeholder") : sel.url();
+            java.nio.file.Path agent = HostsAgent.path();
+            option.setText(agent == null ? "-" : HostsAgent.option(agent, url));
+            copy.setEnabled(usable[0] && sel != null);
+        };
+        // The shared profiles change elsewhere (the oeHosts share dialog): reload whenever the page is shown.
+        Runnable reloadProfiles = () -> {
+            Shared prev = (Shared) profile.getSelectedItem();
+            int port = ctx.read(() -> ctx.rawStore().data.settings.shareServerPort);
+            List<Shared> items = new ArrayList<>();
+            List<Store.Item> shared = ctx.read(() -> ctx.rawStore().list(Store.Kind.HOSTS).stream()
+                    .filter(i -> i.shared).toList());
+            for (Store.Item i : shared) {
+                String token = ctx.store(s -> s.shareToken(i.id));
+                if (token != null) items.add(new Shared(i.name, ShareServer.url(port, token, i.name)));
+            }
+            profile.setModel(new DefaultComboBoxModel<>(items.toArray(new Shared[0])));
+            if (prev != null) {
+                items.stream().filter(x -> x.url().equals(prev.url())).findFirst().ifPresent(profile::setSelectedItem);
+            }
+            profileRow.setVisible(usable[0] && !items.isEmpty());
+            none.setVisible(usable[0] && items.isEmpty());
+            showOption.run();
+        };
+        Runnable refresh = () -> {
+            HostsAgent.State state = HostsAgent.state();
+            usable[0] = HostsAgent.path() != null
+                    && (state == HostsAgent.State.INSTALLED || state == HostsAgent.State.IN_USE);
+            v[0].setText(HostsAgent.path() == null ? "-" : HostsAgent.path().toString());
+            v[1].setText(HostsAgent.version() == null ? "-" : HostsAgent.version());
+            String stateText = ctx.m(switch (state) {
+                case INSTALLED -> "app.settings.agent.state.installed";
+                case IN_USE -> "app.settings.agent.state.inuse";
+                case MISSING -> "app.settings.agent.state.missing";
+                case FAILED -> "app.settings.agent.state.failed";
+            });
+            if (state == HostsAgent.State.FAILED && HostsAgent.error() != null) stateText += " - " + HostsAgent.error();
+            v[2].setText(stateText);
+            v[2].setForeground(state == HostsAgent.State.INSTALLED ? Ui.BC700
+                    : state == HostsAgent.State.IN_USE ? Ui.MUTED : Ui.DANGER);
+            String latest = HostsAgent.latest();
+            v[3].setText(switch (HostsAgent.check()) {
+                case IDLE -> "-";
+                case CHECKING -> ctx.m("app.update.checking");
+                case LATEST -> ctx.m("app.settings.agent.check.latest", latest);
+                case DOWNLOADING -> ctx.m("app.settings.agent.check.downloading", latest);
+                case UPDATED -> ctx.m("app.settings.agent.check.updated", latest);
+                case PENDING -> ctx.m("app.settings.agent.check.pending", latest);
+                case FAILED -> ctx.m("app.update.check.failed", HostsAgent.checkError());
+            });
+            v[3].setForeground(HostsAgent.check() == HostsAgent.Check.FAILED ? Ui.DANGER : Ui.TEXT);
+            missing.setVisible(!usable[0]);
+            inUse.setVisible(state == HostsAgent.State.IN_USE);
+            option.setVisible(usable[0]);
+            actions.setVisible(usable[0]);
+            hint.setVisible(usable[0]);
+            reloadProfiles.run();
+            for (JTextField f : v) f.setCaretPosition(0);
+            info.revalidate();
+        };
+        profile.addActionListener(e -> showOption.run());
+        option.addHierarchyListener(e -> {
+            if ((e.getChangeFlags() & java.awt.event.HierarchyEvent.SHOWING_CHANGED) != 0 && option.isShowing()) reloadProfiles.run();
+        });
+        refresh.run();
+        HostsAgent.setListener(() -> SwingUtilities.invokeLater(refresh));
+        return page(desc(ctx.m("app.settings.agent.desc")), info, missing, inUse, profileRow, none, option, actions, hint);
     }
 
     /** {@code page} with {@code actions} at its bottom right, just above the bottom bar. */
@@ -1183,7 +1328,79 @@ public final class SettingsTab extends JPanel {
         // The app's own license and source, as rows of the same table.
         aboutRow(info, v.length, ctx.m("app.settings.about.license"), badge("MIT", MIT[0], MIT[1]));
         aboutRow(info, v.length + 1, "GitHub", link(REPO_URL.substring("https://".length()), REPO_URL));
+        aboutRow(info, v.length + 2, ctx.m("app.settings.about.update"), updateRow());
         return page(info);
+    }
+
+    /**
+     * The update status (checked at start, {@link Update}) and its action: check again, or
+     * download, install and restart. A run that cannot replace its own jar only names the new version.
+     */
+    private JComponent updateRow() {
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        row.setOpaque(false);
+        Runnable refresh = () -> {
+            row.removeAll();
+            Update.Status s = Update.status();
+            JLabel text = new JLabel();
+            text.setFont(Ui.font(Font.PLAIN, 12.5f));
+            text.setForeground(Ui.TEXT);
+            JComponent action = null;
+            JButton check = Ui.secondary(ctx.m("app.update.check"), null, Update::checkInBackground);
+            switch (s.state()) {
+                case IDLE -> action = check;
+                case CHECKING -> text.setText(ctx.m("app.update.checking"));
+                case UP_TO_DATE -> {
+                    text.setText(ctx.m("app.update.latest"));
+                    action = check;
+                }
+                case FAILED -> {
+                    text.setText(ctx.m("app.update.check.failed", s.error()));
+                    text.setForeground(Ui.DANGER);
+                    action = check;
+                }
+                case AVAILABLE -> {
+                    if (s.error() != null) {
+                        text.setText(ctx.m("app.update.failed", s.error()));
+                        text.setForeground(Ui.DANGER);
+                    } else {
+                        text.setText(ctx.m("app.update.available", s.latest()));
+                    }
+                    action = Update.canSelfUpdate()
+                            ? Ui.primary(ctx.m("app.update.install"), null, () -> confirmUpdate(s.latest()))
+                            : null;
+                }
+                case DOWNLOADING -> text.setText(ctx.m("app.update.downloading", s.percent()));
+                case RESTARTING -> text.setText(ctx.m("app.update.restarting"));
+            }
+            if (!text.getText().isEmpty()) {
+                row.add(text);
+                row.add(Box.createHorizontalStrut(10));
+            }
+            if (s.state() == Update.State.AVAILABLE) {
+                row.add(link(ctx.m("app.update.notes"), Update.releaseUrl(s.latest())));
+                row.add(Box.createHorizontalStrut(10));
+                if (action == null) {
+                    JLabel manual = new JLabel(ctx.m("app.update.manual"));
+                    manual.setFont(Ui.font(Font.PLAIN, 12.5f));
+                    manual.setForeground(Ui.MUTED);
+                    row.add(manual);
+                }
+            }
+            if (action != null) row.add(action);
+            row.revalidate();
+            row.repaint();
+        };
+        refresh.run();
+        Update.setListener(() -> SwingUtilities.invokeLater(refresh));
+        return row;
+    }
+
+    private void confirmUpdate(String version) {
+        if (!OeDialog.confirm(ctx, ctx.m("app.update.confirm.title"), ctx.m("app.update.confirm", version))) return;
+        flushEdits.run();
+        flush();
+        Update.updateInBackground(() -> SwingUtilities.invokeLater(MainWindow::quit));
     }
 
     private static final String REPO_URL = "https://github.com/tricatch/oeHubApp";

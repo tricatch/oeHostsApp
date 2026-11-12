@@ -73,6 +73,25 @@ val buildInfo by tasks.registering {
 }
 sourceSets.main { resources.srcDir(buildInfo) }
 
+// oeHosts-Agent (the javaagent that maps hosts from oeHosts share URLs) ships inside the jar as
+// /oehosts-agent.jar; the app copies it next to itself at start (HostsAgent), so installing or
+// updating the app installs or updates the agent too. Its jar is built from the sibling
+// ../oeHostsAgent checkout (an included build); without the checkout the app has no agent to offer.
+val agentBuild = gradle.includedBuilds.find { it.name == "oeHostsAgent" }
+val bundleAgent by tasks.registering(Sync::class) {
+    into(layout.buildDirectory.dir("generated/agent"))
+    if (agentBuild != null) {
+        val script = agentBuild.projectDir.resolve("build.gradle.kts").readText()
+        val agentVersion = Regex("""(?m)^version\s*=\s*"([^"]+)"""").find(script)?.groupValues?.get(1)
+            ?: error("no version in ../oeHostsAgent/build.gradle.kts")
+        dependsOn(agentBuild.task(":jar"))
+        from(agentBuild.projectDir.resolve("build/libs/oehosts-agent-$agentVersion.jar")) {
+            rename { "oehosts-agent.jar" }
+        }
+    }
+}
+sourceSets.main { resources.srcDir(bundleAgent) }
+
 tasks.jar {
     manifest {
         attributes("Main-Class" to "tricatch.oehubapp.OeHubApp", "Implementation-Version" to project.version)
