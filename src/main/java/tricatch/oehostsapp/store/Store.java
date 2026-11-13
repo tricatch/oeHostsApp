@@ -202,6 +202,8 @@ public final class Store {
         public Integer windowWidth;
         public Integer windowHeight;
         public boolean windowMaximized;
+        /** The newer release the "new version" toast was last shown for, so it shows once per release, not at every start. */
+        public String updateToasted;
     }
 
     public static class Data {

@@ -46,9 +46,8 @@ public final class MainWindow {
     private JButton gear;
     private int current = -1;
     /**
-     * The newer release already announced with a toast, and the one whose dot on the gear the user
-     * already followed. Static: the window is rebuilt on a language change, and neither should come
-     * back then.
+     * The newer release already handled for the toast in this run, and the one for which the gear
+     * already led to Settings → About. Static: the window is rebuilt on a language change.
      */
     private static volatile String toastedUpdate, seenUpdate;
 
@@ -391,25 +390,33 @@ public final class MainWindow {
         if (gear != null) gear.repaint();
     }
 
-    /** The newer release, while one is available and its dot on the gear has not been followed yet; else null. */
+    /** The newer release while one is available (the gear keeps its dot until the app is updated); else null. */
     private static String pendingUpdate() {
         Update.Status s = Update.status();
-        return s.state() == Update.State.AVAILABLE && s.latest() != null && !s.latest().equals(seenUpdate) ? s.latest() : null;
+        return s.state() == Update.State.AVAILABLE && s.latest() != null ? s.latest() : null;
     }
 
-    /** A newer release was found: a dot on the gear, and once per release a toast pointing at it. */
+    /**
+     * A newer release was found: a dot on the gear, and a toast pointing at it once per release
+     * ever, not at every start (the release it was shown for is saved in {@code settings.updateToasted}).
+     */
     private void updateChanged() {
         if (gear != null) gear.repaint();
         String v = pendingUpdate();
-        if (v != null && !v.equals(toastedUpdate)) {
-            toastedUpdate = v;
-            ctx.toast(ctx.m("app.update.available.toast", v));
-        }
+        if (v == null || v.equals(toastedUpdate)) return;
+        toastedUpdate = v;
+        if (v.equals(ctx.read(() -> ctx.rawStore().data.settings.updateToasted))) return;
+        ctx.storeRun(s -> {
+            s.data.settings.updateToasted = v;
+            s.save();
+        });
+        ctx.toast(ctx.m("app.update.available.toast", v));
     }
 
     /**
      * The gear opens the settings tab; it is underlined like a nav tab while that tab is shown.
-     * While a newer release waits it carries a dot and opens Settings → About instead.
+     * While a newer release waits it carries a dot, and its first click for that release in this
+     * run opens Settings → About.
      */
     private JComponent settingsButton() {
         gear = new JButton(Ui.icon("settings", 16, new Color(255, 255, 255, 217))) {
@@ -443,10 +450,9 @@ public final class MainWindow {
         gear.addActionListener(e -> {
             String v = pendingUpdate();
             select(SETTINGS);
-            if (v != null) {
+            if (v != null && !v.equals(seenUpdate)) {
                 seenUpdate = v;
                 settings.showPage("about");
-                gear.repaint();
             }
         });
         // After the window is up (the check may have finished already, e.g. on a rebuild).
