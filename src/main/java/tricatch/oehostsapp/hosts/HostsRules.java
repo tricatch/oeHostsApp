@@ -9,7 +9,7 @@ import java.util.regex.Pattern;
 /**
  * Hosts profile parsing and merging, server side. Mirrors oeHub's {@code parseHostsToMap}
  * (static/js/util.js) and the page's {@code mergeSelectedProfiles}: the page does its own merge
- * for the Chrome launch, this one feeds the JVM agent endpoint ({@code GET /oeHosts}), so both
+ * for the Chrome launch, this one feeds the JVM agent endpoint ({@code GET /active-hosts}), so both
  * must resolve a profile to the same rules.
  */
 public final class HostsRules {

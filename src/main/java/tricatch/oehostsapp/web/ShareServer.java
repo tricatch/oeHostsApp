@@ -46,6 +46,8 @@ public final class ShareServer {
     public enum State { STOPPED, RUNNING, FAILED }
 
     public static final String PATH = "/hosts/";
+    /** The merged hosts of the profiles selected in oeHosts, for oeHosts-Agent. */
+    public static final String ACTIVE_PATH = "/active-hosts";
 
     private static final Logger log = LoggerFactory.getLogger(ShareServer.class);
     private static final List<Runnable> listeners = new CopyOnWriteArrayList<>();
@@ -86,6 +88,16 @@ public final class ShareServer {
     /** Runs {@code r} (on the thread that changed it) whenever the state changes. */
     public static void onChange(Runnable r) {
         listeners.add(r);
+    }
+
+    /** The URL of the selected profiles' merged hosts on this PC (127.0.0.1). */
+    public static String activeUrl(int port) {
+        return activeUrl(ForwardProxy.LOOPBACK, port);
+    }
+
+    /** The same URL on {@code host}, one of the addresses the web service answers on. */
+    public static String activeUrl(String host, int port) {
+        return "http://" + host + ":" + port + ACTIVE_PATH;
     }
 
     /** The URL a profile is shared at on this PC (127.0.0.1). */
@@ -129,6 +141,7 @@ public final class ShareServer {
     private static HttpServer listen(InetSocketAddress address) throws IOException {
         HttpServer srv = HttpServer.create(address, 0);
         srv.createContext(PATH, ShareServer::handle);
+        srv.createContext(ACTIVE_PATH, ShareServer::handleActive);
         srv.createContext("/", ShareServer::handlePage);
         srv.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         srv.start();
@@ -195,6 +208,38 @@ public final class ShareServer {
         }
     }
 
+    /**
+     * The profiles selected in oeHosts, merged in tree order as {@code IP host} lines (the first
+     * profile that lists a host wins, as in the forward proxy). Follows the selection as it changes.
+     * Like every page here, who can reach it is set by the binding alone: 127.0.0.1 always, plus the
+     * network address chosen for the web service.
+     */
+    private static void handleActive(HttpExchange ex) throws IOException {
+        try (ex) {
+            if (!admit(ex)) return;
+            // The context matches by prefix: only the exact path is this endpoint.
+            if (!ACTIVE_PATH.equals(ex.getRequestURI().getPath())) {
+                respond(ex, 404, "not found\n");
+                return;
+            }
+            List<String> contents;
+            synchronized (store) {
+                contents = store.selectedHostsContents();
+            }
+            respond(ex, 200, activeHosts(contents));
+        }
+    }
+
+    /** {@code IP host} lines for {@code contents} (selected profiles in merge order), placeholders resolved. */
+    public static String activeHosts(List<String> contents) {
+        StringBuilder b = new StringBuilder();
+        for (HostsRules.Rule r : HostsRules.mergeActive(
+                contents.stream().map(HostsRules::resolvePlaceholders).toList(), HostsRules.THIS_PC)) {
+            b.append(r.ip()).append(' ').append(r.host()).append('\n');
+        }
+        return b.toString();
+    }
+
     /** The phone setup page and the CA certificate; any other path is 404. */
     private static void handlePage(HttpExchange ex) throws IOException {
         try (ex) {
@@ -214,15 +259,24 @@ public final class ShareServer {
      * IPv4 address of this PC (a phone or another PC that reached it over the network).
      */
     static boolean allowedHost(String host) {
-        if (host == null) return false;
+        String h = hostName(host);
+        return h != null && (loopbackName(h) || PhoneSetup.isOwnAddress(h));
+    }
+
+    private static boolean loopbackName(String h) {
+        return h.equals("127.0.0.1") || h.equals("localhost") || h.equals("::1");
+    }
+
+    /** The host of a Host header in lower case, without the port or IPv6 brackets; null if there is none. */
+    private static String hostName(String host) {
+        if (host == null) return null;
         String h = host.strip().toLowerCase(Locale.ROOT);
         if (h.startsWith("[")) {
             int end = h.indexOf(']');
-            return end > 0 && h.substring(1, end).equals("::1");
+            return end > 0 ? h.substring(1, end) : null;
         }
         int colon = h.indexOf(':');
-        if (colon >= 0) h = h.substring(0, colon);
-        return h.equals("127.0.0.1") || h.equals("localhost") || PhoneSetup.isOwnAddress(h);
+        return colon >= 0 ? h.substring(0, colon) : h;
     }
 
     private static void respond(HttpExchange ex, int status, String body) throws IOException {

@@ -93,10 +93,10 @@ public final class SettingsTab extends JPanel {
         folders.add(new Folder("app.settings.folder.hosts", List.of(
                 new Page("ua", "app.settings.ua.presets.title", () -> presetsPage(true)),
                 new Page("url", "app.settings.url.presets.title", () -> presetsPage(false)),
+                new Page("active", "app.settings.active.title", this::activeHostsPage),
                 new Page("agent", "app.settings.agent.title", this::agentPage))));
         folders.add(new Folder("app.settings.folder.proxy", List.of(
                 new Page("ca", "app.settings.ca.title", this::caPage),
-                new Page("mobile", "app.settings.phone.title", this::mobilePage),
                 new Page("server", "app.settings.server.title", this::serverPage))));
 
         list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
@@ -469,7 +469,7 @@ public final class SettingsTab extends JPanel {
         p.setOpaque(false);
         GridBagConstraints c = new GridBagConstraints();
         c.anchor = GridBagConstraints.BASELINE_LEADING;
-        c.insets = new Insets(3, 0, 3, 16);
+        c.insets = new Insets(3, 0, 3, TABLE_GAP);
         for (int i = 0; i < rows.length; i++) {
             c.gridy = i;
             c.gridx = 0;
@@ -781,7 +781,11 @@ public final class SettingsTab extends JPanel {
      * ({@link tricatch.oehostsapp.web.PhoneSetup}), which the phone opens through the forward proxy
      * ({@link tricatch.oehostsapp.proxy.ForwardProxy#webService}). Only the download; nothing is configured here.
      */
-    private JComponent mobilePage() {
+    /**
+     * The CA page's right half: installing the CA on a phone. Only downloads the CA (the page
+     * the QR code opens); it configures nothing.
+     */
+    private JComponent mobileSection() {
         // The phone reaches the page through the forward proxy, so the proxy has to be open to the
         // phone's network and the web service has to run (on 127.0.0.1 at least).
         JComponent fwdOff = OeDialog.warn(ctx.m("app.settings.phone.off"), null);
@@ -802,35 +806,43 @@ public final class SettingsTab extends JPanel {
             }
         });
         JLabel addressLabel = label(ctx.m("app.settings.phone.address"));
-        sameWidth(addressLabel);
-        JPanel addressRow = buttons(addressLabel, address);
+        // The list takes the rest of the row and shrinks with it (a long adapter name must not push it to a new line).
+        JPanel addressRow = new JPanel(new BorderLayout(ROW_GAP, 0));
+        addressRow.setOpaque(false);
+        addressRow.add(addressLabel, BorderLayout.WEST);
+        addressRow.add(address, BorderLayout.CENTER);
+        address.setMinimumSize(new Dimension(0, address.getPreferredSize().height));
         JComponent noAddress = OeDialog.warn(ctx.m("app.settings.phone.no.address"), null);
 
         JTextField[] v = new JTextField[1];
         JPanel info = table(new String[][]{{ctx.m("app.settings.phone.ca.url"), "-"}}, v);
+        alignWithTable(info, ROW_GAP, addressLabel);
         JButton copyUrl = Ui.secondary(ctx.m("app.settings.phone.copy.url"), "copy", () -> {
             OeDialog.copy(v[0].getText());
             ctx.toast(ctx.m("app.settings.copied"));
         });
         QrCode qr = new QrCode(196);
         qr.setBorder(new LineBorder(Ui.BORDER));
-        JPanel qrRow = new JPanel(new BorderLayout(18, 0));
-        qrRow.setOpaque(false);
-        JPanel qrWrap = new JPanel(new BorderLayout());
+        // The QR code at its own size, centered under the address.
+        JPanel qrWrap = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
         qrWrap.setOpaque(false);
-        qrWrap.add(qr, BorderLayout.NORTH);
-        qrRow.add(qrWrap, BorderLayout.WEST);
-        JTextArea steps = (JTextArea) desc("");
-        qrRow.add(steps, BorderLayout.CENTER);
-        JComponent ready = OeDialog.stack(14, addressRow, info, buttons(copyUrl), qrRow);
+        qrWrap.add(qr);
+        // The copy button at the right end of the URL row.
+        JPanel urlRow = new JPanel(new BorderLayout(10, 0));
+        urlRow.setOpaque(false);
+        urlRow.add(info, BorderLayout.CENTER);
+        JPanel copyWrap = new JPanel(new GridBagLayout());
+        copyWrap.setOpaque(false);
+        copyWrap.add(copyUrl);
+        urlRow.add(copyWrap, BorderLayout.EAST);
+        JComponent ready = OeDialog.stack(14, addressRow, urlRow);
 
         Runnable fill = () -> {
             Object sel = address.getSelectedItem();
             String ip = sel instanceof tricatch.oehostsapp.web.PhoneSetup.Lan a ? a.ip() : null;
-            int wp = ShareServer.port(), fp = tricatch.oehostsapp.proxy.ForwardProxy.port();
+            int wp = ShareServer.port();
             String url = ip == null || wp <= 0 ? null : tricatch.oehostsapp.web.PhoneSetup.pageUrl(ip, wp);
             v[0].setText(url == null ? "-" : url);
-            steps.setText(ctx.m("app.settings.phone.steps", ip == null ? "-" : ip, fp > 0 ? String.valueOf(fp) : "-"));
             copyUrl.setEnabled(url != null);
             qr.setText(url);
         };
@@ -852,6 +864,7 @@ public final class SettingsTab extends JPanel {
             webOffButtons.setVisible(!webOn);
             noAddress.setVisible(fwdOn && webOn && reachable.isEmpty());
             ready.setVisible(fwdOn && webOn && !reachable.isEmpty());
+            qrWrap.setVisible(ready.isVisible());
             fill.run();
             ready.revalidate();
         };
@@ -859,7 +872,11 @@ public final class SettingsTab extends JPanel {
         ShareServer.onChange(() -> SwingUtilities.invokeLater(refresh));
         tricatch.oehostsapp.proxy.ForwardProxy.onChange(() -> SwingUtilities.invokeLater(refresh));
         refresh.run();
-        return page(desc(ctx.m("app.settings.phone.desc")), fwdOff, fwdOffButtons, webOff, webOffButtons, noAddress, ready);
+        JLabel heading = new JLabel(ctx.m("app.settings.phone.title"));
+        heading.setFont(Ui.font(Font.BOLD, 13.5f));
+        heading.setForeground(Ui.TEXT);
+        return column(heading, desc(ctx.m("app.settings.phone.desc")), line(), fwdOff, fwdOffButtons, webOff,
+                webOffButtons, noAddress, ready, qrWrap);
     }
 
     /** Whether a server bound to {@code bind} answers on {@code ip}. */
@@ -868,6 +885,29 @@ public final class SettingsTab extends JPanel {
     }
 
     /** Gives the labels of one form the same width (at least {@link #FORM_LABEL_WIDTH}), so their fields line up. */
+    /** The gap between a row's label and its field in a {@code BorderLayout} row next to a {@link #table}. */
+    private static final int ROW_GAP = 6;
+    /** The space {@link #table} leaves between a label and its value (its right inset). */
+    private static final int TABLE_GAP = 16;
+
+    /**
+     * Lines up form rows built next to a {@link #table} (a label, then a field, {@code gap} apart)
+     * with the table's rows: every label in both gets the widest label's width, so the fields start
+     * where the table's values start.
+     */
+    private static void alignWithTable(JPanel table, int gap, JLabel... rowLabels) {
+        List<JLabel> tableLabels = new ArrayList<>();
+        for (Component c : table.getComponents()) if (c instanceof JLabel l) tableLabels.add(l);
+        int w = 0;
+        for (JLabel l : rowLabels) {
+            l.setFont(Ui.font(Font.BOLD, 12.5f));
+            w = Math.max(w, l.getPreferredSize().width);
+        }
+        for (JLabel l : tableLabels) w = Math.max(w, l.getPreferredSize().width);
+        for (JLabel l : tableLabels) l.setPreferredSize(new Dimension(w, l.getPreferredSize().height));
+        for (JLabel l : rowLabels) l.setPreferredSize(new Dimension(w + TABLE_GAP - gap, l.getPreferredSize().height));
+    }
+
     private static void sameWidth(JLabel... labels) {
         int w = FORM_LABEL_WIDTH;
         for (JLabel l : labels) {
@@ -1044,8 +1084,93 @@ public final class SettingsTab extends JPanel {
     }
 
     /**
+     * The {@code /active-hosts} URL (the profiles selected in oeHosts, merged), for tools that read a
+     * hosts list from a URL: oeHosts-Agent, SwitchHosts' remote hosts, and the like. Reachable like
+     * the rest of the web service (127.0.0.1, plus its network address when one is chosen).
+     * Left: the URL to copy; right: what it returns now.
+     */
+    private JComponent activeHostsPage() {
+        JTextField[] v = new JTextField[1];
+        JPanel info = table(new String[][]{{ctx.m("app.settings.active.url"), "-"}}, v);
+        JButton copy = Ui.primary(ctx.m("app.settings.active.copy"), Ui.icon("copy", 13, new Color(0x2d4a14)), () -> {
+            OeDialog.copy(v[0].getText());
+            ctx.toast(ctx.m("app.settings.copied"));
+        });
+        copy.setIconTextGap(5);
+        JComponent webOff = OeDialog.warn(ctx.m("app.settings.active.web.stopped"), null);
+        JPanel webOffButtons = buttons(Ui.secondary(ctx.m("app.settings.phone.open.web"), "settings", () -> showPage("web")));
+
+        // Which address the URL names: 127.0.0.1 (the default, for tools on this PC), or, while the
+        // web service is open to the network, one of the addresses it answers on (another PC).
+        JComboBox<String> host = new JComboBox<>();
+        host.setFont(Ui.font(Font.PLAIN, 13f));
+        host.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878");
+        host.setFocusable(false);
+        host.setMinimumSize(new Dimension(0, host.getPreferredSize().height));
+        JLabel hostLabel = label(ctx.m("app.settings.phone.address"));
+        alignWithTable(info, ROW_GAP, hostLabel);
+        JPanel hostRow = new JPanel(new BorderLayout(ROW_GAP, 0));
+        hostRow.setOpaque(false);
+        hostRow.add(hostLabel, BorderLayout.WEST);
+        hostRow.add(host, BorderLayout.CENTER);
+
+        JTextArea preview = OeDialog.script("");
+        preview.setColumns(0);
+        JComponent empty = desc(ctx.m("app.settings.active.empty"));
+
+        Runnable showUrl = () -> {
+            int port = ctx.read(() -> ctx.rawStore().data.settings.shareServerPort);
+            Object sel = host.getSelectedItem();
+            v[0].setText(ShareServer.activeUrl(sel == null ? tricatch.oehostsapp.proxy.ForwardProxy.LOOPBACK : sel.toString(), port));
+            v[0].setCaretPosition(0);
+        };
+        boolean[] filling = {false};
+        Runnable refreshUrl = () -> {
+            Object prev = host.getSelectedItem();
+            filling[0] = true;
+            host.removeAllItems();
+            host.addItem(tricatch.oehostsapp.proxy.ForwardProxy.LOOPBACK);
+            if (ShareServer.lan()) {
+                String bound = ShareServer.bind();
+                for (tricatch.oehostsapp.web.PhoneSetup.Lan l : tricatch.oehostsapp.web.PhoneSetup.addresses()) {
+                    if (tricatch.oehostsapp.proxy.ForwardProxy.ALL.equals(bound) || bound.equals(l.ip())) host.addItem(l.ip());
+                }
+            }
+            if (prev != null) host.setSelectedItem(prev);
+            if (host.getSelectedIndex() < 0) host.setSelectedIndex(0);
+            filling[0] = false;
+            hostRow.setVisible(host.getItemCount() > 1);
+            showUrl.run();
+            boolean on = ShareServer.state() == ShareServer.State.RUNNING;
+            webOff.setVisible(!on);
+            webOffButtons.setVisible(!on);
+        };
+        host.addActionListener(e -> {
+            if (!filling[0]) showUrl.run();
+        });
+        // The selection changes on the oeHosts tab: read it again whenever the page is shown.
+        Runnable refreshPreview = () -> {
+            String text = ShareServer.activeHosts(ctx.read(() -> ctx.rawStore().selectedHostsContents()));
+            preview.setText(text.strip());
+            preview.setVisible(!text.isEmpty());
+            empty.setVisible(text.isEmpty());
+        };
+        // On a part that is always visible (the preview hides while nothing is selected).
+        info.addHierarchyListener(e -> {
+            if ((e.getChangeFlags() & java.awt.event.HierarchyEvent.SHOWING_CHANGED) != 0 && info.isShowing()) refreshPreview.run();
+        });
+        ShareServer.onChange(() -> SwingUtilities.invokeLater(refreshUrl));
+        refreshUrl.run();
+        refreshPreview.run();
+        return fullPage(halves(
+                column(desc(ctx.m("app.settings.active.desc")), line(), webOff, webOffButtons, hostRow, info, line(),
+                        rightAligned(copy)),
+                column(desc(ctx.m("app.settings.active.preview.desc")), line(), preview, empty)));
+    }
+
+    /**
      * oeHosts-Agent: where the app installed it, its version and update check, and the
-     * {@code -javaagent} option for a shared profile, ready to copy into a Java command line or an
+     * {@code -javaagent} option for the profiles selected in oeHosts, ready to copy into a Java command line or an
      * IDE's VM options. Follows {@link HostsAgent} as it changes (a release downloaded at start).
      */
     private JComponent agentPage() {
@@ -1058,29 +1183,8 @@ public final class SettingsTab extends JPanel {
         v[2].setFont(Ui.font(Font.BOLD, 12.5f));
         v[3].setFont(Ui.font(Font.PLAIN, 12.5f));
 
-        // Shared profiles only: the agent reads a profile through its share URL.
-        record Shared(String name, String url) {
-            @Override
-            public String toString() {
-                return name;
-            }
-        }
-        JComboBox<Shared> profile = new JComboBox<>();
-        profile.setFont(Ui.font(Font.PLAIN, 13f));
-        profile.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878");
-        profile.setFocusable(false);
-        JLabel profileLabel = new JLabel(ctx.m("app.settings.agent.profile"));
-        profileLabel.setFont(Ui.font(Font.BOLD, 12.5f));
-        profileLabel.setForeground(Ui.MUTED);
-        JPanel profileRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        profileRow.setOpaque(false);
-        profileRow.add(profileLabel);
-        profileRow.add(Box.createHorizontalStrut(10));
-        profileRow.add(profile);
-
         JTextArea option = OeDialog.script("");
         option.setColumns(0);
-        JComponent none = desc(ctx.m("app.settings.agent.noshared"));
         JComponent inUse = desc(ctx.m("app.settings.agent.inuse"));
         JComponent missing = OeDialog.warn(ctx.m("app.settings.agent.missing"), null);
         JLabel st = status();
@@ -1092,37 +1196,22 @@ public final class SettingsTab extends JPanel {
         JButton folder = Ui.secondary(ctx.m("app.settings.agent.folder"), "folder-open", () -> {
             if (HostsAgent.path() != null) openFolder(HostsAgent.path().getParent());
         });
-        JPanel actions = buttons(copy, folder);
+        JComponent actionsLine = line();
+        JPanel actions = rightAligned(copy);
+        JComponent folderLine = line();
+        JPanel folderRow = rightAligned(folder);
         JComponent hint = desc(ctx.m("app.settings.agent.hint"));
         metaStatus.add(st, "agent");
         metaPages.add("agent");
 
         boolean[] usable = {false};
+        // The agent reads the profiles selected in oeHosts (ShareServer.ACTIVE_PATH), so the option
+        // needs no profile choice; it changes only with the web service port.
         Runnable showOption = () -> {
-            Shared sel = (Shared) profile.getSelectedItem();
-            String url = sel == null ? ctx.m("app.settings.agent.url.placeholder") : sel.url();
-            java.nio.file.Path agent = HostsAgent.path();
-            option.setText(agent == null ? "-" : HostsAgent.option(agent, url));
-            copy.setEnabled(usable[0] && sel != null);
-        };
-        // The shared profiles change elsewhere (the oeHosts share dialog): reload whenever the page is shown.
-        Runnable reloadProfiles = () -> {
-            Shared prev = (Shared) profile.getSelectedItem();
             int port = ctx.read(() -> ctx.rawStore().data.settings.shareServerPort);
-            List<Shared> items = new ArrayList<>();
-            List<Store.Item> shared = ctx.read(() -> ctx.rawStore().list(Store.Kind.HOSTS).stream()
-                    .filter(i -> i.shared).toList());
-            for (Store.Item i : shared) {
-                String token = ctx.store(s -> s.shareToken(i.id));
-                if (token != null) items.add(new Shared(i.name, ShareServer.url(port, token, i.name)));
-            }
-            profile.setModel(new DefaultComboBoxModel<>(items.toArray(new Shared[0])));
-            if (prev != null) {
-                items.stream().filter(x -> x.url().equals(prev.url())).findFirst().ifPresent(profile::setSelectedItem);
-            }
-            profileRow.setVisible(usable[0] && !items.isEmpty());
-            none.setVisible(usable[0] && items.isEmpty());
-            showOption.run();
+            java.nio.file.Path agent = HostsAgent.path();
+            option.setText(agent == null ? "-" : HostsAgent.option(agent, ShareServer.activeUrl(port)));
+            copy.setEnabled(usable[0]);
         };
         Runnable refresh = () -> {
             HostsAgent.State state = HostsAgent.state();
@@ -1154,19 +1243,25 @@ public final class SettingsTab extends JPanel {
             missing.setVisible(!usable[0]);
             inUse.setVisible(state == HostsAgent.State.IN_USE);
             option.setVisible(usable[0]);
+            actionsLine.setVisible(usable[0]);
             actions.setVisible(usable[0]);
             hint.setVisible(usable[0]);
-            reloadProfiles.run();
+            folderLine.setVisible(HostsAgent.path() != null);
+            folderRow.setVisible(HostsAgent.path() != null);
+            showOption.run();
             for (JTextField f : v) f.setCaretPosition(0);
             info.revalidate();
         };
-        profile.addActionListener(e -> showOption.run());
-        option.addHierarchyListener(e -> {
-            if ((e.getChangeFlags() & java.awt.event.HierarchyEvent.SHOWING_CHANGED) != 0 && option.isShowing()) reloadProfiles.run();
-        });
         refresh.run();
         HostsAgent.setListener(() -> SwingUtilities.invokeLater(refresh));
-        return page(desc(ctx.m("app.settings.agent.desc")), info, missing, inUse, profileRow, none, option, actions, hint);
+        // The web service restarts on a new port from its settings page.
+        ShareServer.onChange(() -> SwingUtilities.invokeLater(showOption));
+        // Left: the -javaagent option and its copy button.
+        // Right: the installed agent (file, version, update check) and its folder.
+        return fullPage(halves(
+                column(desc(ctx.m("app.settings.agent.desc")), line(), missing, option, hint,
+                        actionsLine, actions),
+                column(desc(ctx.m("app.settings.agent.install.desc")), line(), info, inUse, folderLine, folderRow)));
     }
 
     private static String presetsText(List<Store.Preset> list) {
@@ -1185,19 +1280,15 @@ public final class SettingsTab extends JPanel {
     // ── oeProxy pages ───────────────────────────────────────────
 
     private JComponent caPage() {
-        // The certificate's details on the left, its files on the right; refreshCa fills both
-        // through one array (details 0-3, files 4-5).
-        JTextField[] d = new JTextField[4];
+        // The certificate's details and its files in one table; refreshCa fills it (details 0-3, files 4-5).
+        JTextField[] v = new JTextField[6];
         JPanel info = table(new String[][]{
                 {ctx.m("app.settings.ca.subject"), "-"},
                 {ctx.m("app.settings.ca.valid"), "-"},
                 {ctx.m("app.settings.ca.sha256"), "-"},
-                {ctx.m("app.settings.ca.trust"), "-"}}, d);
-        JTextField[] f = new JTextField[2];
-        JPanel files = table(new String[][]{
+                {ctx.m("app.settings.ca.trust"), "-"},
                 {ctx.m("app.settings.ca.file"), "-"},
-                {ctx.m("app.settings.ca.key"), "-"}}, f);
-        JTextField[] v = {d[0], d[1], d[2], d[3], f[0], f[1]};
+                {ctx.m("app.settings.ca.key"), "-"}}, v);
         JLabel st = status();
         // Registering is offered only while the OS does not trust the CA yet.
         JButton[] register = new JButton[2];
@@ -1224,12 +1315,12 @@ public final class SettingsTab extends JPanel {
         // Messages go to the bottom bar; the buttons sit at the bottom right, the main action last.
         metaStatus.add(st, "ca");
         metaPages.add("ca");
-        // Left: the CA's actions (register it; save a copy; bring in or make another one).
-        // Right: its files and their folder.
+        // Left: the CA and its files, then its actions (register it; open its folder, save a copy,
+        // bring in or make another one). Right: installing it on a phone.
         return fullPage(halves(
-                column(desc(ctx.m("app.settings.ca.desc")), line(), info, line(), rightAligned(copyCmd, install),
+                column(desc(ctx.m("app.settings.ca.desc")), line(), info, line(), rightAligned(folder, copyCmd, install),
                         rightAligned(export, imp, regen)),
-                column(desc(ctx.m("app.settings.ca.files.desc")), line(), files, line(), rightAligned(folder))));
+                mobileSection()));
     }
 
     /** Fills the CA rows; returns whether the OS trusts the CA (null: no CA, or cannot be told). */

@@ -122,6 +122,61 @@ class ShareServerTest {
     }
 
     @Test
+    void servesTheSelectedProfilesMerged() throws Exception {
+        Store s = Store.open(dir.resolve("data.json"), null);
+        Store.Item a = s.create(Store.Kind.HOSTS, "en");
+        s.updateContent(Store.Kind.HOSTS, a.id, "# dev\n${PROXY_SVR} api.example.test\n10.0.0.1 db.example.test\n");
+        Store.Item b = s.create(Store.Kind.HOSTS, "en");
+        s.updateContent(Store.Kind.HOSTS, b.id, "10.0.0.2 db.example.test\n10.0.0.3 web.example.test\n");
+        Store.Item c = s.create(Store.Kind.HOSTS, "en");
+        s.updateContent(Store.Kind.HOSTS, c.id, "10.0.0.9 other.example.test\n");
+        s.data.settings.shareServerPort = freePort();
+        ShareServer.start(s);
+        assertEquals(ShareServer.State.RUNNING, ShareServer.state(), ShareServer.error());
+        int port = ShareServer.port();
+        String url = ShareServer.activeUrl(port);
+        assertEquals("http://127.0.0.1:" + port + "/active-hosts", url);
+
+        // Nothing selected: an empty list, not an error.
+        HttpResponse<String> r = get(url);
+        assertEquals(200, r.statusCode());
+        assertEquals("", r.body());
+
+        // Selected profiles merged in tree order, the first one that lists a host winning; not
+        // shared and not selected ones stay out. Follows the selection without a restart.
+        s.toggleSelected(Store.Kind.HOSTS, a.id);
+        s.toggleSelected(Store.Kind.HOSTS, b.id);
+        r = get(url);
+        assertEquals(200, r.statusCode());
+        assertTrue(r.headers().firstValue("Content-Type").orElse("").startsWith("text/plain"));
+        assertEquals("127.0.0.1 api.example.test\n10.0.0.1 db.example.test\n10.0.0.3 web.example.test\n", r.body());
+
+        // Only the exact path.
+        assertEquals(404, get(url + "x").statusCode());
+        assertEquals(404, get(url + "/x").statusCode());
+
+        // The same Host rules as the other pages: this PC's names and addresses, nothing else.
+        assertEquals(200, rawStatus(port, ShareServer.ACTIVE_PATH, "localhost:" + port));
+        for (PhoneSetup.Lan l : PhoneSetup.addresses()) {
+            assertEquals(200, rawStatus(port, ShareServer.ACTIVE_PATH, l.ip() + ":" + port), l.ip());
+        }
+        assertEquals(403, rawStatus(port, ShareServer.ACTIVE_PATH, "evil.example:" + port));
+        assertEquals("http://192.168.0.10:" + port + "/active-hosts", ShareServer.activeUrl("192.168.0.10", port));
+    }
+
+    /** GET {@code path} on 127.0.0.1 with the given Host header (HttpClient will not set one); returns the status. */
+    private static int rawStatus(int port, String path, String host) throws Exception {
+        try (java.net.Socket sock = new java.net.Socket(InetAddress.getLoopbackAddress(), port)) {
+            sock.setSoTimeout(5000);
+            sock.getOutputStream().write(("GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\n\r\n")
+                    .getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            String line = new java.io.BufferedReader(new java.io.InputStreamReader(sock.getInputStream(),
+                    java.nio.charset.StandardCharsets.US_ASCII)).readLine();
+            return Integer.parseInt(line.split(" ")[1]);
+        }
+    }
+
+    @Test
     void servesThePhoneSetupPageAndTheCa() throws Exception {
         Store s = Store.open(dir.resolve("data.json"), null);
         s.data.settings.shareServerPort = freePort();
@@ -132,13 +187,15 @@ class ShareServerTest {
         try {
             // No CA yet: the page opens, the download is a 404.
             PhoneSetup.caCert = () -> null;
-            HttpResponse<String> page = client.send(HttpRequest.newBuilder(URI.create(base + "/"))
+            HttpResponse<String> page = client.send(HttpRequest.newBuilder(URI.create(base + PhoneSetup.PAGE_PATH))
                     .header("Accept-Language", "ko-KR,ko;q=0.9,en;q=0.8").build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(200, page.statusCode());
             assertTrue(page.headers().firstValue("Content-Type").orElse("").startsWith("text/html"));
             assertTrue(page.body().contains(PhoneSetup.CA_PATH));
             assertTrue(page.body().contains(Messages.of("ko").get("app.phone.page.download")));
             assertEquals(404, get(base + PhoneSetup.CA_PATH).statusCode());
+            // The root is not the setup page.
+            assertEquals(404, get(base + "/").statusCode());
 
             // With a CA: its public certificate in DER, nothing else.
             Path caDir = dir.resolve("ca");
@@ -173,14 +230,17 @@ class ShareServerTest {
         int port = ShareServer.port();
         // Over the network address (the QR code's URL) and over 127.0.0.1 (share URLs on this PC).
         assertEquals(200, get(PhoneSetup.pageUrl(ip, port)).statusCode());
-        assertEquals(200, get("http://127.0.0.1:" + port + "/").statusCode());
+        assertEquals(200, get("http://127.0.0.1:" + port + PhoneSetup.PAGE_PATH).statusCode());
+        // The selected profiles follow the binding like the other pages: the network address and 127.0.0.1.
+        assertEquals(200, get(ShareServer.activeUrl(ip, port)).statusCode());
+        assertEquals(200, get(ShareServer.activeUrl(port)).statusCode());
 
         // Every interface.
         s.data.settings.shareServerBind = "0.0.0.0";
         ShareServer.restart();
         assertEquals(ShareServer.State.RUNNING, ShareServer.state(), ShareServer.error());
         assertEquals(200, get(PhoneSetup.pageUrl(ip, port)).statusCode());
-        assertEquals(200, get("http://127.0.0.1:" + port + "/").statusCode());
+        assertEquals(200, get("http://127.0.0.1:" + port + PhoneSetup.PAGE_PATH).statusCode());
 
         // An address this PC does not have: reported, not moved elsewhere.
         s.data.settings.shareServerBind = "203.0.113.7";

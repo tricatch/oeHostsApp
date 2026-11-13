@@ -32,6 +32,9 @@ public final class PhoneSetup {
 
     private static final Logger log = LoggerFactory.getLogger(PhoneSetup.class);
 
+    /** The setup page's path (the QR code opens it). */
+    public static final String PAGE_PATH = "/ssl";
+
     /** The download path; the {@code .crt} name and the content type make iOS and Android offer to install it. */
     public static final String CA_PATH = "/oehostsapp-ca.crt";
 
@@ -80,7 +83,7 @@ public final class PhoneSetup {
 
     /** The URL the QR code carries: the web service's setup page. */
     public static String pageUrl(String ip, int port) {
-        return "http://" + ip + ":" + port + "/";
+        return "http://" + ip + ":" + port + PAGE_PATH;
     }
 
     private static final java.util.regex.Pattern IPV4 = java.util.regex.Pattern.compile("\\d{1,3}(\\.\\d{1,3}){3}");
@@ -101,12 +104,12 @@ public final class PhoneSetup {
     public record Reply(int status, String contentType, byte[] body, String fileName) {}
 
     /**
-     * The answer to {@code GET path}: the setup page at {@code /}, the CA certificate at
+     * The answer to {@code GET path}: the setup page at {@link #PAGE_PATH}, the CA certificate at
      * {@link #CA_PATH}, or null for any other path (the caller answers 404).
      */
     public static Reply respond(String path, String acceptLanguage) {
         Map<String, String> m = Messages.of(lang(acceptLanguage));
-        if (path.equals("/")) {
+        if (path.equals(PAGE_PATH) || path.equals(PAGE_PATH + "/")) {
             return new Reply(200, "text/html; charset=utf-8", page(m).getBytes(StandardCharsets.UTF_8), null);
         }
         if (path.equals(CA_PATH)) {
@@ -158,7 +161,7 @@ public final class PhoneSetup {
                 + "<a class=\"btn\" href=\"" + CA_PATH + "\">" + esc(m.get("app.phone.page.download")) + "</a>"
                 + "<h2>iPhone · iPad</h2>" + steps(m.get("app.phone.steps.ios"))
                 + "<h2>Android</h2>" + steps(m.get("app.phone.steps.android"))
-                + "<p class=\"muted\" style=\"margin-top:18px\">" + esc(m.get("app.phone.page.note")) + "</p>"
+                + "<p class=\"muted\" style=\"margin-top:18px\">" + esc(m.get("app.phone.page.note")).replace("\n", "<br>") + "</p>"
                 + "</main></body></html>";
     }
 
