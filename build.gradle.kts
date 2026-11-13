@@ -144,3 +144,21 @@ tasks.register<JavaExec>("run") {
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass = "tricatch.oehostsapp.OeHostsApp"
 }
+
+// Development tools that use the app's classes but do not ship in the jar (src/tools).
+val tools by sourceSets.creating {
+    compileClasspath += sourceSets.main.get().output + configurations.runtimeClasspath.get()
+    runtimeClasspath += output + compileClasspath
+}
+
+// Regenerates the installers' app icons in packaging/ from Ui.appIcon (AppIcons). Run it after
+// changing that drawing or the logo, and commit the files: install.sh and install.ps1 fetch them
+// from master.
+tasks.register<JavaExec>("icons") {
+    group = "build"
+    description = "Regenerates packaging/{linux,macos,windows} app icons from Ui.appIcon."
+    classpath = tools.runtimeClasspath
+    mainClass = "tricatch.oehostsapp.tools.AppIcons"
+    args(layout.projectDirectory.dir("packaging").asFile.path)
+    jvmArgs("-Djava.awt.headless=true")
+}
