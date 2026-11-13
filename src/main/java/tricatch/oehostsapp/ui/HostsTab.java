@@ -568,8 +568,8 @@ public final class HostsTab extends JPanel {
     }
 
     /**
-     * Sharing of the open profile for hosts managers: a switch, the URL the web service
-     * (ShareServer) serves it at (with a choice of this PC's address while it is on the network), and
+     * Sharing of the open profile for hosts managers: a switch, the URL the proxy service
+     * (ShareServer's pages) serves it at (with a choice of this PC's addresses), and
      * Copy. Turning the switch on or off takes effect at once.
      */
     private void share() {
@@ -577,7 +577,7 @@ public final class HostsTab extends JPanel {
         if (active == null) return;
         items.flush();
         String id = active.id;
-        int port = ctx.settings(st -> st.web.port);
+        int port = ctx.settings(st -> st.fwdproxy.port);
         String token = ctx.store(s -> s.shareToken(id));
         if (token == null) return;
         String url = ShareServer.url(port, token, active.name);
@@ -598,13 +598,14 @@ public final class HostsTab extends JPanel {
             JComponent desc = OeDialog.note(ctx.m("app.share.desc"));
             Dialogs.fixWidth(desc, 580);
             List<JComponent> parts = new ArrayList<>(List.of(desc, swRow));
-            // On the network too: the URL can name this PC by one of the addresses the web service
-            // answers on, for a hosts manager or an agent on another machine. 127.0.0.1 stays the default.
+            // On the network too: the URL can name this PC by one of its addresses, for a hosts
+            // manager or an agent on another machine. 127.0.0.1 stays the default.
             JComboBox<String> host = null;
             List<String> hosts = ShareServer.urlHosts();
             if (hosts.size() > 1) {
                 JComboBox<String> h = Ui.combo();
                 for (String a : hosts) h.addItem(a);
+                SettingsKit.addressNames(ctx, h);
                 h.addActionListener(e -> urlField.setText(ShareServer.url(String.valueOf(h.getSelectedItem()), port, token, active.name)));
                 JLabel hostLabel = new JLabel(ctx.m("app.share.host"));
                 hostLabel.setFont(Ui.font(Font.BOLD, 12.5f));
@@ -617,8 +618,9 @@ public final class HostsTab extends JPanel {
                 host = h;
             }
             parts.add(urlField);
-            if (ShareServer.state() == ShareServer.State.FAILED) {
-                JComponent w = OeDialog.warn(ctx.m("app.share.server.failed", port, String.valueOf(ShareServer.error())), null);
+            if (tricatch.oehostsapp.proxy.ForwardProxy.state() == tricatch.oehostsapp.proxy.ForwardProxy.State.FAILED) {
+                JComponent w = OeDialog.warn(ctx.m("app.share.server.failed", port,
+                        String.valueOf(tricatch.oehostsapp.proxy.ForwardProxy.error())), null);
                 Dialogs.fixWidth(w, 580);
                 parts.add(w);
             }

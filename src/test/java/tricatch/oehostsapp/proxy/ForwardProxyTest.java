@@ -1,7 +1,6 @@
 package tricatch.oehostsapp.proxy;
 
 import tricatch.oehostsapp.net.Network;
-import tricatch.oehostsapp.store.Settings;
 import tricatch.oehostsapp.store.Store;
 import tricatch.oehostsapp.web.PhoneSetup;
 import tricatch.oehostsapp.web.ShareServer;
@@ -111,161 +110,95 @@ class ForwardProxyTest {
         try (ServerSocket again = new ServerSocket(old, 1, InetAddress.getLoopbackAddress())) {
             assertTrue(again.isBound());
         }
-
-        // Every interface: still reachable on 127.0.0.1, and mapped the same way.
-        s.data.settings.fwdproxy.bind = Network.ALL;
-        ForwardProxy.restart();
-        assertEquals(ForwardProxy.State.RUNNING, ForwardProxy.state(), ForwardProxy.error());
-        assertTrue(ForwardProxy.lan());
-        client = HttpClient.newBuilder()
-                .proxy(ProxySelector.of(new InetSocketAddress("127.0.0.1", ForwardProxy.port())))
-                .build();
-        r = client.send(HttpRequest.newBuilder(
-                URI.create("http://mapped.oehostsapp.test:" + backendPort + "/")).build(), HttpResponse.BodyHandlers.ofString());
-        assertEquals("host=mapped.oehostsapp.test:" + backendPort, r.body());
     }
 
     @Test
-    void bindsTheChosenAddress() throws Exception {
-        Store s = Store.open(dir.resolve("data.json"));
-        // This PC only by default.
-        assertEquals(Network.LOOPBACK, s.data.settings.fwdproxy.bind);
-        s.data.settings.fwdproxy.port = freePort();
-
-        // One network card: listening on that address (and 127.0.0.1).
+    void listensOnEveryInterface() throws Exception {
         java.util.List<Network.Lan> lans = Network.addresses();
         org.junit.jupiter.api.Assumptions.assumeFalse(lans.isEmpty(), "no network card address on this machine");
-        String ip = lans.get(0).ip();
-        s.data.settings.fwdproxy.bind = ip;
+        Store s = Store.open(dir.resolve("data.json"));
+        s.data.settings.fwdproxy.port = freePort();
         ForwardProxy.start(s);
         assertEquals(ForwardProxy.State.RUNNING, ForwardProxy.state(), ForwardProxy.error());
-        assertEquals(ip, ForwardProxy.bind());
-        assertTrue(ForwardProxy.lan());
-        try (Socket ok = new Socket(ip, ForwardProxy.port())) {
-            assertTrue(ok.isConnected());
-        }
-        // 127.0.0.1 keeps a listener of its own: the Chrome launcher always uses it.
         try (Socket local = new Socket("127.0.0.1", ForwardProxy.port())) {
             assertTrue(local.isConnected());
         }
-
-        // An address this PC does not have: reported, not silently moved elsewhere.
-        s.data.settings.fwdproxy.bind = "203.0.113.7";
-        ForwardProxy.restart();
-        assertEquals(ForwardProxy.State.FAILED, ForwardProxy.state());
-        assertNotNull(ForwardProxy.error());
-    }
-
-    @Test
-    void asksOtherDevicesForBasicAuthentication() throws Exception {
-        backend = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
-        backend.createContext("/", ex -> {
-            byte[] body = "ok".getBytes(StandardCharsets.UTF_8);
-            ex.sendResponseHeaders(200, body.length);
-            try (OutputStream o = ex.getResponseBody()) {
-                o.write(body);
-            }
-        });
-        backend.start();
-        String target = "auth.oehostsapp.test:" + backend.getAddress().getPort();
-
-        Store s = Store.open(dir.resolve("data.json"));
-        Store.Item a = s.create(Store.Kind.HOSTS, "en");
-        s.updateContent(Store.Kind.HOSTS, a.id, "127.0.0.1 auth.oehostsapp.test\n");
-        s.toggleSelected(Store.Kind.HOSTS, a.id);
-        s.data.settings.fwdproxy.port = freePort();
-        s.data.settings.fwdproxy.auth = true;
-        s.data.settings.fwdproxy.user = "dev";
-        s.data.settings.fwdproxy.password = "p:ss word";
-        // Authentication only counts for other devices: connect through a network card address,
-        // so the proxy sees a non-loopback client.
-        java.util.List<Network.Lan> lans = Network.addresses();
-        org.junit.jupiter.api.Assumptions.assumeFalse(lans.isEmpty(), "no network card address on this machine");
-        String ip = lans.get(0).ip();
-        s.data.settings.fwdproxy.bind = Network.ALL;
-        ForwardProxy.start(s);
-        assertEquals(ForwardProxy.State.RUNNING, ForwardProxy.state(), ForwardProxy.error());
-        assertTrue(ForwardProxy.authRequired());
-        int port = ForwardProxy.port();
-
-        String none = statusLine(ip, port, "GET http://" + target + "/ HTTP/1.1\r\nHost: " + target + "\r\n");
-        assertTrue(none.contains(" 407 "), none);
-        String wrongPassword = statusLine(ip, port, "GET http://" + target + "/ HTTP/1.1\r\nHost: " + target
-                + "\r\nProxy-Authorization: " + basic("dev", "nope") + "\r\n");
-        assertTrue(wrongPassword.contains(" 407 "), wrongPassword);
-        String wrongId = statusLine(ip, port, "GET http://" + target + "/ HTTP/1.1\r\nHost: " + target
-                + "\r\nProxy-Authorization: " + basic("other", "p:ss word") + "\r\n");
-        assertTrue(wrongId.contains(" 407 "), wrongId);
-        String ok = statusLine(ip, port, "GET http://" + target + "/ HTTP/1.1\r\nHost: " + target
-                + "\r\nProxy-Authorization: " + basic("dev", "p:ss word") + "\r\n");
-        assertTrue(ok.contains(" 200 "), ok);
-        String tunnelDenied = statusLine(ip, port, "CONNECT " + target + " HTTP/1.1\r\nHost: " + target + "\r\n");
-        assertTrue(tunnelDenied.contains(" 407 "), tunnelDenied);
-        String tunnel = statusLine(ip, port, "CONNECT " + target + " HTTP/1.1\r\nHost: " + target
-                + "\r\nProxy-Authorization: " + basic("dev", "p:ss word") + "\r\n");
-        assertTrue(tunnel.contains(" 200 "), tunnel);
-
-        // 127.0.0.1, the Chrome launcher's address, is never asked.
-        String local = statusLine("127.0.0.1", port, "GET http://" + target + "/ HTTP/1.1\r\nHost: " + target + "\r\n");
-        assertTrue(local.contains(" 200 "), local);
-
-        // One network card plus authentication: the same rules, and 127.0.0.1 still answers.
-        s.data.settings.fwdproxy.bind = ip;
-        ForwardProxy.restart();
-        assertEquals(ForwardProxy.State.RUNNING, ForwardProxy.state(), ForwardProxy.error());
-        assertTrue(statusLine(ip, port, "GET http://" + target + "/ HTTP/1.1\r\nHost: " + target + "\r\n").contains(" 407 "));
-        assertTrue(statusLine("127.0.0.1", port, "GET http://" + target + "/ HTTP/1.1\r\nHost: " + target + "\r\n").contains(" 200 "));
-    }
-
-    @Test
-    void sendsThisPcsAddressOnTheWebServicePortToTheWebService() throws Exception {
-        java.util.List<Network.Lan> lans = Network.addresses();
-        org.junit.jupiter.api.Assumptions.assumeFalse(lans.isEmpty(), "no network card address on this machine");
-        String ip = lans.get(0).ip();
-        Store s = Store.open(dir.resolve("data.json"));
-        // The web service on this PC only; the proxy open to the network, as for a phone.
-        s.data.settings.web.port = freePort();
-        ShareServer.start(s);
-        s.data.settings.fwdproxy.port = freePort();
-        s.data.settings.fwdproxy.bind = ip;
-        ForwardProxy.start(s);
-        try {
-            assertEquals(ShareServer.State.RUNNING, ShareServer.state(), ShareServer.error());
-            assertEquals(ForwardProxy.State.RUNNING, ForwardProxy.state(), ForwardProxy.error());
-            String url = PhoneSetup.pageUrl(ip, ShareServer.port());
-            // Directly the page is not there (127.0.0.1 only)...
-            assertThrows(java.io.IOException.class, () -> HttpClient.newHttpClient().send(
-                    HttpRequest.newBuilder(URI.create(url)).build(), HttpResponse.BodyHandlers.ofString()));
-            // ...but through the proxy, like the phone after its Wi-Fi proxy is set, it is.
-            String page = statusLine(ip, ForwardProxy.port(), "GET " + url + " HTTP/1.1\r\nHost: " + ip + ":" + ShareServer.port() + "\r\n");
-            assertTrue(page.contains(" 200 "), page);
-            // Another port on this PC is not redirected.
-            assertNull(ForwardProxy.webService(ForwardProxy.HostPort.parse(ip + ":1", 80)));
-            assertNull(ForwardProxy.webService(ForwardProxy.HostPort.parse("example.com:" + ShareServer.port(), 80)));
-        } finally {
-            ShareServer.stop();
+        try (Socket lan = new Socket(lans.get(0).ip(), ForwardProxy.port())) {
+            assertTrue(lan.isConnected());
         }
     }
 
     @Test
-    void checksBasicCredentials() {
-        assertTrue(ForwardProxy.credentialsMatch("dev", "a:b", "dev", "a:b"));
-        assertFalse(ForwardProxy.credentialsMatch("dev", "a", "dev", "a:b"));
-        assertFalse(ForwardProxy.credentialsMatch("Dev", "a:b", "dev", "a:b"));
-        assertFalse(ForwardProxy.credentialsMatch(null, null, "dev", "a:b"));
-        // Turned on without an ID or password: nothing is asked.
-        Settings.ForwardProxy st = new Settings.ForwardProxy();
-        st.auth = true;
-        st.user = "dev";
-        assertNull(st.credentials());
-        st.password = "x";
-        assertArrayEquals(new String[]{"dev", "x"}, st.credentials());
-        st.auth = false;
-        assertNull(st.credentials());
+    void answersItsOwnPagesAndProxiesTheRest() throws Exception {
+        java.util.List<Network.Lan> lans = Network.addresses();
+        org.junit.jupiter.api.Assumptions.assumeFalse(lans.isEmpty(), "no network card address on this machine");
+        String ip = lans.get(0).ip();
+        Store s = Store.open(dir.resolve("data.json"));
+        s.data.settings.fwdproxy.port = freePort();
+        ForwardProxy.start(s);
+        assertEquals(ForwardProxy.State.RUNNING, ForwardProxy.state(), ForwardProxy.error());
+        int port = ForwardProxy.port();
+        // A phone opening the QR code through this very proxy: this PC's address and this port.
+        String url = PhoneSetup.pageUrl(ip, port);
+        String page = statusLine(ip, port, "GET " + url + " HTTP/1.1\r\nHost: " + ip + ":" + port + "\r\n");
+        assertTrue(page.contains(" 200 "), page);
+        // A tool calling the URL directly (path only).
+        String direct = statusLine("127.0.0.1", port, "GET " + ShareServer.ACTIVE_PATH + " HTTP/1.1\r\nHost: 127.0.0.1:" + port + "\r\n");
+        assertTrue(direct.contains(" 200 "), direct);
+        // A tunnel to the service itself is refused rather than looped.
+        String loop = statusLine("127.0.0.1", port, "CONNECT 127.0.0.1:" + port + " HTTP/1.1\r\nHost: 127.0.0.1:" + port + "\r\n");
+        assertTrue(loop.contains(" 403 "), loop);
+
+        // Which requests are the service's own.
+        assertEquals("/ssl", ForwardProxy.target(get("http://" + ip + ":" + port + "/ssl?x=1")).path());
+        assertEquals("/active-hosts", ForwardProxy.target(get("/active-hosts")).path());
+        assertEquals("/", ForwardProxy.target(get("http://localhost:" + port)).path());
+        assertNull(ForwardProxy.target(get("http://" + ip + ":1/ssl")));
+        assertNull(ForwardProxy.target(get("http://example.com:" + port + "/ssl")));
+        assertNull(ForwardProxy.target(new io.netty.handler.codec.http.DefaultHttpRequest(
+                io.netty.handler.codec.http.HttpVersion.HTTP_1_1, io.netty.handler.codec.http.HttpMethod.CONNECT, "example.com:443")));
     }
 
-    private static String basic(String user, String password) {
-        return "Basic " + java.util.Base64.getEncoder().encodeToString((user + ":" + password).getBytes(StandardCharsets.UTF_8));
+    private static io.netty.handler.codec.http.HttpRequest get(String uri) {
+        return new io.netty.handler.codec.http.DefaultHttpRequest(io.netty.handler.codec.http.HttpVersion.HTTP_1_1,
+                io.netty.handler.codec.http.HttpMethod.GET, uri);
+    }
+
+    @Test
+    void asksOnceAboutAnotherDeviceAndKeepsTheAnswer() throws Exception {
+        ClientAccess.clear();
+        java.util.List<ClientAccess.Request> asked = new java.util.ArrayList<>();
+        ClientAccess.setAsker(asked::add);
+        try {
+            InetAddress phone = InetAddress.getByAddress(new byte[]{(byte) 203, 0, 113, 7});
+            // This PC itself is never asked.
+            assertEquals(ClientAccess.Decision.ALLOWED, ClientAccess.check(InetAddress.getLoopbackAddress(), "x"));
+            for (Network.Lan l : Network.addresses()) {
+                assertEquals(ClientAccess.Decision.ALLOWED, ClientAccess.check(InetAddress.getByName(l.ip()), "x"), l.ip());
+            }
+            assertTrue(asked.isEmpty());
+
+            // Another device: asked once, refused while waiting.
+            assertEquals(ClientAccess.Decision.PENDING, ClientAccess.check(phone, "Phone UA"));
+            assertEquals(ClientAccess.Decision.PENDING, ClientAccess.check(phone, "Phone UA"));
+            assertEquals(1, asked.size());
+            assertEquals(new ClientAccess.Request("203.0.113.7", "Phone UA"), asked.get(0));
+
+            ClientAccess.decide(asked.get(0), true);
+            assertEquals(ClientAccess.Decision.ALLOWED, ClientAccess.check(phone, "Phone UA"));
+            assertEquals(java.util.List.of(new ClientAccess.Entry("203.0.113.7", "Phone UA", true)), ClientAccess.decisions());
+
+            // Cleared: asked again; a refusal holds.
+            ClientAccess.clear();
+            assertEquals(ClientAccess.Decision.PENDING, ClientAccess.check(phone, null));
+            assertEquals(2, asked.size());
+            ClientAccess.decide(asked.get(1), false);
+            assertEquals(ClientAccess.Decision.DENIED, ClientAccess.check(phone, null));
+            assertEquals(2, asked.size());
+        } finally {
+            ClientAccess.setAsker(null);
+            ClientAccess.clear();
+        }
     }
 
     /** Sends one request (headers without the final blank line) and returns the response's status line. */

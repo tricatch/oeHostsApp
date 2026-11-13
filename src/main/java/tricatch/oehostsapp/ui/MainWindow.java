@@ -67,8 +67,59 @@ public final class MainWindow {
         w.select(0);
         if (maximized) frame.setExtendedState(frame.getExtendedState() | Frame.MAXIMIZED_BOTH);
         frame.setVisible(true);
+        // Another device's first request to the proxy service asks here (on the proxy's thread).
+        tricatch.oehostsapp.proxy.ClientAccess.setAsker(r -> SwingUtilities.invokeLater(() -> askAccess(r)));
         String shot = System.getProperty("oehostsapp.shot");
         if (shot != null) w.screenshots(shot);
+    }
+
+    /** Devices waiting for an answer, asked one after another (the question is a modal dialog). */
+    private static final java.util.ArrayDeque<tricatch.oehostsapp.proxy.ClientAccess.Request> accessQueue = new java.util.ArrayDeque<>();
+    private static boolean asking;
+
+    /**
+     * Asks whether a device may use the proxy service: its address and User-Agent, Allow or Deny.
+     * Closing the dialog denies. The window comes to the front first, since the request usually
+     * arrives while the user is on the phone or another PC. EDT only.
+     */
+    private static void askAccess(tricatch.oehostsapp.proxy.ClientAccess.Request first) {
+        accessQueue.add(first);
+        if (asking) return;
+        asking = true;
+        try {
+            tricatch.oehostsapp.proxy.ClientAccess.Request r;
+            while ((r = accessQueue.poll()) != null) {
+                MainWindow w = shown;
+                if (w == null) {
+                    tricatch.oehostsapp.proxy.ClientAccess.decide(r, false);
+                    continue;
+                }
+                bringToFront();
+                AppContext ctx = w.ctx;
+                boolean[] allow = {false};
+                tricatch.oehostsapp.proxy.ClientAccess.Request req = r;
+                OeDialog.open(ctx, ctx.m("app.access.title"), d -> {
+                    JComponent note = OeDialog.note(ctx.m("app.access.desc"));
+                    Dialogs.fixWidth(note, 520);
+                    JTextField[] v = new JTextField[1];
+                    JPanel info = SettingsKit.table(new String[][]{{ctx.m("app.access.ip"), req.ip()}}, v);
+                    // The User-Agent is long and tells the devices apart: wrapped in full, not cut off.
+                    JLabel uaLabel = SettingsKit.label(ctx.m("app.access.ua"));
+                    JTextArea ua = OeDialog.script(req.userAgent() == null || req.userAgent().isBlank() ? "-" : req.userAgent());
+                    ua.setWrapStyleWord(true);
+                    Dialogs.fixWidth(ua, 520);
+                    d.body(OeDialog.stack(12, note, info, OeDialog.stack(6, uaLabel, ua)));
+                    d.button(ctx.m("app.access.allow"), true, () -> {
+                        allow[0] = true;
+                        d.dispose();
+                    });
+                    d.button(ctx.m("app.access.deny"), false, d::dispose);
+                });
+                tricatch.oehostsapp.proxy.ClientAccess.decide(req, allow[0]);
+            }
+        } finally {
+            asking = false;
+        }
     }
 
     /**

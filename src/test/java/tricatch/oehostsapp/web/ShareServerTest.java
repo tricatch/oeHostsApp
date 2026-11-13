@@ -2,6 +2,7 @@ package tricatch.oehostsapp.web;
 
 import tricatch.oehostsapp.net.Network;
 import tricatch.oehostsapp.Messages;
+import tricatch.oehostsapp.proxy.ForwardProxy;
 import tricatch.oehostsapp.proxy.ProxyRuntime;
 import tricatch.oehostsapp.store.Store;
 
@@ -30,7 +31,15 @@ class ShareServerTest {
 
     @AfterEach
     void tearDown() {
-        ShareServer.stop();
+        ForwardProxy.stop();
+    }
+
+    /** The proxy service, which answers these pages, on a free port. */
+    private static int startService(Store s) throws Exception {
+        s.data.settings.fwdproxy.port = freePort();
+        ForwardProxy.start(s);
+        assertEquals(ForwardProxy.State.RUNNING, ForwardProxy.state(), ForwardProxy.error());
+        return ForwardProxy.port();
     }
 
     @Test
@@ -40,11 +49,7 @@ class ShareServerTest {
         s.updateContent(Store.Kind.HOSTS, a.id, "# dev\n${PROXY_SVR} api.example.test\n");
         Store.Item b = s.create(Store.Kind.HOSTS, "en");
         s.setShared(a.id, true);
-        s.data.settings.web.port = freePort();
-
-        ShareServer.start(s);
-        assertEquals(ShareServer.State.RUNNING, ShareServer.state(), ShareServer.error());
-        int port = ShareServer.port();
+        int port = startService(s);
         String ta = s.shareToken(a.id);
         assertTrue(ta.matches("[0-9a-hjkmnp-tv-z]{14}-[0-9a-hjkmnp-tv-z]{8}"), ta);
         assertEquals(ta, s.shareToken(a.id));
@@ -131,10 +136,7 @@ class ShareServerTest {
         s.updateContent(Store.Kind.HOSTS, b.id, "10.0.0.2 db.example.test\n10.0.0.3 web.example.test\n");
         Store.Item c = s.create(Store.Kind.HOSTS, "en");
         s.updateContent(Store.Kind.HOSTS, c.id, "10.0.0.9 other.example.test\n");
-        s.data.settings.web.port = freePort();
-        ShareServer.start(s);
-        assertEquals(ShareServer.State.RUNNING, ShareServer.state(), ShareServer.error());
-        int port = ShareServer.port();
+        int port = startService(s);
         String url = ShareServer.activeUrl(port);
         assertEquals("http://127.0.0.1:" + port + "/active-hosts", url);
 
@@ -180,10 +182,7 @@ class ShareServerTest {
     @Test
     void servesThePhoneSetupPageAndTheCa() throws Exception {
         Store s = Store.open(dir.resolve("data.json"));
-        s.data.settings.web.port = freePort();
-        ShareServer.start(s);
-        assertEquals(ShareServer.State.RUNNING, ShareServer.state(), ShareServer.error());
-        String base = "http://127.0.0.1:" + ShareServer.port();
+        String base = "http://127.0.0.1:" + startService(s);
         HttpClient client = HttpClient.newHttpClient();
         try {
             // No CA yet: the page opens, the download is a 404.
@@ -217,47 +216,16 @@ class ShareServerTest {
     }
 
     @Test
-    void bindsTheChosenAddressAndAlwaysLoopback() throws Exception {
+    void answersOnThisPcsNetworkAddressToo() throws Exception {
         java.util.List<Network.Lan> lans = Network.addresses();
         org.junit.jupiter.api.Assumptions.assumeFalse(lans.isEmpty(), "no network card address on this machine");
         String ip = lans.get(0).ip();
-        Store s = Store.open(dir.resolve("data.json"));
-        assertEquals("127.0.0.1", s.data.settings.web.bind);
-        s.data.settings.web.port = freePort();
-        s.data.settings.web.bind = ip;
-        ShareServer.start(s);
-        assertEquals(ShareServer.State.RUNNING, ShareServer.state(), ShareServer.error());
-        assertTrue(ShareServer.lan());
-        int port = ShareServer.port();
-        // Over the network address (the QR code's URL) and over 127.0.0.1 (share URLs on this PC).
+        int port = startService(Store.open(dir.resolve("data.json")));
+        // Over the network address (the QR code's URL, another PC) and over 127.0.0.1 (this PC).
         assertEquals(200, get(PhoneSetup.pageUrl(ip, port)).statusCode());
         assertEquals(200, get("http://127.0.0.1:" + port + PhoneSetup.PAGE_PATH).statusCode());
-        // The selected profiles follow the binding like the other pages: the network address and 127.0.0.1.
         assertEquals(200, get(ShareServer.activeUrl(ip, port)).statusCode());
         assertEquals(200, get(ShareServer.activeUrl(port)).statusCode());
-
-        // Every interface.
-        s.data.settings.web.bind = "0.0.0.0";
-        ShareServer.restart();
-        assertEquals(ShareServer.State.RUNNING, ShareServer.state(), ShareServer.error());
-        assertEquals(200, get(PhoneSetup.pageUrl(ip, port)).statusCode());
-        assertEquals(200, get("http://127.0.0.1:" + port + PhoneSetup.PAGE_PATH).statusCode());
-
-        // An address this PC does not have: reported, not moved elsewhere.
-        s.data.settings.web.bind = "203.0.113.7";
-        ShareServer.restart();
-        assertEquals(ShareServer.State.FAILED, ShareServer.state());
-    }
-
-    @Test
-    void reportsAPortInUse() throws Exception {
-        try (ServerSocket taken = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            Store s = Store.open(dir.resolve("data.json"));
-            s.data.settings.web.port = taken.getLocalPort();
-            ShareServer.start(s);
-            assertEquals(ShareServer.State.FAILED, ShareServer.state());
-            assertNotNull(ShareServer.error());
-        }
     }
 
     /** A share URL without the trailing name. */

@@ -7,7 +7,6 @@ import tricatch.oehostsapp.store.Store;
 import tricatch.oehostsapp.ui.MainWindow;
 import tricatch.oehostsapp.ui.Ui;
 import tricatch.oehostsapp.update.Update;
-import tricatch.oehostsapp.web.ShareServer;
 
 import com.formdev.flatlaf.FlatLaf;
 import com.formdev.flatlaf.FlatLightLaf;
@@ -78,7 +77,6 @@ public final class OeHostsApp {
         HostsAgent.start(dataDir);
         ProxyRuntime.start(dataDir, store);
         Thread.ofVirtual().name("fwdproxy-start").start(() -> ForwardProxy.start(store));
-        Thread.ofVirtual().name("share-start").start(() -> ShareServer.start(store));
         Integer fontSize;
         synchronized (store) {
             fontSize = store.data.settings.fontSize;

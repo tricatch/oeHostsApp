@@ -9,36 +9,19 @@ import java.util.List;
 public final class Settings {
 
     public static final int DEFAULT_FWDPROXY_PORT = 36980;
-    public static final int DEFAULT_WEB_PORT = 36981;
 
     /**
-     * The forward proxy Chrome (and phones) use: its port, its binding ({@link Network}), and an
-     * optional Basic username and password other devices must send (127.0.0.1 is never asked).
+     * The proxy service (proxy for Chrome and phones, and the shared hosts / phone setup pages): its
+     * port. It always listens on every interface; other devices are allowed one by one on screen.
+     * Older files' binding, Basic authentication and separate web service are ignored.
      */
     public static class ForwardProxy {
         public int port = DEFAULT_FWDPROXY_PORT;
-        public String bind = Network.LOOPBACK;
-        public boolean auth;
-        /** Kept when authentication is turned off again. */
-        public String user;
-        public String password;
-
-        /** The username and password the forward proxy asks for, or null when it asks for none. */
-        public String[] credentials() {
-            if (!auth || user == null || user.isEmpty() || password == null || password.isEmpty()) return null;
-            return new String[]{user, password};
-        }
     }
 
     /** The embedded reverse proxy's binding (a network card's address is bound together with 127.0.0.1). */
     public static class ReverseProxy {
         public String bind = Network.ALL;
-    }
-
-    /** The web service (hosts sharing, /active-hosts, phone setup page). */
-    public static class WebService {
-        public int port = DEFAULT_WEB_PORT;
-        public String bind = Network.LOOPBACK;
     }
 
     /** One preset: a name and the value it puts into a launcher field. */
@@ -99,7 +82,6 @@ public final class Settings {
 
     public ForwardProxy fwdproxy = new ForwardProxy();
     public ReverseProxy reverseProxy = new ReverseProxy();
-    public WebService web = new WebService();
     public PresetList userAgentPresets = new PresetList();
     public PresetList openUrlPresets = new PresetList();
     public Window window = new Window();
@@ -119,17 +101,12 @@ public final class Settings {
     void fillDefaults() {
         if (fwdproxy == null) fwdproxy = new ForwardProxy();
         if (reverseProxy == null) reverseProxy = new ReverseProxy();
-        if (web == null) web = new WebService();
         if (userAgentPresets == null) userAgentPresets = new PresetList();
         if (openUrlPresets == null) openUrlPresets = new PresetList();
         if (userAgentPresets.items == null) userAgentPresets.items = new ArrayList<>();
         if (openUrlPresets.items == null) openUrlPresets.items = new ArrayList<>();
         if (window == null) window = new Window();
-        if (fwdproxy.bind == null || fwdproxy.bind.isBlank()) fwdproxy.bind = Network.LOOPBACK;
         if (reverseProxy.bind == null || reverseProxy.bind.isBlank()) reverseProxy.bind = Network.ALL;
-        if (web.bind == null || web.bind.isBlank()) web.bind = Network.LOOPBACK;
-        fwdproxy.bind = fwdproxy.bind.strip();
         reverseProxy.bind = reverseProxy.bind.strip();
-        web.bind = web.bind.strip();
     }
 }

@@ -2,6 +2,7 @@ package tricatch.oehostsapp.ui;
 
 import tricatch.oehostsapp.net.Network;
 import tricatch.oehostsapp.store.Store;
+import tricatch.oehostsapp.proxy.ForwardProxy;
 import tricatch.oehostsapp.web.ShareServer;
 
 import javax.swing.*;
@@ -30,22 +31,23 @@ final class ActiveHostsPage {
     }
 
     JComponent build() {
-        JTextField[] v = new JTextField[1];
-        JPanel info = table(new String[][]{{ctx.m("app.settings.active.url"), "-"}}, v);
+        // The URL in the command box look of the Java agent page's option.
+        JTextArea info = fieldScript("-");
         JButton copy = primary(ctx.m("app.settings.active.copy"), "copy", () -> {
-            OeDialog.copy(v[0].getText());
+            OeDialog.copy(info.getText());
             ctx.toast(ctx.m("app.settings.copied"));
         });
         JComponent webOff = OeDialog.warn(ctx.m("app.settings.active.web.stopped"), null);
-        JPanel webOffButtons = buttons(Ui.secondary(ctx.m("app.settings.phone.open.web"), "settings", () -> tab.showPage("web")));
+        JPanel webOffButtons = buttons(Ui.secondary(ctx.m("app.settings.phone.open.fwd"), "settings", () -> tab.showPage("fwd")));
 
-        // Which address the URL names: 127.0.0.1 (the default, for tools on this PC), or, while the
-        // web service is open to the network, one of the addresses it answers on (another PC).
+        // Which address the URL names: 127.0.0.1 (the default, for tools on this PC), or one of this
+        // PC's addresses (another PC; the proxy service listens on all of them).
         JComboBox<String> host = Ui.combo();
         host.setMinimumSize(new Dimension(0, host.getPreferredSize().height));
         JLabel hostLabel = label(ctx.m("app.settings.phone.address"));
-        alignWithTable(info, ROW_GAP, hostLabel);
-        JPanel hostRow = formRow(hostLabel, host);
+        // The label above, the list under it, as wide as the longest address (not the whole row).
+        addressNames(ctx, host);
+        JPanel hostRow = OeDialog.stack(6, hostLabel, buttons(host));
 
         // A long list scrolls inside its box, which takes the rest of the half's height, instead of
         // making the page taller. The box keeps the script look: the frame on the scroll pane, the
@@ -63,10 +65,10 @@ final class ActiveHostsPage {
         JComponent empty = desc(ctx.m("app.settings.active.empty"));
 
         Runnable showUrl = () -> {
-            int port = ctx.settings(st -> st.web.port);
+            int port = ctx.settings(st -> st.fwdproxy.port);
             Object sel = host.getSelectedItem();
-            v[0].setText(ShareServer.activeUrl(sel == null ? Network.LOOPBACK : sel.toString(), port));
-            v[0].setCaretPosition(0);
+            info.setText(ShareServer.activeUrl(sel == null ? Network.LOOPBACK : sel.toString(), port));
+            info.setCaretPosition(0);
         };
         boolean[] filling = {false};
         Runnable refreshUrl = () -> {
@@ -79,7 +81,7 @@ final class ActiveHostsPage {
             filling[0] = false;
             hostRow.setVisible(host.getItemCount() > 1);
             showUrl.run();
-            boolean on = ShareServer.state() == ShareServer.State.RUNNING;
+            boolean on = ForwardProxy.state() == ForwardProxy.State.RUNNING;
             webOff.setVisible(!on);
             webOffButtons.setVisible(!on);
         };
@@ -98,7 +100,7 @@ final class ActiveHostsPage {
         info.addHierarchyListener(e -> {
             if ((e.getChangeFlags() & HierarchyEvent.SHOWING_CHANGED) != 0 && info.isShowing()) refreshPreview.run();
         });
-        ctx.listen(ShareServer::onChange, refreshUrl);
+        ctx.listen(ForwardProxy::onChange, refreshUrl);
         refreshUrl.run();
         refreshPreview.run();
         JPanel right = new JPanel(new BorderLayout(0, Ui.px(14)));
@@ -106,7 +108,8 @@ final class ActiveHostsPage {
         right.add(column(heading(ctx.m("app.settings.active.preview.desc")), line(), empty), BorderLayout.NORTH);
         right.add(previewScroll, BorderLayout.CENTER);
         return fullPage(halves(
-                column(desc(ctx.m("app.settings.active.desc")), line(), webOff, webOffButtons, hostRow, info, line(),
+                column(desc(ctx.m("app.settings.active.desc")), line(), webOff, webOffButtons, hostRow,
+                        OeDialog.stack(6, label(ctx.m("app.settings.active.address")), info), line(),
                         rightAligned(copy)),
                 right));
     }

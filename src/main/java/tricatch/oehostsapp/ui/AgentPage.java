@@ -1,6 +1,7 @@
 package tricatch.oehostsapp.ui;
 
 import tricatch.oehostsapp.hosts.HostsAgent;
+import tricatch.oehostsapp.proxy.ForwardProxy;
 import tricatch.oehostsapp.web.ShareServer;
 
 import javax.swing.*;
@@ -31,8 +32,7 @@ final class AgentPage {
                 {ctx.m("app.settings.agent.file"), "-"},
                 {ctx.m("app.settings.agent.version"), "-"}}, v);
 
-        JTextArea option = OeDialog.script("");
-        option.setColumns(0);
+        JTextArea option = fieldScript("");
         JComponent inUse = desc(ctx.m("app.settings.agent.inuse"));
         JComponent missing = OeDialog.warn(ctx.m("app.settings.agent.missing"), null);
         // Installing failed: the reason in the red box (a full disk, a folder without write access).
@@ -51,15 +51,46 @@ final class AgentPage {
         JComponent folderLine = line();
         JPanel folderRow = rightAligned(folder);
 
+        // Which address the option's URL names: 127.0.0.1 (the default, an application on this PC),
+        // or one of this PC's addresses (an application on another machine), as on the Active-Hosts page.
+        JComboBox<String> host = Ui.combo();
+        host.setMinimumSize(new Dimension(0, host.getPreferredSize().height));
+        JLabel hostLabel = label(ctx.m("app.settings.phone.address"));
+        sameWidth(hostLabel);
+        // The label above, the list under it, as wide as the longest address (not the whole row).
+        addressNames(ctx, host);
+        JPanel hostRow = OeDialog.stack(6, hostLabel, buttons(host));
+        JPanel optionRow = OeDialog.stack(6, label(ctx.m("app.settings.agent.option")), option);
+
         boolean[] usable = {false};
         // The agent reads the profiles selected in oeHosts (ShareServer.ACTIVE_PATH), so the option
-        // needs no profile choice; it changes only with the web service port.
+        // needs no profile choice; it changes with the chosen address and the proxy service port.
         Runnable showOption = () -> {
-            int port = ctx.settings(s -> s.web.port);
+            int port = ctx.settings(s -> s.fwdproxy.port);
             Path agent = HostsAgent.path();
-            option.setText(agent == null ? "-" : HostsAgent.option(agent, ShareServer.activeUrl(port)));
+            Object sel = host.getSelectedItem();
+            String url = ShareServer.activeUrl(sel == null ? tricatch.oehostsapp.net.Network.LOOPBACK : sel.toString(), port);
+            option.setText(agent == null ? "-" : HostsAgent.option(agent, url));
             copy.setEnabled(usable[0]);
         };
+        boolean[] filling = {false};
+        // This PC's addresses can change (another Wi-Fi): listed again whenever the page is shown.
+        Runnable fillHosts = () -> {
+            Object prev = host.getSelectedItem();
+            filling[0] = true;
+            host.removeAllItems();
+            for (String h : ShareServer.urlHosts()) host.addItem(h);
+            if (prev != null) host.setSelectedItem(prev);
+            if (host.getSelectedIndex() < 0 && host.getItemCount() > 0) host.setSelectedIndex(0);
+            filling[0] = false;
+            showOption.run();
+        };
+        host.addActionListener(e -> {
+            if (!filling[0]) showOption.run();
+        });
+        host.addHierarchyListener(e -> {
+            if ((e.getChangeFlags() & java.awt.event.HierarchyEvent.SHOWING_CHANGED) != 0 && host.isShowing()) fillHosts.run();
+        });
         Runnable refresh = () -> {
             HostsAgent.State state = HostsAgent.state();
             usable[0] = HostsAgent.path() != null
@@ -72,7 +103,8 @@ final class AgentPage {
             if (fail) failed.add(OeDialog.warn(ctx.m("app.settings.agent.failed"), HostsAgent.error()));
             failed.setVisible(fail);
             inUse.setVisible(state == HostsAgent.State.IN_USE);
-            option.setVisible(usable[0]);
+            optionRow.setVisible(usable[0]);
+            hostRow.setVisible(usable[0]);
             actionsLine.setVisible(usable[0]);
             actions.setVisible(usable[0]);
             folderLine.setVisible(HostsAgent.path() != null);
@@ -81,12 +113,13 @@ final class AgentPage {
             for (JTextField f : v) f.setCaretPosition(0);
             info.revalidate();
         };
+        fillHosts.run();
         refresh.run();
         ctx.listen(HostsAgent::onChange, refresh);
-        // The web service restarts on a new port from its settings page.
-        ctx.listen(ShareServer::onChange, showOption);
+        // The proxy service restarts on a new port from its settings page.
+        ctx.listen(ForwardProxy::onChange, showOption);
         return fullPage(halves(
-                column(desc(ctx.m("app.settings.agent.desc")), line(), missing, failed, option, actionsLine, actions),
+                column(desc(ctx.m("app.settings.agent.desc")), line(), missing, failed, hostRow, optionRow, actionsLine, actions),
                 column(heading(ctx.m("app.settings.agent.install.title")), line(), info, inUse, folderLine, folderRow)));
     }
 }

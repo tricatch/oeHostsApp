@@ -59,7 +59,7 @@ public final class PhoneSetup {
     }
 
     /** "ko" when the phone prefers Korean over English, else "en". */
-    static String lang(String acceptLanguage) {
+    public static String lang(String acceptLanguage) {
         if (acceptLanguage == null) return "en";
         for (String part : acceptLanguage.split(",")) {
             String l = part.strip().toLowerCase(Locale.ROOT);

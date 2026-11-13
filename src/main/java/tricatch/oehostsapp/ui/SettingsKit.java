@@ -145,6 +145,17 @@ final class SettingsKit {
         return p;
     }
 
+    /**
+     * A full-width command box (URL, launch option) under an address drop-down: its text starts at
+     * the same x as the drop-down's, so the left padding is 4px less than {@link OeDialog#script}'s.
+     */
+    static JTextArea fieldScript(String text) {
+        JTextArea a = OeDialog.script(text);
+        a.setColumns(0);
+        a.setBorder(new CompoundBorder(new LineBorder(Ui.BORDER, 1, true), Ui.pad(8, 6, 8, 10)));
+        return a;
+    }
+
     /** A thin horizontal rule between the sections of a page (description, settings, actions). */
     static JComponent line() {
         return new JComponent() {
@@ -443,6 +454,28 @@ final class SettingsKit {
         for (Network.Lan l : lans) out.add(ctx.m("app.settings.bind.iface", l.ip() + ":" + port, l.iface()));
         if (!Network.ALL.equals(bind) && lans.isEmpty()) out.add(bind + ":" + port);
         return out;
+    }
+
+    /**
+     * Shows the addresses of a URL-host choice ({@code ShareServer.urlHosts()}) with what they are:
+     * {@code 127.0.0.1  (this PC)}, {@code 192.168.1.23  (Realtek …)}. The network card names are
+     * read when the list opens or is drawn, so they follow the PC's current networks.
+     */
+    static void addressNames(AppContext ctx, JComboBox<String> box) {
+        box.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> l, Object value, int i, boolean sel, boolean focus) {
+                super.getListCellRendererComponent(l, value, i, sel, focus);
+                if (value != null) setText(addressName(ctx, value.toString()));
+                return this;
+            }
+        });
+    }
+
+    static String addressName(AppContext ctx, String ip) {
+        if (Network.LOOPBACK.equals(ip)) return ctx.m("app.settings.bind.loopback", ip);
+        for (Network.Lan l : Network.addresses()) if (l.ip().equals(ip)) return ctx.m("app.settings.bind.iface", ip, l.iface());
+        return ip;
     }
 
     // ── Links and files ─────────────────────────────────────────

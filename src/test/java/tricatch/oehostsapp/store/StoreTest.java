@@ -80,7 +80,6 @@ class StoreTest {
         Store s = open();
         assertEquals("ko", s.data.settings.lang);
         assertEquals(Settings.DEFAULT_FWDPROXY_PORT, s.data.settings.fwdproxy.port);
-        assertEquals("127.0.0.1", s.data.settings.web.bind);
         assertEquals("0.0.0.0", s.data.settings.reverseProxy.bind);
         assertTrue(s.data.launcher.openUrlEnabled);
         assertEquals(LauncherOptions.DEFAULT_EXTRA_ARGS, s.data.launcher.extraArgs);

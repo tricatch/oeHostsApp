@@ -298,17 +298,14 @@ final class CaPage {
     // ── Mobile devices ──────────────────────────────────────────
 
     /**
-     * The right half: installing the CA on a phone. A QR code of the web service's certificate page
-     * ({@link PhoneSetup}), which the phone opens through the forward proxy
-     * ({@code ForwardProxy.webService}). Only the download; nothing is configured here.
+     * The right half: installing the CA on a phone. A QR code of the proxy service's certificate
+     * page ({@link PhoneSetup}), which the phone opens through that same proxy (its Wi-Fi proxy).
+     * Only the download; nothing is configured here.
      */
     private JComponent mobileSection() {
-        // The phone reaches the page through the forward proxy, so the proxy has to be open to the
-        // phone's network and the web service has to run (on 127.0.0.1 at least).
+        // The phone reaches the page through the proxy service, so it has to be running.
         JComponent fwdOff = OeDialog.warn(ctx.m("app.settings.phone.off"), null);
         JPanel fwdOffButtons = buttons(Ui.secondary(ctx.m("app.settings.phone.open.fwd"), "settings", () -> tab.showPage("fwd")));
-        JComponent webOff = OeDialog.warn(ctx.m("app.settings.phone.web.stopped"), null);
-        JPanel webOffButtons = buttons(Ui.secondary(ctx.m("app.settings.phone.open.web"), "settings", () -> tab.showPage("web")));
 
         JComboBox<Network.Lan> address = Ui.combo();
         address.setRenderer(new DefaultListCellRenderer() {
@@ -320,66 +317,62 @@ final class CaPage {
             }
         });
         JLabel addressLabel = label(ctx.m("app.settings.phone.address"));
-        // The list takes the rest of the row and shrinks with it (a long adapter name must not push it to a new line).
-        JPanel addressRow = formRow(addressLabel, address);
+        // The label above, the list under it as wide as its longest entry.
+        JPanel addressRow = OeDialog.stack(6, addressLabel, buttons(address));
         address.setMinimumSize(new Dimension(0, address.getPreferredSize().height));
         JComponent noAddress = OeDialog.warn(ctx.m("app.settings.phone.no.address"), null);
 
-        JTextField[] v = new JTextField[1];
-        JPanel info = table(new String[][]{{ctx.m("app.settings.phone.ca.url"), "-"}}, v);
-        alignWithTable(info, ROW_GAP, addressLabel);
-        JButton copyUrl = Ui.secondary(ctx.m("app.settings.phone.copy.url"), "copy", () -> {
-            OeDialog.copy(v[0].getText());
+        // The URL in the command box look, its label above (as on the active hosts and agent pages).
+        JTextArea urlBox = fieldScript("-");
+        JComponent urlStack = OeDialog.stack(6, label(ctx.m("app.settings.phone.ca.url")), urlBox);
+        JButton copyUrl = primary(ctx.m("app.settings.phone.copy.url"), "copy", () -> {
+            OeDialog.copy(urlBox.getText());
             ctx.toast(ctx.m("app.settings.copied"));
         });
         QrCode qr = new QrCode(196);
         qr.setBorder(new LineBorder(Ui.BORDER));
-        // The QR code at its own size, centered under the address.
-        JPanel qrWrap = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        // Under the line: the QR code at its own size on the left, the copy button at the right,
+        // both at the top of the row.
+        JPanel qrWrap = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         qrWrap.setOpaque(false);
         qrWrap.add(qr);
-        // The copy button at the right end of the URL row.
-        JPanel urlRow = new JPanel(new BorderLayout(Ui.px(10), 0));
-        urlRow.setOpaque(false);
-        urlRow.add(info, BorderLayout.CENTER);
-        JPanel copyWrap = new JPanel(new GridBagLayout());
+        JPanel copyWrap = new JPanel(new BorderLayout());
         copyWrap.setOpaque(false);
-        copyWrap.add(copyUrl);
-        urlRow.add(copyWrap, BorderLayout.EAST);
-        JComponent ready = OeDialog.stack(14, addressRow, urlRow);
+        copyWrap.add(copyUrl, BorderLayout.NORTH);
+        JPanel qrRow = new JPanel(new BorderLayout(Ui.px(10), 0));
+        qrRow.setOpaque(false);
+        qrRow.add(qrWrap, BorderLayout.WEST);
+        qrRow.add(copyWrap, BorderLayout.EAST);
+        JComponent ready = column(addressRow, urlStack, line(), qrRow);
 
         Runnable fill = () -> {
             String ip = address.getSelectedItem() instanceof Network.Lan a ? a.ip() : null;
-            int wp = ShareServer.port();
+            int wp = ForwardProxy.port();
             String url = ip == null || wp <= 0 ? null : PhoneSetup.pageUrl(ip, wp);
-            v[0].setText(url == null ? "-" : url);
+            urlBox.setText(url == null ? "-" : url);
+            urlBox.setCaretPosition(0);
             copyUrl.setEnabled(url != null);
             qr.setText(url);
         };
         Runnable refresh = () -> {
-            boolean fwdOn = ForwardProxy.state() == ForwardProxy.State.RUNNING && ForwardProxy.lan();
-            boolean webOn = ShareServer.state() == ShareServer.State.RUNNING;
-            // The addresses the proxy answers on: the phone sets one of them as its Wi-Fi proxy.
+            boolean fwdOn = ForwardProxy.state() == ForwardProxy.State.RUNNING;
+            // This PC's addresses (the proxy listens on all): the phone sets one of them as its Wi-Fi proxy.
             String prevIp = address.getSelectedItem() instanceof Network.Lan a ? a.ip() : null;
-            List<Network.Lan> reachable = Network.addressesFor(ForwardProxy.bind());
+            List<Network.Lan> reachable = Network.addresses();
             address.removeAllItems();
             for (Network.Lan a : reachable) address.addItem(a);
             for (Network.Lan a : reachable) if (a.ip().equals(prevIp)) address.setSelectedItem(a);
             fwdOff.setVisible(!fwdOn);
             fwdOffButtons.setVisible(!fwdOn);
-            webOff.setVisible(!webOn);
-            webOffButtons.setVisible(!webOn);
-            noAddress.setVisible(fwdOn && webOn && reachable.isEmpty());
-            ready.setVisible(fwdOn && webOn && !reachable.isEmpty());
-            qrWrap.setVisible(ready.isVisible());
+            noAddress.setVisible(fwdOn && reachable.isEmpty());
+            ready.setVisible(fwdOn && !reachable.isEmpty());
             fill.run();
             ready.revalidate();
         };
         address.addActionListener(e -> fill.run());
-        ctx.listen(ShareServer::onChange, refresh);
         ctx.listen(ForwardProxy::onChange, refresh);
         refresh.run();
-        return column(heading(ctx.m("app.settings.phone.title")), desc(ctx.m("app.settings.phone.desc")), line(), fwdOff, fwdOffButtons, webOff,
-                webOffButtons, noAddress, ready, qrWrap);
+        return column(heading(ctx.m("app.settings.phone.title")), desc(ctx.m("app.settings.phone.desc")), line(), fwdOff, fwdOffButtons,
+                noAddress, ready);
     }
 }

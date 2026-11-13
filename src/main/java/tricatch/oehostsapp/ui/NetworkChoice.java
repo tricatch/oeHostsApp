@@ -24,11 +24,8 @@ final class NetworkChoice {
         }
     }
 
-    /** The widest the label / drop-down row grows on a wide page. */
-    private static final int ROW_MAX_WIDTH = 600;
-
     private final AppContext ctx;
-    /** The form label and the drop-down. */
+    /** The form label, and the drop-down under it. */
     final JPanel row;
     /** The network-exposure warning, shown while the choice is not 127.0.0.1; placed by the page. */
     final JTextPane warn;
@@ -49,17 +46,9 @@ final class NetworkChoice {
             selected = c.address();
             changed();
         });
-        // Label and drop-down: the drop-down takes what width is left (a long network card name is cut).
-        row = new JPanel(new BorderLayout(Ui.px(SettingsKit.ROW_GAP), 0)) {
-            @Override
-            public Dimension getMaximumSize() {
-                return new Dimension(Ui.px(ROW_MAX_WIDTH), getPreferredSize().height);
-            }
-        };
-        row.setOpaque(false);
-        row.add(label, BorderLayout.WEST);
-        row.add(combo, BorderLayout.CENTER);
-        SettingsKit.underField(warn, label);
+        // The label above, the drop-down under it as wide as its longest entry (not the whole row),
+        // as on the other pages that choose one of this PC's addresses.
+        row = OeDialog.stack(6, label, SettingsKit.buttons(combo));
         // The networks are read again each time the list opens (a cable plugged in, another
         // Wi-Fi since the page was built), so no refresh button is needed.
         combo.addPopupMenuListener(new PopupMenuListener() {
@@ -87,7 +76,7 @@ final class NetworkChoice {
     /** Lists this PC's networks again (each time the drop-down opens), keeping the choice. */
     void reload() {
         List<Choice> items = new ArrayList<>();
-        items.add(new Choice(Network.LOOPBACK, ctx.m("app.settings.bind.local")));
+        items.add(new Choice(Network.LOOPBACK, ctx.m("app.settings.bind.loopback", Network.LOOPBACK)));
         boolean found = false;
         for (Network.Lan l : Network.addresses()) {
             items.add(new Choice(l.ip(), ctx.m("app.settings.bind.iface", l.ip(), l.iface())));
