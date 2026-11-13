@@ -1,32 +1,22 @@
 package tricatch.oehostsapp.web;
 
 import tricatch.oehostsapp.Messages;
+import tricatch.oehostsapp.proxy.Ca;
 import tricatch.oehostsapp.proxy.ProxyRuntime;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.InputStream;
-import java.net.Inet4Address;
-import java.net.InetAddress;
-import java.net.NetworkInterface;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
- * Connecting a phone to this PC: the PC's network addresses (for the binding choices and the phone's
- * Wi-Fi proxy settings), and the page the web service ({@link ShareServer}) serves at {@code /} so
- * a phone can download the root CA from the QR code. Only the public certificate is served, never
- * the private key.
+ * The page the web service ({@link ShareServer}) serves so a phone can download the root CA from
+ * the QR code. Only the public certificate is served, never the private key.
  */
 public final class PhoneSetup {
 
@@ -39,65 +29,13 @@ public final class PhoneSetup {
     public static final String CA_PATH = "/oehostsapp-ca.crt";
 
     /** Where the CA certificate is; tests point it at their own file. */
-    static volatile java.util.function.Supplier<Path> caCert = ProxyRuntime::caCert;
+    static volatile Supplier<Path> caCert = ProxyRuntime::caCert;
 
     private PhoneSetup() {}
-
-    /** An IPv4 address of this PC and the network interface it belongs to. */
-    public record Lan(String ip, String iface, boolean virtual) {}
-
-    /**
-     * The IPv4 addresses a phone on the same network may reach: interfaces that are up, not loopback
-     * and not link-local. Private (site-local) addresses of real adapters come first; adapters that
-     * look virtual (Hyper-V, WSL, Docker, VMware, VirtualBox, VPNs) go last.
-     */
-    public static List<Lan> addresses() {
-        List<Lan> out = new ArrayList<>();
-        try {
-            for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                if (!ni.isUp() || ni.isLoopback()) continue;
-                String name = ni.getDisplayName() == null ? ni.getName() : ni.getDisplayName();
-                boolean virtual = ni.isVirtual() || looksVirtual(name) || looksVirtual(ni.getName());
-                for (InetAddress a : Collections.list(ni.getInetAddresses())) {
-                    if (a instanceof Inet4Address && !a.isLoopbackAddress() && !a.isLinkLocalAddress()) {
-                        out.add(new Lan(a.getHostAddress(), name, virtual || !a.isSiteLocalAddress()));
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("network interfaces: {}", e.getMessage());
-        }
-        out.sort(Comparator.comparing(Lan::virtual));
-        return out;
-    }
-
-    static boolean looksVirtual(String name) {
-        if (name == null) return false;
-        String n = name.toLowerCase(Locale.ROOT);
-        for (String w : new String[]{"virtual", "vethernet", "hyper-v", "wsl", "docker", "vmware", "vbox",
-                "loopback", "tap-", "tun", "wireguard", "tailscale", "zerotier", "vpn", "utun", "bridge"}) {
-            if (n.contains(w)) return true;
-        }
-        return false;
-    }
 
     /** The URL the QR code carries: the web service's setup page. */
     public static String pageUrl(String ip, int port) {
         return "http://" + ip + ":" + port + PAGE_PATH;
-    }
-
-    private static final java.util.regex.Pattern IPV4 = java.util.regex.Pattern.compile("\\d{1,3}(\\.\\d{1,3}){3}");
-
-    /** Whether {@code host} (an IPv4 literal or localhost) is one of this PC's addresses. */
-    public static boolean isOwnAddress(String host) {
-        if ("localhost".equalsIgnoreCase(host)) return true;
-        if (!IPV4.matcher(host).matches()) return false;
-        try {
-            InetAddress a = InetAddress.getByName(host);
-            return a.isLoopbackAddress() || NetworkInterface.getByInetAddress(a) != null;
-        } catch (Exception e) {
-            return false;
-        }
     }
 
     /** An HTTP answer, independent of the server that sends it. */
@@ -134,9 +72,9 @@ public final class PhoneSetup {
     /** The CA certificate in DER (the form both iOS and Android install), or null when there is none. */
     static byte[] caDer() {
         Path cert = caCert.get();
-        if (cert == null || !Files.exists(cert)) return null;
-        try (InputStream in = Files.newInputStream(cert)) {
-            X509Certificate x = (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(in);
+        X509Certificate x = Ca.read(cert);
+        if (x == null) return null;
+        try {
             return x.getEncoded();
         } catch (Exception e) {
             log.warn("phone setup: cannot read {}: {}", cert, e.getMessage());

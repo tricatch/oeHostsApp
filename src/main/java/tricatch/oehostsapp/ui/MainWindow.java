@@ -1,6 +1,6 @@
 package tricatch.oehostsapp.ui;
 
-import tricatch.oehostsapp.OeHostsApp;
+import tricatch.oehostsapp.store.Settings;
 import tricatch.oehostsapp.store.Store;
 import tricatch.oehostsapp.update.Update;
 
@@ -188,15 +188,15 @@ public final class MainWindow {
     private static final int DEFAULT_H = 860;
 
     /**
-     * Sizes and places the window as it was last time ({@code settings.window*}), or at the default
+     * Sizes and places the window as it was last time ({@code settings.window}), or at the default
      * size in the middle of the screen when nothing is stored or the stored place is no longer on
      * any screen (a monitor was unplugged). Returns whether the window should open maximized.
      */
     private boolean restoreBounds() {
-        Rectangle r = ctx.read(() -> {
-            Store.Settings st = ctx.rawStore().data.settings;
-            return st.windowWidth == null || st.windowHeight == null || st.windowX == null || st.windowY == null
-                    ? null : new Rectangle(st.windowX, st.windowY, st.windowWidth, st.windowHeight);
+        Rectangle r = ctx.settings(st -> {
+            Settings.Window w = st.window;
+            return w.width == null || w.height == null || w.x == null || w.y == null
+                    ? null : new Rectangle(w.x, w.y, w.width, w.height);
         });
         if (r != null && onScreen(r)) {
             frame.setBounds(r);
@@ -204,7 +204,7 @@ public final class MainWindow {
             frame.setSize(DEFAULT_W, DEFAULT_H);
             frame.setLocationRelativeTo(null);
         }
-        return ctx.read(() -> ctx.rawStore().data.settings.windowMaximized);
+        return ctx.settings(st -> st.window.maximized);
     }
 
     /** True when enough of the window's title bar lies on some screen to grab it with the mouse. */
@@ -228,15 +228,15 @@ public final class MainWindow {
         boolean max = (state & Frame.MAXIMIZED_BOTH) == Frame.MAXIMIZED_BOTH;
         Rectangle r = max ? null : frame.getBounds();
         ctx.storeRun(s -> {
-            Store.Settings st = s.data.settings;
-            boolean changed = st.windowMaximized != max;
-            st.windowMaximized = max;
-            if (r != null && !(Integer.valueOf(r.x).equals(st.windowX) && Integer.valueOf(r.y).equals(st.windowY)
-                    && Integer.valueOf(r.width).equals(st.windowWidth) && Integer.valueOf(r.height).equals(st.windowHeight))) {
-                st.windowX = r.x;
-                st.windowY = r.y;
-                st.windowWidth = r.width;
-                st.windowHeight = r.height;
+            Settings.Window w = s.data.settings.window;
+            boolean changed = w.maximized != max;
+            w.maximized = max;
+            if (r != null && !(Integer.valueOf(r.x).equals(w.x) && Integer.valueOf(r.y).equals(w.y)
+                    && Integer.valueOf(r.width).equals(w.width) && Integer.valueOf(r.height).equals(w.height))) {
+                w.x = r.x;
+                w.y = r.y;
+                w.width = r.width;
+                w.height = r.height;
                 changed = true;
             }
             if (changed) s.save();
@@ -252,20 +252,28 @@ public final class MainWindow {
     private void build() {
         hosts = new HostsTab(ctx);
         proxy = new ProxyTab(ctx);
-        monitor = new MonitorTab(ctx, proxy);
+        monitor = new MonitorTab(ctx);
         content.add(hosts, TABS[0]);
         content.add(proxy, TABS[1]);
         content.add(monitor, TABS[2]);
-        settings = new SettingsTab(ctx, this::relaunch, () -> {
-            hosts.reloadAll();
-            proxy.reloadAll();
-        }, () -> {
-            hosts.flush();
-            proxy.flush();
+        settings = new SettingsTab(ctx, new SettingsTab.Host() {
+            public void relaunch() {
+                MainWindow.this.relaunch();
+            }
+
+            public void reloadAll() {
+                hosts.reloadAll();
+                proxy.reloadAll();
+            }
+
+            public void flushEdits() {
+                hosts.flush();
+                proxy.flush();
+            }
         });
         content.add(settings, TABS[SETTINGS]);
         monitor.onGotoProxy(() -> select(1));
-        Update.onChange(() -> SwingUtilities.invokeLater(this::updateChanged));
+        ctx.listen(Update::onChange, this::updateChanged);
 
         JPanel root = new JPanel(new BorderLayout());
         root.add(navbar(), BorderLayout.NORTH);
@@ -405,11 +413,8 @@ public final class MainWindow {
         String v = pendingUpdate();
         if (v == null || v.equals(toastedUpdate)) return;
         toastedUpdate = v;
-        if (v.equals(ctx.read(() -> ctx.rawStore().data.settings.updateToasted))) return;
-        ctx.storeRun(s -> {
-            s.data.settings.updateToasted = v;
-            s.save();
-        });
+        if (v.equals(ctx.settings(st -> st.updateToasted))) return;
+        ctx.saveSettings(st -> st.updateToasted = v);
         ctx.toast(ctx.m("app.update.available.toast", v));
     }
 
@@ -467,6 +472,8 @@ public final class MainWindow {
     private void relaunch() {
         flush();
         monitor.dispose();
+        // The old screens stop listening to the services, so they can go.
+        ctx.dispose();
         MainWindow w = new MainWindow(ctx.rawStore(), frame);
         w.build();
         w.settings.showPage(settings.activePage());

@@ -51,7 +51,6 @@ public final class MonitorTab extends JPanel {
     }
 
     private final AppContext ctx;
-    private final ProxyTab proxy;
     private final List<Row> rows = new ArrayList<>();
     private final Map<String, Row> byRid = new HashMap<>();
     private final Model model = new Model();
@@ -65,10 +64,9 @@ public final class MonitorTab extends JPanel {
     private boolean recording = true;
     private Runnable gotoProxy = () -> {};
 
-    public MonitorTab(AppContext ctx, ProxyTab proxy) {
+    public MonitorTab(AppContext ctx) {
         super(new BorderLayout());
         this.ctx = ctx;
-        this.proxy = proxy;
         table = new JTable(model);
         setBackground(Color.WHITE);
         tableCards.setBackground(Color.WHITE);
@@ -250,7 +248,7 @@ public final class MonitorTab extends JPanel {
 
     /** Called when the monitor tab is shown or hidden. */
     void setVisibleTab(boolean v) {
-        if (v) ((CardLayout) tableCards.getLayout()).show(tableCards, proxy.hasSelected() || !rows.isEmpty() ? "table" : "inactive");
+        if (v) ((CardLayout) tableCards.getLayout()).show(tableCards, ctx.read(() -> ctx.rawStore().hasSelected(Store.Kind.VHOSTS)) || !rows.isEmpty() ? "table" : "inactive");
     }
 
     void dispose() {

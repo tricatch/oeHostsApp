@@ -1,5 +1,6 @@
 package tricatch.oehostsapp.hosts;
 
+import tricatch.oehostsapp.Listeners;
 import tricatch.oehostsapp.update.Update;
 
 import org.slf4j.Logger;
@@ -49,7 +50,7 @@ public final class HostsAgent {
     private static volatile Check check = Check.IDLE;
     private static volatile String latest;
     private static volatile String checkError;
-    private static volatile Runnable listener = () -> {};
+    private static final Listeners listeners = new Listeners();
 
     private HostsAgent() {}
 
@@ -84,13 +85,13 @@ public final class HostsAgent {
         return checkError;
     }
 
-    /** Called (on any thread) whenever the state or the check changes; the last set wins. */
-    public static void setListener(Runnable r) {
-        listener = r == null ? () -> {} : r;
+    /** Runs {@code r} (on any thread) whenever the state or the check changes. */
+    public static Listeners.Subscription onChange(Runnable r) {
+        return listeners.add(r);
     }
 
     private static void changed() {
-        listener.run();
+        listeners.fire();
     }
 
     /** Installs the bundled agent, then checks the agent's releases in the background. */

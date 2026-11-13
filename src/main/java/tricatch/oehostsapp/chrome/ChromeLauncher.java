@@ -37,7 +37,13 @@ public final class ChromeLauncher {
         FAILED
     }
 
-    private static final boolean WIN = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+    private static final String OS = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+    private static final boolean WIN = OS.contains("win");
+    private static final boolean MAC = OS.contains("mac");
+    /** How long listing the running Chrome processes may take before it is given up. */
+    private static final long PROCESS_LIST_TIMEOUT_S = 20;
+    /** Chrome's main executable on Linux (the packages' install folder), as {@code ps} shows it. */
+    private static final String LINUX_CHROME = "/opt/google/chrome/chrome";
     private static final Pattern UDD = Pattern.compile("--user-data-dir=(?:\"([^\"]*)\"|(\\S+))");
     private static final Pattern ENV = Pattern.compile("%([A-Za-z0-9_()]+)%");
 
@@ -122,7 +128,7 @@ public final class ChromeLauncher {
         }
 
         List<String> cmd = new ArrayList<>();
-        if (WIN) {
+        if (!MAC) {
             cmd.add(exe.get());
             cmd.addAll(args);
         } else {
@@ -159,7 +165,7 @@ public final class ChromeLauncher {
         return w.replace("=~/", "=" + home + "/");
     }
 
-    /** The Chrome executable (Windows) or app bundle (macOS). */
+    /** The Chrome executable (Windows, Linux) or app bundle (macOS). */
     static Optional<String> chrome() {
         List<Path> candidates = new ArrayList<>();
         if (WIN) {
@@ -167,9 +173,13 @@ public final class ChromeLauncher {
                 String base = System.getenv(env);
                 if (base != null) candidates.add(Path.of(base, "Google", "Chrome", "Application", "chrome.exe"));
             }
-        } else {
+        } else if (MAC) {
             candidates.add(Path.of("/Applications/Google Chrome.app"));
             candidates.add(Path.of(System.getProperty("user.home"), "Applications", "Google Chrome.app"));
+        } else {
+            candidates.add(Path.of("/usr/bin/google-chrome-stable"));
+            candidates.add(Path.of("/usr/bin/google-chrome"));
+            candidates.add(Path.of(LINUX_CHROME));
         }
         return candidates.stream().filter(Files::exists).map(Path::toString).findFirst();
     }
@@ -208,26 +218,48 @@ public final class ChromeLauncher {
                                 + " | ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }").getBytes(StandardCharsets.UTF_16LE)))
                 : List.of("ps", "axwwo", "pid=,args=");
         List<String[]> out = new ArrayList<>();
-        try {
-            Process proc = new ProcessBuilder(cmd).redirectErrorStream(true).start();
-            String text = new String(proc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            proc.waitFor(20, TimeUnit.SECONDS);
-            for (String line : text.split("\\R")) {
-                String l = line.strip();
-                if (WIN) {
-                    int tab = l.indexOf('\t');
-                    if (tab > 0 && l.substring(0, tab).matches("\\d+")) out.add(new String[]{l.substring(0, tab), l.substring(tab + 1)});
-                } else if (l.contains("Google Chrome.app/Contents/MacOS/Google Chrome")) {
-                    int sp = l.indexOf(' ');
-                    if (sp > 0 && l.substring(0, sp).matches("\\d+")) out.add(new String[]{l.substring(0, sp), l.substring(sp + 1)});
-                }
+        for (String line : run(cmd).split("\\R")) {
+            String l = line.strip();
+            if (WIN) {
+                int tab = l.indexOf('\t');
+                if (tab > 0 && l.substring(0, tab).matches("\\d+")) out.add(new String[]{l.substring(0, tab), l.substring(tab + 1)});
+            } else if (MAC ? l.contains("Google Chrome.app/Contents/MacOS/Google Chrome") : l.contains(LINUX_CHROME)) {
+                int sp = l.indexOf(' ');
+                if (sp > 0 && l.substring(0, sp).matches("\\d+")) out.add(new String[]{l.substring(0, sp), l.substring(sp + 1)});
             }
-        } catch (IOException e) {
-            // nothing found: launch as if no Chrome were running
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         }
         return out;
+    }
+
+    /**
+     * The output of {@code cmd}, or what it printed before {@link #PROCESS_LIST_TIMEOUT_S} ran out
+     * (the process is then killed); empty when it cannot start. The output is read on another
+     * thread, so a process that hangs cannot block the caller past the timeout.
+     */
+    private static String run(List<String> cmd) {
+        Process proc;
+        try {
+            proc = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+        } catch (IOException e) {
+            return ""; // nothing found: launch as if no Chrome were running
+        }
+        java.util.concurrent.CompletableFuture<String> text = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            try {
+                return new String(proc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                return "";
+            }
+        }, r -> Thread.ofVirtual().name("chrome-ps").start(r));
+        try {
+            if (!proc.waitFor(PROCESS_LIST_TIMEOUT_S, TimeUnit.SECONDS)) proc.destroyForcibly();
+            return text.get(2, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            proc.destroyForcibly();
+            return "";
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     /**

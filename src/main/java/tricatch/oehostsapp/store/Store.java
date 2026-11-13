@@ -1,12 +1,10 @@
 package tricatch.oehostsapp.store;
 
-import tricatch.oehostsapp.proxy.ForwardProxy;
-import tricatch.oehostsapp.web.ShareServer;
-
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -14,30 +12,32 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
- * Local data: hosts profiles, vhosts, their folders, per-screen options and app settings, in one
- * JSON file. Every change is written right away (temp file + move; the previous version is kept
- * as {@code <file>.bak}). Callers synchronize on the store.
+ * Local data: hosts profiles, vhosts, their folders, the Chrome launcher options and app settings,
+ * in one JSON file. Every change is written right away (temp file + move; the previous version is
+ * kept as {@code <file>.bak}). Callers synchronize on the store.
  */
 public final class Store {
 
-    public static final String DEFAULT_PROXY_SVR = "127.0.0.1";
-    public static final int DEFAULT_FWDPROXY_PORT = 36980;
-    public static final int DEFAULT_SHARE_PORT = 36981;
     /** Crockford base32, lower case (no i, l, o, u). */
     private static final String BASE32 = "0123456789abcdefghjkmnpqrstvwxyz";
 
@@ -49,19 +49,16 @@ public final class Store {
     private static final AtomicInteger SEQ = new AtomicInteger();
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
-    /** The two list screens share one implementation; these are their field names in an oeHub export. */
+    /** The two list screens share one implementation. */
     public enum Kind {
-        HOSTS("hostsProfile", "hostsContent", "new hosts", "example/hosts_example_%s.txt"),
-        VHOSTS("vhostProfile", "vhostContent", "new vhost", "example/vhost_example_%s.yaml");
+        HOSTS("new hosts", "example/hosts_example_%s.txt"),
+        VHOSTS("new vhost", "example/vhost_example_%s.yaml");
 
-        public final String nameKey, contentKey;
         // Same base names as oeHub (HostsProfService / ProxyVhostService).
         final String defaultName;
         final String exampleAsset;
 
-        Kind(String nameKey, String contentKey, String defaultName, String exampleAsset) {
-            this.nameKey = nameKey;
-            this.contentKey = contentKey;
+        Kind(String defaultName, String exampleAsset) {
             this.defaultName = defaultName;
             this.exampleAsset = exampleAsset;
         }
@@ -72,7 +69,7 @@ public final class Store {
         public String name = "";
         public String content = "";
         public boolean selected;
-        /** oeHosts only: served by {@link ShareServer} at {@code /hosts/<shareToken>} (for SwitchHosts and the like). */
+        /** oeHosts only: served by the web service at {@code /hosts/<shareToken>} (for SwitchHosts and the like). */
         public boolean shared;
         public String folderId;
         public long sortOrder;
@@ -89,133 +86,14 @@ public final class Store {
         public String updatedAt;
     }
 
-    public static class Preset {
-        public String name;
-        public String value;
-
-        public Preset() {}
-
-        public Preset(String name, String value) {
-            this.name = name;
-            this.value = value;
-        }
-    }
-
-    public static class Settings {
-        public String proxySvr = DEFAULT_PROXY_SVR;
-        public int fwdproxyPort = DEFAULT_FWDPROXY_PORT;
-        /**
-         * Older data: forward proxy on every network interface (0.0.0.0) instead of 127.0.0.1 only. Read
-         * when {@link #fwdproxyBind} is null, and kept in step with it so an older version still opens
-         * the proxy to the network when this one does.
-         */
-        public boolean fwdproxyLan;
-        /**
-         * Desktop app: the address the forward proxy listens on: {@code 127.0.0.1}, one of this PC's
-         * IPv4 addresses (one network card), or {@code 0.0.0.0} (every interface). Null in older data.
-         */
-        public String fwdproxyBind;
-
-        /**
-         * Desktop app: whether the forward proxy asks other devices for {@link #fwdproxyUser} and
-         * {@link #fwdproxyPassword} (Basic proxy authentication). Requests to 127.0.0.1 are never asked.
-         */
-        public boolean fwdproxyAuth;
-        /** Desktop app: the forward proxy username and password; kept when authentication is turned off again. */
-        public String fwdproxyUser;
-        public String fwdproxyPassword;
-
-        /** The username and password the forward proxy asks for, or null when it asks for none. */
-        public String[] fwdproxyCredentials() {
-            if (!fwdproxyAuth || fwdproxyUser == null || fwdproxyUser.isEmpty()
-                    || fwdproxyPassword == null || fwdproxyPassword.isEmpty()) {
-                return null;
-            }
-            return new String[]{fwdproxyUser, fwdproxyPassword};
-        }
-
-        /** {@link #fwdproxyBind}, or what the older {@link #fwdproxyLan} meant when it is not set. */
-        public String fwdproxyBindAddress() {
-            if (fwdproxyBind != null && !fwdproxyBind.isBlank()) return fwdproxyBind.strip();
-            return fwdproxyLan ? ForwardProxy.ALL : ForwardProxy.LOOPBACK;
-        }
-
-        /** Stores the forward proxy address, and the older flag next to it. */
-        public void putFwdproxyBind(String bind) {
-            fwdproxyBind = bind;
-            fwdproxyLan = !ForwardProxy.LOOPBACK.equals(bind);
-        }
-        /** Desktop app: reverse proxy on every network interface (the default) instead of 127.0.0.1 only. */
-        public boolean reverseProxyLan = true;
-        /**
-         * Desktop app: the reverse proxy's binding: 127.0.0.1, one of this PC's IPv4 addresses
-         * (127.0.0.1 is opened next to it), or 0.0.0.0. Null in older data, which
-         * {@link #reverseProxyLan} then decides (every interface by default).
-         */
-        public String reverseProxyBind;
-
-        /** {@link #reverseProxyBind}, or what the older {@link #reverseProxyLan} meant when it is not set. */
-        public String reverseProxyBindAddress() {
-            if (reverseProxyBind != null && !reverseProxyBind.isBlank()) return reverseProxyBind.strip();
-            return reverseProxyLan ? ForwardProxy.ALL : ForwardProxy.LOOPBACK;
-        }
-
-        /** Stores the reverse proxy address, and the older flag next to it for older versions. */
-        public void putReverseProxyBind(String bind) {
-            reverseProxyBind = bind;
-            reverseProxyLan = !ForwardProxy.LOOPBACK.equals(bind);
-        }
-        /** Desktop app: port of the web service ({@link ShareServer}: hosts sharing, phone setup page). */
-        public int shareServerPort = DEFAULT_SHARE_PORT;
-        /**
-         * Desktop app: the web service's binding: 127.0.0.1 (the default), one of this PC's IPv4
-         * addresses, or 0.0.0.0. Null in older data, which means 127.0.0.1.
-         */
-        public String shareServerBind;
-
-        /** {@link #shareServerBind}, or 127.0.0.1 when it is not set. */
-        public String shareServerBindAddress() {
-            return shareServerBind == null || shareServerBind.isBlank() ? ForwardProxy.LOOPBACK : shareServerBind.strip();
-        }
-        public List<Preset> uaPresets = new ArrayList<>();
-        public List<Preset> urlPresets = new ArrayList<>();
-        /**
-         * The preset editors' text as typed, comments included; the lists above are parsed from it.
-         * Null (older data) shows text rebuilt from the list.
-         */
-        public String uaPresetsText;
-        public String urlPresetsText;
-        /** Desktop app: folder the CA import dialog last picked a file from. */
-        public String caImportDir;
-        /** Desktop app UI language ("en"/"ko"); null follows the OS locale. */
-        public String lang;
-        /** Desktop app: left list width shared by every screen, once the user has dragged it. */
-        public Integer sidebarWidth;
-        /** Desktop app: width of the right-hand panel (oeHosts launcher, oeProxy routes), shared likewise. */
-        public Integer rightPanelWidth;
-        /**
-         * Desktop app: the main window's last normal (not maximized) bounds and whether it was
-         * maximized, restored at the next start. Null until the window has been moved or resized.
-         */
-        public Integer windowX;
-        public Integer windowY;
-        public Integer windowWidth;
-        public Integer windowHeight;
-        public boolean windowMaximized;
-        /** The newer release the "new version" toast was last shown for, so it shows once per release, not at every start. */
-        public String updateToasted;
-    }
-
     public static class Data {
         public int version = 1;
         public List<Item> hosts = new ArrayList<>();
         public List<Folder> hostsFolders = new ArrayList<>();
         public List<Item> vhosts = new ArrayList<>();
         public List<Folder> vhostFolders = new ArrayList<>();
-        /** Chrome launcher options of the hosts screen (oeHub's HOSTS_CONF names). */
-        public Map<String, String> hostsConf = new TreeMap<>();
-        /** oeProxy screen options (local_svr, the last merged vhost config). */
-        public Map<String, String> proxyConf = new TreeMap<>();
+        /** Chrome launcher options of the oeHosts screen. */
+        public LauncherOptions launcher = new LauncherOptions();
         public Settings settings = new Settings();
         /**
          * Key of the share URLs' HMAC ({@link #shareToken}), created on first use. Kept out of
@@ -223,26 +101,48 @@ public final class Store {
          * installation's data.
          */
         public String shareKey;
+
+        /** Fills parts a data file left out, so callers never see null. */
+        void fillDefaults() {
+            if (hosts == null) hosts = new ArrayList<>();
+            if (hostsFolders == null) hostsFolders = new ArrayList<>();
+            if (vhosts == null) vhosts = new ArrayList<>();
+            if (vhostFolders == null) vhostFolders = new ArrayList<>();
+            if (launcher == null) launcher = new LauncherOptions();
+            if (settings == null) settings = new Settings();
+            launcher.fillDefaults();
+            settings.fillDefaults();
+        }
     }
 
-    /** Store failures, mapped to HTTP statuses by the server. */
+    /** A refused change; {@link #code} tells why ({@code not_found}, {@code name_taken}, {@code io}...). */
     public static class StoreException extends RuntimeException {
-        public final int status;
         public final String code;
 
-        StoreException(int status, String code) {
-            super(code);
-            this.status = status;
+        StoreException(String code, String detail) {
+            super(detail == null ? code : code + ": " + detail);
             this.code = code;
         }
 
-        static StoreException notFound() { return new StoreException(404, "not_found"); }
-        static StoreException nameTaken() { return new StoreException(409, "name_taken"); }
-        static StoreException invalid(String code) { return new StoreException(400, code); }
+        static StoreException notFound() { return new StoreException("not_found", null); }
+        static StoreException nameTaken() { return new StoreException("name_taken", null); }
+        static StoreException invalid(String what) { return new StoreException("invalid", what); }
     }
+
+    /** One top-level entry of a list in display order: a folder with its items, or an item at the root. */
+    public record Node(Folder folder, Item item, List<Item> children) {
+        public long sortOrder() {
+            return folder != null ? folder.sortOrder : item.sortOrder;
+        }
+    }
+
+    /** One row of {@link #saveTreeOrder}: a folder ({@code folderId} unused) or an item and the folder it is in (null: the root). */
+    public record Placement(String id, boolean folder, String folderId) {}
 
     private final Path path;
     public final Data data;
+    /** Counts saves, so readers can cache what they derive from the data. */
+    private volatile long revision;
 
     private Store(Path path, Data data) {
         this.path = path;
@@ -267,27 +167,13 @@ public final class Store {
     }
 
     /**
-     * Opens {@code path}; when it does not exist yet, starts from {@code legacy} (the old oeHosts
-     * egui app's file) if that one is there, otherwise empty. The legacy file is never written,
-     * and a data file that does not parse stops the app instead of being overwritten.
+     * Opens {@code path}, starting empty when it does not exist yet. A data file that does not parse
+     * stops the app instead of being overwritten.
      */
-    public static Store open(Path path, Path legacy) throws IOException {
-        Data data;
-        if (Files.exists(path)) {
-            data = MAPPER.readValue(path.toFile(), Data.class);
-            if (data.settings == null) data.settings = new Settings();
-        } else if (legacy != null && Files.isRegularFile(legacy)) {
-            Data migrated;
-            try {
-                migrated = LegacyMigration.migrate(MAPPER.readTree(legacy.toFile()));
-            } catch (IOException e) {
-                migrated = new Data();
-            }
-            data = migrated;
-        } else {
-            data = new Data();
-        }
+    public static Store open(Path path) throws IOException {
+        Data data = Files.exists(path) ? MAPPER.readValue(path.toFile(), Data.class) : new Data();
         data.version = 1;
+        data.fillDefaults();
         Store store = new Store(path, data);
         if (!Files.exists(path)) store.save();
         return store;
@@ -295,6 +181,11 @@ public final class Store {
 
     public Path path() {
         return path;
+    }
+
+    /** Incremented by every {@link #save}. */
+    public long revision() {
+        return revision;
     }
 
     public void save() {
@@ -306,8 +197,9 @@ public final class Store {
                 Files.copy(path, path.resolveSibling(path.getFileName() + ".bak"), StandardCopyOption.REPLACE_EXISTING);
             }
             Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            revision++;
         } catch (IOException e) {
-            throw new StoreException(500, "io: " + e.getMessage());
+            throw new StoreException("io", e.getMessage());
         }
     }
 
@@ -329,19 +221,45 @@ public final class Store {
 
     /** Items in tree order, which is also the merge order of the selected ones. */
     public List<Item> list(Kind kind) {
-        Map<String, Long> folderOrder = new HashMap<>();
-        for (Folder f : folders(kind)) folderOrder.put(f.id, f.sortOrder);
-        List<Item> out = new ArrayList<>(items(kind));
-        out.sort(Comparator.<Item>comparingLong(i -> i.folderId != null && folderOrder.containsKey(i.folderId)
-                        ? folderOrder.get(i.folderId) : i.sortOrder)
-                .thenComparingLong(i -> i.sortOrder));
+        List<Item> out = new ArrayList<>();
+        for (Node n : tree(kind)) {
+            if (n.item() != null) out.add(n.item());
+            else out.addAll(n.children());
+        }
         return out;
     }
 
-    public List<Folder> listFolders(Kind kind) {
-        List<Folder> out = new ArrayList<>(folders(kind));
-        out.sort(Comparator.comparingLong(f -> f.sortOrder));
-        return out;
+    /**
+     * The list as drawn: folders and root items interleaved by sort order, each folder with its
+     * items in order. An item whose folder is gone shows at the root.
+     */
+    public List<Node> tree(Kind kind) {
+        Map<String, Node> byFolder = new LinkedHashMap<>();
+        for (Folder f : folders(kind)) byFolder.put(f.id, new Node(f, null, new ArrayList<>()));
+        List<Node> top = new ArrayList<>(byFolder.values());
+        List<Item> items = new ArrayList<>(items(kind));
+        items.sort(Comparator.comparingLong(i -> i.sortOrder));
+        for (Item i : items) {
+            Node parent = i.folderId == null ? null : byFolder.get(i.folderId);
+            if (parent != null) parent.children().add(i);
+            else top.add(new Node(null, i, null));
+        }
+        top.sort(Comparator.comparingLong(Node::sortOrder));
+        return top;
+    }
+
+    /** The selected items in merge order. */
+    public List<Item> selected(Kind kind) {
+        return list(kind).stream().filter(i -> i.selected).toList();
+    }
+
+    /** The selected items' contents in merge order. */
+    public List<String> selectedContents(Kind kind) {
+        return selected(kind).stream().map(i -> i.content).toList();
+    }
+
+    public boolean hasSelected(Kind kind) {
+        return items(kind).stream().anyMatch(i -> i.selected);
     }
 
     /** {@code base}, or {@code base (2)}, {@code base (3)}, ... - the first one not taken, as oeHub does. */
@@ -384,14 +302,12 @@ public final class Store {
 
     // ── Items ─────────────────────────────────────────────────
 
+    /** A new item holding the example for {@code locale}. */
     public Item create(Kind kind, String locale) {
-        Item i = newItem(kind, nextUniqueName(takenNames(kind, null), kind.defaultName), example(kind, locale), false, null);
-        items(kind).add(i);
-        save();
-        return i;
+        return createFrom(kind, kind.defaultName, example(kind, locale));
     }
 
-    /** A new item from an imported file; the name gets a " (n)" suffix if it is already taken. */
+    /** A new item (an imported file, a merge); the name gets a " (n)" suffix if it is already taken. */
     public Item createFrom(Kind kind, String name, String content) {
         String base = name == null ? "" : name.strip();
         if (base.length() > 190) base = base.substring(0, 190).strip();
@@ -402,8 +318,17 @@ public final class Store {
         return i;
     }
 
+    /** The item with {@code id}, or null. */
+    public Item find(Kind kind, String id) {
+        if (id == null) return null;
+        for (Item i : items(kind)) if (i.id.equals(id)) return i;
+        return null;
+    }
+
     private Item item(Kind kind, String id) {
-        return items(kind).stream().filter(i -> i.id.equals(id)).findFirst().orElseThrow(StoreException::notFound);
+        Item i = find(kind, id);
+        if (i == null) throw StoreException.notFound();
+        return i;
     }
 
     public Item updateContent(Kind kind, String id, String content) {
@@ -457,7 +382,7 @@ public final class Store {
         if (data.shareKey == null) {
             byte[] k = new byte[32];
             RANDOM.nextBytes(k);
-            data.shareKey = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(k);
+            data.shareKey = Base64.getUrlEncoder().withoutPadding().encodeToString(k);
             save();
         }
         return id + "-" + shareTag(id);
@@ -489,21 +414,21 @@ public final class Store {
         String id = token.substring(0, dash);
         byte[] expected = shareTag(id).getBytes(StandardCharsets.US_ASCII);
         byte[] given = token.substring(dash + 1).getBytes(StandardCharsets.US_ASCII);
-        if (!java.security.MessageDigest.isEqual(expected, given)) return null;
+        if (!MessageDigest.isEqual(expected, given)) return null;
         return sharedHostsContent(id);
     }
 
     private String shareTag(String id) {
         try {
-            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
-            mac.init(new javax.crypto.spec.SecretKeySpec(java.util.Base64.getUrlDecoder().decode(data.shareKey), "HmacSHA256"));
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(Base64.getUrlDecoder().decode(data.shareKey), "HmacSHA256"));
             byte[] h = mac.doFinal(id.getBytes(StandardCharsets.UTF_8));
             long bits = 0;
             for (int k = 0; k < 5; k++) bits = (bits << 8) | (h[k] & 0xff);
             char[] out = new char[8];
             for (int k = 7; k >= 0; k--, bits >>>= 5) out[k] = BASE32.charAt((int) (bits & 31));
             return new String(out);
-        } catch (java.security.GeneralSecurityException e) {
+        } catch (GeneralSecurityException e) {
             throw new IllegalStateException(e);
         }
     }
@@ -567,122 +492,107 @@ public final class Store {
     }
 
     /**
-     * Saves the whole tree order: {@code [{type: 'folder', id} | {type: 'item', id, folderId}]} in
-     * display order. Unknown ids are refused so a stale page cannot drop rows.
+     * Saves the whole tree order, {@code entries} in display order, and opens folder {@code expand}
+     * (null: none) in the same save. Unknown ids are refused, so a stale view cannot drop rows.
      */
-    public void saveTreeOrder(Kind kind, JsonNode entries) {
-        if (entries == null || !entries.isArray()) throw StoreException.invalid("entries");
+    public void saveTreeOrder(Kind kind, List<Placement> entries, String expand) {
         Map<String, Folder> folders = new HashMap<>();
         for (Folder f : folders(kind)) folders.put(f.id, f);
         Map<String, Item> items = new HashMap<>();
         for (Item i : items(kind)) items.put(i.id, i);
-        record Step(Folder folder, Item item, String folderId, long order) {}
-        List<Step> plan = new ArrayList<>();
+        for (Placement p : entries) {
+            boolean known = p.folder() ? folders.containsKey(p.id()) : items.containsKey(p.id());
+            if (!known) throw StoreException.notFound();
+            if (!p.folder() && p.folderId() != null && !folders.containsKey(p.folderId())) throw StoreException.invalid("folderId");
+        }
         long n = 0;
-        for (JsonNode e : entries) {
-            String id = e.path("id").asText(null);
-            String type = e.path("type").asText("");
-            if ("folder".equals(type) && folders.containsKey(id)) {
-                plan.add(new Step(folders.get(id), null, null, n++));
-            } else if ("item".equals(type) && items.containsKey(id)) {
-                JsonNode fid = e.get("folderId");
-                String folderId = fid == null || fid.isNull() ? null : fid.asText();
-                if (folderId != null && !folders.containsKey(folderId)) throw StoreException.invalid("folderId");
-                plan.add(new Step(null, items.get(id), folderId, n++));
+        for (Placement p : entries) {
+            if (p.folder()) {
+                folders.get(p.id()).sortOrder = n++;
             } else {
-                throw StoreException.invalid("entry");
+                Item i = items.get(p.id());
+                i.sortOrder = n++;
+                i.folderId = p.folderId();
             }
         }
-        for (Step s : plan) {
-            if (s.folder() != null) {
-                s.folder().sortOrder = s.order();
-            } else {
-                s.item().sortOrder = s.order();
-                s.item().folderId = s.folderId();
-            }
+        Folder open = expand == null ? null : folders.get(expand);
+        if (open != null && open.collapsed) {
+            open.collapsed = false;
+            open.updatedAt = now();
         }
         save();
-    }
-
-    /** Selected hosts contents in merge order (for the JVM agent endpoint). */
-    public List<String> selectedHostsContents() {
-        return list(Kind.HOSTS).stream().filter(i -> i.selected).map(i -> i.content).toList();
     }
 
     // ── Export / backup restore ─────────────────────────────────
 
     /**
      * The chosen parts of the data for a backup's {@code data.json}: oeHosts (profiles, folders,
-     * launcher options), oeProxy (vhosts, folders, proxy options) and settings. A part left out has
-     * no key, so {@link #restoreParts} and {@link Backup.Contents} can tell it was not exported.
+     * launcher options), oeProxy (vhosts, folders) and settings. A part left out has no key, so
+     * {@link #restoreParts} and {@link Backup.Contents} can tell it was not exported.
      */
     public JsonNode exportParts(boolean hosts, boolean vhosts, boolean settings) {
-        com.fasterxml.jackson.databind.node.ObjectNode root = MAPPER.createObjectNode();
+        ObjectNode root = MAPPER.createObjectNode();
         root.put("version", data.version);
         if (hosts) {
             root.set("hosts", MAPPER.valueToTree(data.hosts));
             root.set("hostsFolders", MAPPER.valueToTree(data.hostsFolders));
-            root.set("hostsConf", MAPPER.valueToTree(data.hostsConf));
+            root.set("launcher", MAPPER.valueToTree(data.launcher));
         }
         if (vhosts) {
             root.set("vhosts", MAPPER.valueToTree(data.vhosts));
             root.set("vhostFolders", MAPPER.valueToTree(data.vhostFolders));
-            root.set("proxyConf", MAPPER.valueToTree(data.proxyConf));
         }
         if (settings) root.set("settings", MAPPER.valueToTree(data.settings));
         return root;
     }
 
+    private static Data parse(JsonNode json) throws IOException {
+        Data from = MAPPER.treeToValue(json, Data.class);
+        from.fillDefaults();
+        return from;
+    }
+
     /** Replaces the chosen parts (see {@link #exportParts}) with those of a backup's {@code data.json}, and saves. */
     public void restoreParts(JsonNode json, boolean hosts, boolean vhosts, boolean settings) throws IOException {
-        Data from = MAPPER.treeToValue(json, Data.class);
+        Data from = parse(json);
         if (hosts) {
-            data.hosts = from.hosts != null ? from.hosts : new ArrayList<>();
-            data.hostsFolders = from.hostsFolders != null ? from.hostsFolders : new ArrayList<>();
-            data.hostsConf = from.hostsConf != null ? new TreeMap<>(from.hostsConf) : new TreeMap<>();
+            data.hosts = from.hosts;
+            data.hostsFolders = from.hostsFolders;
+            data.launcher = from.launcher;
         }
         if (vhosts) {
-            data.vhosts = from.vhosts != null ? from.vhosts : new ArrayList<>();
-            data.vhostFolders = from.vhostFolders != null ? from.vhostFolders : new ArrayList<>();
-            data.proxyConf = from.proxyConf != null ? new TreeMap<>(from.proxyConf) : new TreeMap<>();
+            data.vhosts = from.vhosts;
+            data.vhostFolders = from.vhostFolders;
         }
-        if (settings) data.settings = from.settings != null ? from.settings : new Settings();
+        if (settings) data.settings = from.settings;
         save();
     }
 
     /**
      * Adds the chosen parts of a backup's {@code data.json} to what is stored, keeping everything
      * already there: items are added (a taken name gets a " (n)" suffix) into folders matched by
-     * name, options only fill keys not set yet, and settings only gain the presets they lack (the
-     * other settings stay as they are). Saves once at the end.
+     * name, and settings only gain the presets they lack. The launcher options and the other
+     * settings stay as they are. Saves once at the end.
      */
     public void mergeParts(JsonNode json, boolean hosts, boolean vhosts, boolean settings) throws IOException {
-        Data from = MAPPER.treeToValue(json, Data.class);
-        if (hosts) {
-            mergeItems(Kind.HOSTS, from.hosts, from.hostsFolders);
-            if (from.hostsConf != null) from.hostsConf.forEach(data.hostsConf::putIfAbsent);
-        }
-        if (vhosts) {
-            mergeItems(Kind.VHOSTS, from.vhosts, from.vhostFolders);
-            if (from.proxyConf != null) from.proxyConf.forEach(data.proxyConf::putIfAbsent);
-        }
-        if (settings && from.settings != null) {
-            Settings st = data.settings;
-            st.uaPresetsText = mergePresets(st.uaPresets, st.uaPresetsText, from.settings.uaPresets);
-            st.urlPresetsText = mergePresets(st.urlPresets, st.urlPresetsText, from.settings.urlPresets);
+        Data from = parse(json);
+        if (hosts) mergeItems(Kind.HOSTS, from.hosts, from.hostsFolders);
+        if (vhosts) mergeItems(Kind.VHOSTS, from.vhosts, from.vhostFolders);
+        if (settings) {
+            data.settings.userAgentPresets.merge(from.settings.userAgentPresets.items);
+            data.settings.openUrlPresets.merge(from.settings.openUrlPresets.items);
         }
         save();
     }
 
     private void mergeItems(Kind kind, List<Item> add, List<Folder> addFolders) {
         Map<String, String> folderNames = new HashMap<>();
-        List<Folder> srcFolders = addFolders != null ? new ArrayList<>(addFolders) : new ArrayList<>();
+        List<Folder> srcFolders = new ArrayList<>(addFolders);
         srcFolders.sort(Comparator.comparingLong(f -> f.sortOrder));
         for (Folder f : srcFolders) {
             if (f.id == null || f.name == null || f.name.isBlank()) continue;
             folderNames.put(f.id, folderByName(kind, f.name.strip()));
         }
-        if (add == null) return;
         List<Item> src = new ArrayList<>(add);
         src.sort(Comparator.comparingLong(i -> i.sortOrder));
         for (Item it : src) {
@@ -692,24 +602,6 @@ public final class Store {
             items(kind).add(newItem(kind, nextUniqueName(takenNames(kind, null), name),
                     it.content == null ? "" : it.content, it.selected, folderId));
         }
-    }
-
-    /**
-     * Appends to {@code list} the presets of {@code add} it does not have (same name and value), and
-     * returns the editor text with those lines appended (null stays null: the text is rebuilt from the list).
-     */
-    private static String mergePresets(List<Preset> list, String text, List<Preset> add) {
-        if (add == null) return text;
-        StringBuilder more = new StringBuilder();
-        for (Preset p : add) {
-            if (p == null || p.name == null || p.value == null) continue;
-            boolean has = list.stream().anyMatch(q -> p.name.equals(q.name) && p.value.equals(q.value));
-            if (has) continue;
-            list.add(new Preset(p.name, p.value));
-            more.append(p.name).append(" | ").append(p.value).append('\n');
-        }
-        if (text == null || more.isEmpty()) return text;
-        return (text.isEmpty() || text.endsWith("\n") ? text : text + "\n") + more;
     }
 
     private String folderByName(Kind kind, String name) {

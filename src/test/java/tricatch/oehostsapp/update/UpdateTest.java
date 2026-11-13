@@ -82,6 +82,11 @@ class UpdateTest {
         assertFalse(Update.isNewer("0.1.1", "0.1.2"));
         assertFalse(Update.isNewer("0.1.3", "dev"));
         assertFalse(Update.isNewer(null, "0.1.2"));
+        // A pre-release comes before its release.
+        assertFalse(Update.isNewer("0.2.0-rc1", "0.2.0"));
+        assertTrue(Update.isNewer("0.2.0", "0.2.0-rc1"));
+        assertTrue(Update.isNewer("0.2.0-rc2", "0.2.0-rc1"));
+        assertTrue(Update.isNewer("0.2.0-rc1", "0.1.9"));
     }
 
     @Test

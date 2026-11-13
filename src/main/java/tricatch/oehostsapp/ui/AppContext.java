@@ -1,6 +1,8 @@
 package tricatch.oehostsapp.ui;
 
+import tricatch.oehostsapp.Listeners;
 import tricatch.oehostsapp.Messages;
+import tricatch.oehostsapp.store.Settings;
 import tricatch.oehostsapp.store.Store;
 
 import javax.swing.*;
@@ -9,18 +11,23 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * What every screen shares: the data store (all access goes through {@link #store} so the
- * store's lock is held), the UI language and its messages, and "settings changed" listeners.
+ * What every screen of one window build shares: the data store (all access goes through
+ * {@link #store} / {@link #read} so the store's lock is held), the UI language and its messages,
+ * "settings changed" listeners, and the subscriptions to the app's services, which
+ * {@link #dispose} drops when the screens are rebuilt.
  */
 public final class AppContext {
 
     private final Store store;
     private final String lang;
     private final Map<String, String> msg;
-    private final List<Runnable> settingsListeners = new ArrayList<>();
+    private final Listeners settingsListeners = new Listeners();
+    private final List<Listeners.Subscription> subscriptions = new ArrayList<>();
     private JFrame frame;
 
     public AppContext(Store store) {
@@ -51,25 +58,30 @@ public final class AppContext {
     }
 
     /** Runs {@code op} with the store locked. A store error is shown as a message, returning null. */
-    public <T> T store(java.util.function.Function<Store, T> op) {
+    public <T> T store(Function<Store, T> op) {
         try {
             synchronized (store) {
                 return op.apply(store);
             }
         } catch (Store.StoreException e) {
-            String key = switch (e.code) {
-                case "name_taken" -> "toast.profile.name.taken";
-                default -> "status.save.failed";
-            };
-            toast(m(key));
+            toast(m("name_taken".equals(e.code) ? "toast.profile.name.taken" : "status.save.failed"));
             return null;
         }
     }
 
-    public void storeRun(java.util.function.Consumer<Store> op) {
-        store(s -> {
+    /** Runs {@code op} with the store locked; false (after a message) when it failed. */
+    public boolean storeRun(Consumer<Store> op) {
+        return store(s -> {
             op.accept(s);
             return Boolean.TRUE;
+        }) != null;
+    }
+
+    /** Changes the settings with the store locked and saves them; false (after a message) when it failed. */
+    public boolean saveSettings(Consumer<Settings> change) {
+        return storeRun(s -> {
+            change.accept(s.data.settings);
+            s.save();
         });
     }
 
@@ -79,16 +91,35 @@ public final class AppContext {
         }
     }
 
+    /** Reads the settings with the store locked. */
+    public <T> T settings(Function<Settings, T> op) {
+        return read(() -> op.apply(store.data.settings));
+    }
+
     public Store rawStore() {
         return store;
     }
 
+    /**
+     * Subscribes {@code onEdt} to a service's changes ({@code ShareServer::onChange} and the like):
+     * it runs on the event thread, and only until {@link #dispose}.
+     */
+    public void listen(Function<Runnable, Listeners.Subscription> source, Runnable onEdt) {
+        subscriptions.add(source.apply(() -> SwingUtilities.invokeLater(onEdt)));
+    }
+
     public void onSettingsChanged(Runnable r) {
-        settingsListeners.add(r);
+        subscriptions.add(settingsListeners.add(r));
     }
 
     public void fireSettingsChanged() {
-        for (Runnable r : List.copyOf(settingsListeners)) r.run();
+        settingsListeners.fire();
+    }
+
+    /** Drops every subscription made through this context (the screens are being replaced). */
+    public void dispose() {
+        for (Listeners.Subscription s : subscriptions) s.close();
+        subscriptions.clear();
     }
 
     void setFrame(JFrame frame) {

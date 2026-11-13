@@ -1,5 +1,7 @@
 package tricatch.oehostsapp.proxy;
 
+import tricatch.oehostsapp.net.Network;
+import tricatch.oehostsapp.store.Settings;
 import tricatch.oehostsapp.store.Store;
 import tricatch.oehostsapp.web.PhoneSetup;
 import tricatch.oehostsapp.web.ShareServer;
@@ -60,7 +62,7 @@ class ForwardProxyTest {
         backend.start();
         int backendPort = backend.getAddress().getPort();
 
-        Store s = Store.open(dir.resolve("data.json"), null);
+        Store s = Store.open(dir.resolve("data.json"));
         // Second profile maps the same host elsewhere: the first selected one wins.
         Store.Item a = s.create(Store.Kind.HOSTS, "en");
         s.updateContent(Store.Kind.HOSTS, a.id, "${PROXY_SVR} mapped.oehostsapp.test\n");
@@ -68,7 +70,7 @@ class ForwardProxyTest {
         Store.Item b = s.create(Store.Kind.HOSTS, "en");
         s.updateContent(Store.Kind.HOSTS, b.id, "10.255.255.1 mapped.oehostsapp.test\n");
         s.toggleSelected(Store.Kind.HOSTS, b.id);
-        s.data.settings.fwdproxyPort = freePort();
+        s.data.settings.fwdproxy.port = freePort();
 
         ForwardProxy.start(s);
         assertEquals(ForwardProxy.State.RUNNING, ForwardProxy.state(), ForwardProxy.error());
@@ -103,7 +105,7 @@ class ForwardProxyTest {
 
         // Moving to another port: the old one is released.
         int old = ForwardProxy.port();
-        s.data.settings.fwdproxyPort = freePort();
+        s.data.settings.fwdproxy.port = freePort();
         ForwardProxy.restart();
         assertEquals(ForwardProxy.State.RUNNING, ForwardProxy.state());
         try (ServerSocket again = new ServerSocket(old, 1, InetAddress.getLoopbackAddress())) {
@@ -111,7 +113,7 @@ class ForwardProxyTest {
         }
 
         // Every interface: still reachable on 127.0.0.1, and mapped the same way.
-        s.data.settings.putFwdproxyBind(ForwardProxy.ALL);
+        s.data.settings.fwdproxy.bind = Network.ALL;
         ForwardProxy.restart();
         assertEquals(ForwardProxy.State.RUNNING, ForwardProxy.state(), ForwardProxy.error());
         assertTrue(ForwardProxy.lan());
@@ -125,22 +127,16 @@ class ForwardProxyTest {
 
     @Test
     void bindsTheChosenAddress() throws Exception {
-        Store s = Store.open(dir.resolve("data.json"), null);
-        // Older data: the flag alone decides.
-        assertEquals(ForwardProxy.LOOPBACK, s.data.settings.fwdproxyBindAddress());
-        s.data.settings.fwdproxyLan = true;
-        assertEquals(ForwardProxy.ALL, s.data.settings.fwdproxyBindAddress());
-        // The address wins, and the flag follows it for older versions.
-        s.data.settings.putFwdproxyBind(ForwardProxy.LOOPBACK);
-        assertFalse(s.data.settings.fwdproxyLan);
-        s.data.settings.fwdproxyPort = freePort();
+        Store s = Store.open(dir.resolve("data.json"));
+        // This PC only by default.
+        assertEquals(Network.LOOPBACK, s.data.settings.fwdproxy.bind);
+        s.data.settings.fwdproxy.port = freePort();
 
         // One network card: listening on that address (and 127.0.0.1).
-        java.util.List<PhoneSetup.Lan> lans = PhoneSetup.addresses();
+        java.util.List<Network.Lan> lans = Network.addresses();
         org.junit.jupiter.api.Assumptions.assumeFalse(lans.isEmpty(), "no network card address on this machine");
         String ip = lans.get(0).ip();
-        s.data.settings.putFwdproxyBind(ip);
-        assertTrue(s.data.settings.fwdproxyLan);
+        s.data.settings.fwdproxy.bind = ip;
         ForwardProxy.start(s);
         assertEquals(ForwardProxy.State.RUNNING, ForwardProxy.state(), ForwardProxy.error());
         assertEquals(ip, ForwardProxy.bind());
@@ -154,7 +150,7 @@ class ForwardProxyTest {
         }
 
         // An address this PC does not have: reported, not silently moved elsewhere.
-        s.data.settings.putFwdproxyBind("203.0.113.7");
+        s.data.settings.fwdproxy.bind = "203.0.113.7";
         ForwardProxy.restart();
         assertEquals(ForwardProxy.State.FAILED, ForwardProxy.state());
         assertNotNull(ForwardProxy.error());
@@ -173,20 +169,20 @@ class ForwardProxyTest {
         backend.start();
         String target = "auth.oehostsapp.test:" + backend.getAddress().getPort();
 
-        Store s = Store.open(dir.resolve("data.json"), null);
+        Store s = Store.open(dir.resolve("data.json"));
         Store.Item a = s.create(Store.Kind.HOSTS, "en");
         s.updateContent(Store.Kind.HOSTS, a.id, "127.0.0.1 auth.oehostsapp.test\n");
         s.toggleSelected(Store.Kind.HOSTS, a.id);
-        s.data.settings.fwdproxyPort = freePort();
-        s.data.settings.fwdproxyAuth = true;
-        s.data.settings.fwdproxyUser = "dev";
-        s.data.settings.fwdproxyPassword = "p:ss word";
+        s.data.settings.fwdproxy.port = freePort();
+        s.data.settings.fwdproxy.auth = true;
+        s.data.settings.fwdproxy.user = "dev";
+        s.data.settings.fwdproxy.password = "p:ss word";
         // Authentication only counts for other devices: connect through a network card address,
         // so the proxy sees a non-loopback client.
-        java.util.List<PhoneSetup.Lan> lans = PhoneSetup.addresses();
+        java.util.List<Network.Lan> lans = Network.addresses();
         org.junit.jupiter.api.Assumptions.assumeFalse(lans.isEmpty(), "no network card address on this machine");
         String ip = lans.get(0).ip();
-        s.data.settings.putFwdproxyBind(ForwardProxy.ALL);
+        s.data.settings.fwdproxy.bind = Network.ALL;
         ForwardProxy.start(s);
         assertEquals(ForwardProxy.State.RUNNING, ForwardProxy.state(), ForwardProxy.error());
         assertTrue(ForwardProxy.authRequired());
@@ -214,7 +210,7 @@ class ForwardProxyTest {
         assertTrue(local.contains(" 200 "), local);
 
         // One network card plus authentication: the same rules, and 127.0.0.1 still answers.
-        s.data.settings.putFwdproxyBind(ip);
+        s.data.settings.fwdproxy.bind = ip;
         ForwardProxy.restart();
         assertEquals(ForwardProxy.State.RUNNING, ForwardProxy.state(), ForwardProxy.error());
         assertTrue(statusLine(ip, port, "GET http://" + target + "/ HTTP/1.1\r\nHost: " + target + "\r\n").contains(" 407 "));
@@ -223,15 +219,15 @@ class ForwardProxyTest {
 
     @Test
     void sendsThisPcsAddressOnTheWebServicePortToTheWebService() throws Exception {
-        java.util.List<PhoneSetup.Lan> lans = PhoneSetup.addresses();
+        java.util.List<Network.Lan> lans = Network.addresses();
         org.junit.jupiter.api.Assumptions.assumeFalse(lans.isEmpty(), "no network card address on this machine");
         String ip = lans.get(0).ip();
-        Store s = Store.open(dir.resolve("data.json"), null);
+        Store s = Store.open(dir.resolve("data.json"));
         // The web service on this PC only; the proxy open to the network, as for a phone.
-        s.data.settings.shareServerPort = freePort();
+        s.data.settings.web.port = freePort();
         ShareServer.start(s);
-        s.data.settings.fwdproxyPort = freePort();
-        s.data.settings.putFwdproxyBind(ip);
+        s.data.settings.fwdproxy.port = freePort();
+        s.data.settings.fwdproxy.bind = ip;
         ForwardProxy.start(s);
         try {
             assertEquals(ShareServer.State.RUNNING, ShareServer.state(), ShareServer.error());
@@ -258,14 +254,14 @@ class ForwardProxyTest {
         assertFalse(ForwardProxy.credentialsMatch("Dev", "a:b", "dev", "a:b"));
         assertFalse(ForwardProxy.credentialsMatch(null, null, "dev", "a:b"));
         // Turned on without an ID or password: nothing is asked.
-        Store.Settings st = new Store.Settings();
-        st.fwdproxyAuth = true;
-        st.fwdproxyUser = "dev";
-        assertNull(st.fwdproxyCredentials());
-        st.fwdproxyPassword = "x";
-        assertArrayEquals(new String[]{"dev", "x"}, st.fwdproxyCredentials());
-        st.fwdproxyAuth = false;
-        assertNull(st.fwdproxyCredentials());
+        Settings.ForwardProxy st = new Settings.ForwardProxy();
+        st.auth = true;
+        st.user = "dev";
+        assertNull(st.credentials());
+        st.password = "x";
+        assertArrayEquals(new String[]{"dev", "x"}, st.credentials());
+        st.auth = false;
+        assertNull(st.credentials());
     }
 
     private static String basic(String user, String password) {
@@ -286,8 +282,8 @@ class ForwardProxyTest {
     @Test
     void reportsAPortInUse() throws Exception {
         try (ServerSocket taken = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            Store s = Store.open(dir.resolve("data.json"), null);
-            s.data.settings.fwdproxyPort = taken.getLocalPort();
+            Store s = Store.open(dir.resolve("data.json"));
+            s.data.settings.fwdproxy.port = taken.getLocalPort();
             ForwardProxy.start(s);
             assertEquals(ForwardProxy.State.FAILED, ForwardProxy.state());
             assertNotNull(ForwardProxy.error());

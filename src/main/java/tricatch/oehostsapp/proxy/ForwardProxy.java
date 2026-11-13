@@ -1,8 +1,10 @@
 package tricatch.oehostsapp.proxy;
 
+import tricatch.oehostsapp.Listeners;
 import tricatch.oehostsapp.hosts.HostsRules;
+import tricatch.oehostsapp.net.Network;
+import tricatch.oehostsapp.store.Settings;
 import tricatch.oehostsapp.store.Store;
-import tricatch.oehostsapp.web.PhoneSetup;
 import tricatch.oehostsapp.web.ShareServer;
 
 import io.netty.channel.ChannelHandlerContext;
@@ -11,6 +13,8 @@ import org.littleshoot.proxy.HttpFilters;
 import org.littleshoot.proxy.HttpFiltersAdapter;
 import org.littleshoot.proxy.HttpFiltersSourceAdapter;
 import org.littleshoot.proxy.HttpProxyServer;
+import org.littleshoot.proxy.HttpProxyServerBootstrap;
+import org.littleshoot.proxy.ProxyAuthenticator;
 import org.littleshoot.proxy.impl.DefaultHttpProxyServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,22 +24,21 @@ import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * The forward proxy Chrome uses when the launcher's {@code --proxy-server} is on: LittleProxy on
- * {@code <settings.fwdproxyBind>:<settings.fwdproxyPort>}, where the address is 127.0.0.1 (the default),
- * one network card's IPv4 address or 0.0.0.0 (every interface); the last two let a phone on that
- * network use it. A host listed in the selected oeHosts profiles is
- * connected to the IP recorded there (first profile, first line wins, as in
- * {@link HostsRules#mergeActive}); every other host resolves through normal DNS.
+ * {@code <settings.fwdproxy.bind>:<settings.fwdproxy.port>}, where the address is 127.0.0.1 (the
+ * default), one network card's IPv4 address or 0.0.0.0 (every interface); the last two let a phone
+ * on that network use it. A host listed in the selected oeHosts profiles is connected to the IP
+ * recorded there ({@link HostsRules#active}); every other host resolves through normal DNS.
  *
- * <p>Optionally asks other devices for a username and password ({@code settings.fwdproxyAuth}, Basic
- * proxy authentication); 127.0.0.1 has a listener of its own that never asks (see {@link #startOn}).
+ * <p>Optionally asks other devices for a username and password ({@code settings.fwdproxy.auth},
+ * Basic proxy authentication); 127.0.0.1 has a listener of its own that never asks (see {@link #startOn}).
  *
  * <p>Ported from oeHub's {@code tricatch.oe.fwdproxy.ForwardProxyServer} without what a shared,
  * network-facing server needs: no account authentication, no per-user maps, no domain whitelist,
@@ -52,23 +55,21 @@ public final class ForwardProxy {
 
     public enum State { STOPPED, RUNNING, FAILED }
 
-    /** Bind address: this PC only. */
-    public static final String LOOPBACK = "127.0.0.1";
-    /** Bind address: every network interface. */
-    public static final String ALL = "0.0.0.0";
-
     private static final Logger log = LoggerFactory.getLogger(ForwardProxy.class);
-    private static final List<Runnable> listeners = new CopyOnWriteArrayList<>();
+    private static final Listeners listeners = new Listeners();
 
     /** The running listeners: 127.0.0.1 always, plus the network ones the binding asks for. */
-    private static final List<HttpProxyServer> servers = new java.util.ArrayList<>();
-    private static Store store;
+    private static final List<HttpProxyServer> servers = new ArrayList<>();
+    private static volatile Store store;
     private static volatile State state = State.STOPPED;
     private static volatile String error;
     private static volatile int port;
-    private static volatile String bind = LOOPBACK;
+    private static volatile String bind = Network.LOOPBACK;
     /** The username and password other devices must send, or null (no authentication). */
     private static volatile String[] credentials;
+    /** {@link #hostMap} as of store revision {@link #mapRevision}. */
+    private static volatile Map<String, String> map = Map.of();
+    private static volatile long mapRevision = -1;
 
     private ForwardProxy() {}
 
@@ -87,11 +88,11 @@ public final class ForwardProxy {
     }
 
     /** Runs {@code r} (on the calling thread of the change) whenever the state changes. */
-    public static void onChange(Runnable r) {
-        listeners.add(r);
+    public static Listeners.Subscription onChange(Runnable r) {
+        return listeners.add(r);
     }
 
-    /** The address of the last start attempt: {@link #LOOPBACK}, one IPv4 address, or {@link #ALL}. */
+    /** The address of the last start attempt: {@link Network#LOOPBACK}, one IPv4 address, or {@link Network#ALL}. */
     public static String bind() {
         return bind;
     }
@@ -103,7 +104,7 @@ public final class ForwardProxy {
 
     /** Whether the last start listened beyond this PC (a network card or every interface). */
     public static boolean lan() {
-        return !LOOPBACK.equals(bind);
+        return Network.isLan(bind);
     }
 
     /** Starts on the port and binding stored in the settings. */
@@ -112,9 +113,10 @@ public final class ForwardProxy {
         int p;
         String b;
         synchronized (s) {
-            p = s.data.settings.fwdproxyPort;
-            b = s.data.settings.fwdproxyBindAddress();
-            credentials = s.data.settings.fwdproxyCredentials();
+            Settings.ForwardProxy fp = s.data.settings.fwdproxy;
+            p = fp.port;
+            b = fp.bind;
+            credentials = fp.credentials();
         }
         startOn(p, b);
     }
@@ -155,14 +157,14 @@ public final class ForwardProxy {
         bind = b;
         String[] creds = credentials;
         try {
-            if (ALL.equals(b) && creds == null) {
+            if (Network.ALL.equals(b) && creds == null) {
                 servers.add(listen(new InetSocketAddress(p), null));
             } else {
                 servers.add(listen(new InetSocketAddress(InetAddress.getLoopbackAddress(), p), null));
-                List<String> network = new java.util.ArrayList<>();
-                if (ALL.equals(b)) {
-                    for (PhoneSetup.Lan l : PhoneSetup.addresses()) network.add(l.ip());
-                } else if (!LOOPBACK.equals(b)) {
+                List<String> network = new ArrayList<>();
+                if (Network.ALL.equals(b)) {
+                    for (Network.Lan l : Network.addresses()) network.add(l.ip());
+                } else if (Network.isLan(b)) {
                     network.add(b);
                 }
                 // An address no longer on this PC (another network, a new DHCP lease) fails here and shows as FAILED.
@@ -180,13 +182,13 @@ public final class ForwardProxy {
 
     /** One listener; {@code creds} non-null asks its clients for that username and password. */
     private static HttpProxyServer listen(InetSocketAddress address, String[] creds) {
-        org.littleshoot.proxy.HttpProxyServerBootstrap boot = DefaultHttpProxyServer.bootstrap()
+        HttpProxyServerBootstrap boot = DefaultHttpProxyServer.bootstrap()
                 .withName("oehostsapp-fwdproxy")
                 .withAddress(address)
                 .withAllowLocalOnly(address.getAddress().isLoopbackAddress())
                 .withFiltersSource(FILTERS);
         if (creds != null) {
-            boot.withProxyAuthenticator(new org.littleshoot.proxy.ProxyAuthenticator() {
+            boot.withProxyAuthenticator(new ProxyAuthenticator() {
                 @Override
                 public boolean authenticate(String userName, String password) {
                     return credentialsMatch(userName, password, creds[0], creds[1]);
@@ -256,7 +258,7 @@ public final class ForwardProxy {
      */
     static InetSocketAddress webService(HostPort hp) {
         int webPort = ShareServer.port();
-        if (webPort <= 0 || hp.port() != webPort || !PhoneSetup.isOwnAddress(hp.host())) return null;
+        if (webPort <= 0 || hp.port() != webPort || !Network.isOwnAddress(hp.host())) return null;
         try {
             InetAddress loopback = InetAddress.getByAddress(hp.host(), InetAddress.getLoopbackAddress().getAddress());
             log.debug("forward proxy: {} -> web service on 127.0.0.1", hp.host());
@@ -266,21 +268,25 @@ public final class ForwardProxy {
         }
     }
 
-    /** host (lower case) -> IP of the selected oeHosts profiles, placeholders resolved. */
+    /**
+     * host (lower case) -> IP of the selected oeHosts profiles. Rebuilt only after the store
+     * changed, not for every request.
+     */
     static Map<String, String> hostMap() {
         Store s = store;
         if (s == null) return Map.of();
+        if (s.revision() == mapRevision) return map;
+        long rev;
         List<String> contents;
         synchronized (s) {
-            contents = s.selectedHostsContents();
+            rev = s.revision();
+            contents = s.selectedContents(Store.Kind.HOSTS);
         }
         Map<String, String> out = new HashMap<>();
-        for (String c : contents) {
-            for (HostsRules.Rule r : HostsRules.parse(HostsRules.resolvePlaceholders(c))) {
-                out.putIfAbsent(r.host().toLowerCase(Locale.ROOT), r.ip());
-            }
-        }
-        return out;
+        for (HostsRules.Rule r : HostsRules.active(contents)) out.put(r.host().toLowerCase(Locale.ROOT), r.ip());
+        map = Map.copyOf(out);
+        mapRevision = rev;
+        return map;
     }
 
     /** "host:port", "[v6]:port", "[v6]" or a bare host / v6 literal. */
@@ -315,6 +321,6 @@ public final class ForwardProxy {
     private static void set(State s, String err) {
         state = s;
         error = err;
-        for (Runnable r : listeners) r.run();
+        listeners.fire();
     }
 }

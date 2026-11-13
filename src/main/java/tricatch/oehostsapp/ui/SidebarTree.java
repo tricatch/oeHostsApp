@@ -1,6 +1,7 @@
 package tricatch.oehostsapp.ui;
 
 import tricatch.oehostsapp.store.Store;
+import tricatch.oehostsapp.store.Store.Node;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -11,9 +12,7 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -85,25 +84,15 @@ public final class SidebarTree extends JPanel {
     public void render() {
         rows.removeAll();
         targets.clear();
-        List<Store.Folder> folders = ctx.read(() -> ctx.rawStore().listFolders(kind));
-        List<Store.Item> items = ctx.read(() -> ctx.rawStore().list(kind));
-        Map<String, List<Store.Item>> byFolder = new LinkedHashMap<>();
-        for (Store.Folder f : folders) byFolder.put(f.id, new ArrayList<>());
-        List<Object> top = new ArrayList<>();
-        for (Store.Item i : items) {
-            if (i.folderId != null && byFolder.containsKey(i.folderId)) byFolder.get(i.folderId).add(i);
-        }
-        // Folders and root items interleave by sortOrder (Store.list's order).
-        List<Object> all = new ArrayList<>(folders);
-        for (Store.Item i : items) if (i.folderId == null || !byFolder.containsKey(i.folderId)) all.add(i);
-        all.sort((a, b) -> Long.compare(order(a), order(b)));
-        top.addAll(all);
+        List<Store.Node> tree = ctx.read(() -> ctx.rawStore().tree(kind));
+        List<Store.Folder> folders = tree.stream().map(Store.Node::folder).filter(java.util.Objects::nonNull).toList();
         boolean first = true;
-        for (Object o : top) {
+        for (Store.Node n : tree) {
             if (!first) rows.add(Box.createVerticalStrut(4));
             first = false;
-            if (o instanceof Store.Folder f) {
-                List<Store.Item> kids = byFolder.get(f.id);
+            if (n.folder() != null) {
+                Store.Folder f = n.folder();
+                List<Store.Item> kids = n.children();
                 rows.add(folderRow(f, kids));
                 if (!f.collapsed && !kids.isEmpty()) {
                     JPanel group = new JPanel();
@@ -120,15 +109,11 @@ public final class SidebarTree extends JPanel {
                     rows.add(group);
                 }
             } else {
-                rows.add(itemRow((Store.Item) o, folders, null));
+                rows.add(itemRow(n.item(), folders, null));
             }
         }
         rows.revalidate();
         rows.repaint();
-    }
-
-    private static long order(Object o) {
-        return o instanceof Store.Folder f ? f.sortOrder : ((Store.Item) o).sortOrder;
     }
 
     /** A rounded 36px row that paints its own hover/selected background. */
@@ -430,26 +415,16 @@ public final class SidebarTree extends JPanel {
         }
     }
 
-    /** A root entry: a folder with its items, or an item outside any folder. */
-    private record Node(Store.Folder folder, Store.Item item, List<Store.Item> children) {}
-
     /**
      * Moves {@code src} next to or into {@code target} (null: the end of the root) and saves the
      * whole order, as list-folders.js move() does.
      */
     private void move(Object src, Object target, String pos) {
-        List<Store.Folder> folders = ctx.read(() -> ctx.rawStore().listFolders(kind));
-        List<Store.Item> items = ctx.read(() -> ctx.rawStore().list(kind));
-        Map<String, Node> byFolder = new LinkedHashMap<>();
-        for (Store.Folder f : folders) byFolder.put(f.id, new Node(f, null, new ArrayList<>()));
-        List<Node> tree = new ArrayList<>(byFolder.values());
-        for (Store.Item i : items) {
-            Node parent = i.folderId == null ? null : byFolder.get(i.folderId);
-            if (parent != null) parent.children().add(i);
-            else tree.add(new Node(null, i, null));
+        // A working copy: the store's lists are only changed by saveTreeOrder below.
+        List<Node> tree = new ArrayList<>();
+        for (Node n : ctx.read(() -> ctx.rawStore().tree(kind))) {
+            tree.add(n.folder() != null ? new Node(n.folder(), null, new ArrayList<>(n.children())) : n);
         }
-        tree.sort((a, b) -> Long.compare(a.folder() != null ? a.folder().sortOrder : a.item().sortOrder,
-                b.folder() != null ? b.folder().sortOrder : b.item().sortOrder));
 
         // Take the dragged entry out of the tree.
         Node rootEntry;
@@ -508,22 +483,17 @@ public final class SidebarTree extends JPanel {
             }
         }
 
-        com.fasterxml.jackson.databind.node.ArrayNode entries = Store.MAPPER.createArrayNode();
+        List<Store.Placement> entries = new ArrayList<>();
         for (Node n : tree) {
             if (n.folder() != null) {
-                entries.addObject().put("type", "folder").put("id", n.folder().id);
-                for (Store.Item c : n.children()) {
-                    entries.addObject().put("type", "item").put("id", c.id).put("folderId", n.folder().id);
-                }
+                entries.add(new Store.Placement(n.folder().id, true, null));
+                for (Store.Item c : n.children()) entries.add(new Store.Placement(c.id, false, n.folder().id));
             } else {
-                entries.addObject().put("type", "item").put("id", n.item().id).putNull("folderId");
+                entries.add(new Store.Placement(n.item().id, false, null));
             }
         }
         String open = expand;
-        ctx.storeRun(s -> {
-            s.saveTreeOrder(kind, entries);
-            if (open != null) s.updateFolder(kind, open, null, false);
-        });
+        ctx.storeRun(s -> s.saveTreeOrder(kind, entries, open));
         render();
         listener.changed();
     }

@@ -1,6 +1,6 @@
 package tricatch.oehostsapp.ui;
 
-import tricatch.oehostsapp.store.Store;
+import tricatch.oehostsapp.store.Settings;
 
 import com.formdev.flatlaf.extras.FlatSVGIcon;
 
@@ -410,28 +410,28 @@ public final class Ui {
     /**
      * Left list | the rest of a screen, with the list resizable by dragging the line between them.
      * The width starts at {@link #SIDEBAR_W} and, once dragged, is remembered and shared by every
-     * screen ({@code settings.sidebarWidth}).
+     * screen ({@code settings.window.sidebarWidth}).
      */
     public static JSplitPane sidebarSplit(AppContext ctx, JComponent sidebar, JComponent rest) {
         sidebar.setMinimumSize(new Dimension(180, 10));
         rest.setMinimumSize(new Dimension(400, 10));
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, sidebar, rest);
         split.setResizeWeight(0); // the list keeps its width when the window is resized
-        shareDivider(ctx, split, false, SIDEBAR_W, st -> st.sidebarWidth, (st, w) -> st.sidebarWidth = w);
+        shareDivider(ctx, split, false, SIDEBAR_W, st -> st.window.sidebarWidth, (st, w) -> st.window.sidebarWidth = w);
         return split;
     }
 
     /**
      * Main area | right-hand panel. The panel keeps its width when the window is resized; the width
      * starts at {@link #RIGHT_W} and, once dragged, is shared by every screen
-     * ({@code settings.rightPanelWidth}).
+     * ({@code settings.window.rightPanelWidth}).
      */
     public static JSplitPane rightSplit(AppContext ctx, JComponent main, JComponent panel) {
         main.setMinimumSize(new Dimension(300, 10));
         panel.setMinimumSize(new Dimension(240, 10));
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, main, panel);
         split.setResizeWeight(1);
-        shareDivider(ctx, split, true, RIGHT_W, st -> st.rightPanelWidth, (st, w) -> st.rightPanelWidth = w);
+        shareDivider(ctx, split, true, RIGHT_W, st -> st.window.rightPanelWidth, (st, w) -> st.window.rightPanelWidth = w);
         return split;
     }
 
@@ -441,12 +441,12 @@ public final class Ui {
      * {@code fromRight} measures the width of the right component instead of the left one.
      */
     private static void shareDivider(AppContext ctx, JSplitPane split, boolean fromRight, int def,
-                                     java.util.function.Function<Store.Settings, Integer> get,
-                                     java.util.function.BiConsumer<Store.Settings, Integer> set) {
+                                     java.util.function.Function<Settings, Integer> get,
+                                     java.util.function.BiConsumer<Settings, Integer> set) {
         split.setContinuousLayout(true);
         lineDivider(split);
         java.util.function.IntSupplier stored = () -> {
-            Integer w = ctx.read(() -> get.apply(ctx.rawStore().data.settings));
+            Integer w = ctx.settings(get);
             return w != null ? w : def;
         };
         java.util.function.IntSupplier current = () -> fromRight
@@ -510,5 +510,21 @@ public final class Ui {
 
     public static String esc(String s) {
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    /** A drop-down in the form style: 13px text, rounded, green focus ring, not focusable by Tab. */
+    public static <T> JComboBox<T> combo() {
+        JComboBox<T> c = new JComboBox<>();
+        c.setFont(font(Font.PLAIN, 13f));
+        c.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878");
+        c.setFocusable(false);
+        return c;
+    }
+
+    /** A text field in the form style; {@code extraStyle} is appended to its FlatLaf style (may be empty). */
+    public static <T extends JTextField> T formField(T f, String extraStyle) {
+        f.setFont(font(Font.PLAIN, 13f));
+        f.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878; margin:4,8,4,8" + extraStyle);
+        return f;
     }
 }

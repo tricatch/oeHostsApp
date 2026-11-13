@@ -1,5 +1,6 @@
 package tricatch.oehostsapp.update;
 
+import tricatch.oehostsapp.Listeners;
 import tricatch.oehostsapp.OeHostsApp;
 import tricatch.oehostsapp.UpdateHelper;
 
@@ -61,7 +62,7 @@ public final class Update {
     public record Status(State state, String latest, int percent, String error) {}
 
     private static volatile Status status = new Status(State.IDLE, null, 0, null);
-    private static final java.util.List<Runnable> listeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private static final Listeners listeners = new Listeners();
     private static volatile String[] appArgs = new String[0];
 
     private Update() {}
@@ -76,13 +77,13 @@ public final class Update {
     }
 
     /** Runs {@code r} (on the thread that changed it) whenever the status changes: the About page and the navbar's gear. */
-    public static void onChange(Runnable r) {
-        listeners.add(r);
+    public static Listeners.Subscription onChange(Runnable r) {
+        return listeners.add(r);
     }
 
     private static void set(Status s) {
         status = s;
-        for (Runnable r : listeners) r.run();
+        listeners.fire();
     }
 
     /** True when this run can replace its own jar (see the class comment). */
@@ -181,9 +182,11 @@ public final class Update {
 
     /** The tag {@code <repoUrl>/releases/latest} redirects to (a GitHub repository URL). */
     public static String latestVersion(String repoUrl) throws IOException, InterruptedException {
-        HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
-                .followRedirects(HttpClient.Redirect.NEVER).build();
-        HttpResponse<Void> r = http.send(request(repoUrl + "/releases/latest"), HttpResponse.BodyHandlers.discarding());
+        HttpResponse<Void> r;
+        try (HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
+                .followRedirects(HttpClient.Redirect.NEVER).build()) {
+            r = http.send(request(repoUrl + "/releases/latest"), HttpResponse.BodyHandlers.discarding());
+        }
         String loc = r.headers().firstValue("location").orElse(null);
         if (r.statusCode() / 100 != 3 || loc == null) throw new IOException("HTTP " + r.statusCode());
         int at = loc.lastIndexOf("/tag/");
@@ -195,25 +198,30 @@ public final class Update {
 
     /**
      * True when {@code latest} is a higher version than {@code current}: dot-separated parts,
-     * numbers compared as numbers, anything else as text. A version that is not a release
-     * ({@code dev}) is never older.
+     * numbers compared as numbers, anything else as text. A pre-release ({@code 1.2.0-rc1}) comes
+     * before its release ({@code 1.2.0}). A version that is not a release ({@code dev}) is never older.
      */
     public static boolean isNewer(String latest, String current) {
-        if (latest == null || current == null || !Character.isDigit(current.charAt(0))) return false;
+        if (latest == null || current == null || current.isEmpty() || !Character.isDigit(current.charAt(0))) return false;
+        int dl = latest.indexOf('-'), dc = current.indexOf('-');
+        int c = compareParts(dl < 0 ? latest : latest.substring(0, dl), dc < 0 ? current : current.substring(0, dc));
+        if (c != 0) return c > 0;
+        if (dl < 0 || dc < 0) return dl < 0 && dc >= 0; // only the release beats its pre-release
+        return compareParts(latest.substring(dl + 1), current.substring(dc + 1)) > 0;
+    }
+
+    private static int compareParts(String latest, String current) {
         String[] a = latest.split("\\.");
         String[] b = current.split("\\.");
         for (int i = 0; i < Math.max(a.length, b.length); i++) {
             String x = i < a.length ? a[i] : "0";
             String y = i < b.length ? b[i] : "0";
-            int c;
-            if (x.matches("\\d+") && y.matches("\\d+")) {
-                c = new java.math.BigInteger(x).compareTo(new java.math.BigInteger(y));
-            } else {
-                c = x.compareTo(y);
-            }
-            if (c != 0) return c > 0;
+            int c = x.matches("\\d+") && y.matches("\\d+")
+                    ? new java.math.BigInteger(x).compareTo(new java.math.BigInteger(y))
+                    : x.compareTo(y);
+            if (c != 0) return c;
         }
-        return false;
+        return 0;
     }
 
     // ── Download ────────────────────────────────────────────────
@@ -247,8 +255,14 @@ public final class Update {
      */
     public static void fetchAsset(String repoUrl, String tag, String asset, Path out, IntConsumer progress)
             throws IOException, InterruptedException {
-        HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
-                .followRedirects(HttpClient.Redirect.NORMAL).build();
+        try (HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
+                .followRedirects(HttpClient.Redirect.NORMAL).build()) {
+            fetchAsset(http, repoUrl, tag, asset, out, progress);
+        }
+    }
+
+    private static void fetchAsset(HttpClient http, String repoUrl, String tag, String asset, Path out, IntConsumer progress)
+            throws IOException, InterruptedException {
         String base = repoUrl + "/releases/download/" + tag + "/";
         HttpResponse<String> sums = http.send(request(base + "SHA256SUMS.txt"), HttpResponse.BodyHandlers.ofString());
         if (sums.statusCode() != 200) throw new IOException("SHA256SUMS.txt: HTTP " + sums.statusCode());

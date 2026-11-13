@@ -1,7 +1,8 @@
 package tricatch.oehostsapp.web;
 
+import tricatch.oehostsapp.Listeners;
 import tricatch.oehostsapp.hosts.HostsRules;
-import tricatch.oehostsapp.proxy.ForwardProxy;
+import tricatch.oehostsapp.net.Network;
 import tricatch.oehostsapp.store.Store;
 
 import com.sun.net.httpserver.HttpExchange;
@@ -17,24 +18,23 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 
 /**
  * The web service: the app's built-in HTTP server. It serves
  * <ul>
  *   <li>the shared oeHosts profiles as plain hosts text, for hosts managers that subscribe to a URL
- *   (SwitchHosts' "Remote" entries) and oeHosts-Agent: {@code GET /hosts/<id>-<tag>/<name>}, the tag
- *   being an HMAC of the id under a key only this installation has ({@link Store#shareToken}). The
- *   trailing name ({@link Store#shareSlug}) is only there for people and is ignored, so a renamed
- *   profile keeps working under its old URL. Only profiles whose {@link Store.Item#shared} is on are
- *   served; a wrong tag, an unknown id and a profile whose sharing was turned off all answer the same
- *   404, so ids cannot be probed. {@code ${PROXY_SVR}} / {@code ${LOCAL_SVR}} are filled in
- *   ({@link HostsRules#resolvePlaceholders}).</li>
- *   <li>the phone setup page at {@code /} and the CA's public certificate ({@link PhoneSetup}).</li>
+ *   (SwitchHosts' "Remote" entries): {@code GET /hosts/<id>-<tag>/<name>}, the tag being an HMAC of
+ *   the id under a key only this installation has ({@link Store#shareToken}). The trailing name
+ *   ({@link Store#shareSlug}) is only there for people and is ignored, so a renamed profile keeps
+ *   working under its old URL. Only profiles whose {@link Store.Item#shared} is on are served; a
+ *   wrong tag, an unknown id and a profile whose sharing was turned off all answer the same 404, so
+ *   ids cannot be probed. oeHub's placeholders are filled in ({@link HostsRules#resolvePlaceholders}).</li>
+ *   <li>the selected profiles merged ({@link #ACTIVE_PATH}), for oeHosts-Agent.</li>
+ *   <li>the phone setup page and the CA's public certificate ({@link PhoneSetup}).</li>
  * </ul>
  *
- * <p>Who can reach it is decided by the binding alone ({@code settings.shareServerBind}: 127.0.0.1,
+ * <p>Who can reach it is decided by the binding alone ({@code settings.web.bind}: 127.0.0.1,
  * one of this PC's IPv4 addresses, or 0.0.0.0). 127.0.0.1 always has a listener of its own, because
  * the share URLs given to programs on this PC use it. A request whose Host header is neither a
  * loopback name nor one of this PC's own IP addresses is refused, so a web page cannot read the
@@ -50,14 +50,14 @@ public final class ShareServer {
     public static final String ACTIVE_PATH = "/active-hosts";
 
     private static final Logger log = LoggerFactory.getLogger(ShareServer.class);
-    private static final List<Runnable> listeners = new CopyOnWriteArrayList<>();
+    private static final Listeners listeners = new Listeners();
 
     private static final List<HttpServer> servers = new ArrayList<>();
-    private static Store store;
+    private static volatile Store store;
     private static volatile State state = State.STOPPED;
     private static volatile String error;
     private static volatile int port;
-    private static volatile String bind = ForwardProxy.LOOPBACK;
+    private static volatile String bind = Network.LOOPBACK;
 
     private ShareServer() {}
 
@@ -82,17 +82,17 @@ public final class ShareServer {
 
     /** Whether the last start listened beyond this PC. */
     public static boolean lan() {
-        return !ForwardProxy.LOOPBACK.equals(bind);
+        return Network.isLan(bind);
     }
 
     /** Runs {@code r} (on the thread that changed it) whenever the state changes. */
-    public static void onChange(Runnable r) {
-        listeners.add(r);
+    public static Listeners.Subscription onChange(Runnable r) {
+        return listeners.add(r);
     }
 
     /** The URL of the selected profiles' merged hosts on this PC (127.0.0.1). */
     public static String activeUrl(int port) {
-        return activeUrl(ForwardProxy.LOOPBACK, port);
+        return activeUrl(Network.LOOPBACK, port);
     }
 
     /** The same URL on {@code host}, one of the addresses the web service answers on. */
@@ -102,12 +102,23 @@ public final class ShareServer {
 
     /** The URL a profile is shared at on this PC (127.0.0.1). */
     public static String url(int port, String token, String name) {
-        return url(ForwardProxy.LOOPBACK, port, token, name);
+        return url(Network.LOOPBACK, port, token, name);
     }
 
     /** The URL a profile is shared at on {@code host}: its {@link Store#shareToken}, then its name as {@link Store#shareSlug}. */
     public static String url(String host, int port, String token, String name) {
         return "http://" + host + ":" + port + PATH + token + "/" + Store.shareSlug(name);
+    }
+
+    /**
+     * The hosts the URLs may name: 127.0.0.1, and while the web service is open to the network every
+     * address of this PC it answers on.
+     */
+    public static List<String> urlHosts() {
+        List<String> out = new ArrayList<>();
+        out.add(Network.LOOPBACK);
+        if (lan()) for (Network.Lan l : Network.addressesFor(bind)) out.add(l.ip());
+        return out;
     }
 
     /** Starts on the port and binding stored in the settings. */
@@ -116,18 +127,18 @@ public final class ShareServer {
         int p;
         String b;
         synchronized (s) {
-            p = s.data.settings.shareServerPort;
-            b = s.data.settings.shareServerBindAddress();
+            p = s.data.settings.web.port;
+            b = s.data.settings.web.bind;
         }
         port = p;
         bind = b;
         try {
-            if (ForwardProxy.ALL.equals(b)) {
+            if (Network.ALL.equals(b)) {
                 servers.add(listen(new InetSocketAddress(p)));
             } else {
                 servers.add(listen(new InetSocketAddress(InetAddress.getLoopbackAddress(), p)));
                 // An address no longer on this PC fails here and shows as FAILED.
-                if (!ForwardProxy.LOOPBACK.equals(b)) servers.add(listen(new InetSocketAddress(InetAddress.getByName(b), p)));
+                if (Network.isLan(b)) servers.add(listen(new InetSocketAddress(InetAddress.getByName(b), p)));
             }
             set(State.RUNNING, null);
             log.info("web service on {}:{}", b, p);
@@ -168,7 +179,7 @@ public final class ShareServer {
     private static void set(State s, String err) {
         state = s;
         error = err;
-        for (Runnable r : listeners) r.run();
+        listeners.fire();
     }
 
     /**
@@ -211,8 +222,6 @@ public final class ShareServer {
     /**
      * The profiles selected in oeHosts, merged in tree order as {@code IP host} lines (the first
      * profile that lists a host wins, as in the forward proxy). Follows the selection as it changes.
-     * Like every page here, who can reach it is set by the binding alone: 127.0.0.1 always, plus the
-     * network address chosen for the web service.
      */
     private static void handleActive(HttpExchange ex) throws IOException {
         try (ex) {
@@ -224,7 +233,7 @@ public final class ShareServer {
             }
             List<String> contents;
             synchronized (store) {
-                contents = store.selectedHostsContents();
+                contents = store.selectedContents(Store.Kind.HOSTS);
             }
             respond(ex, 200, activeHosts(contents));
         }
@@ -233,10 +242,7 @@ public final class ShareServer {
     /** {@code IP host} lines for {@code contents} (selected profiles in merge order), placeholders resolved. */
     public static String activeHosts(List<String> contents) {
         StringBuilder b = new StringBuilder();
-        for (HostsRules.Rule r : HostsRules.mergeActive(
-                contents.stream().map(HostsRules::resolvePlaceholders).toList(), HostsRules.THIS_PC)) {
-            b.append(r.ip()).append(' ').append(r.host()).append('\n');
-        }
+        for (HostsRules.Rule r : HostsRules.active(contents)) b.append(r.ip()).append(' ').append(r.host()).append('\n');
         return b.toString();
     }
 
@@ -260,7 +266,7 @@ public final class ShareServer {
      */
     static boolean allowedHost(String host) {
         String h = hostName(host);
-        return h != null && (loopbackName(h) || PhoneSetup.isOwnAddress(h));
+        return h != null && (loopbackName(h) || Network.isOwnAddress(h));
     }
 
     private static boolean loopbackName(String h) {

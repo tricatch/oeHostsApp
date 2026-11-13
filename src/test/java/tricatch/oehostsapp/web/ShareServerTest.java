@@ -1,5 +1,6 @@
 package tricatch.oehostsapp.web;
 
+import tricatch.oehostsapp.net.Network;
 import tricatch.oehostsapp.Messages;
 import tricatch.oehostsapp.proxy.ProxyRuntime;
 import tricatch.oehostsapp.store.Store;
@@ -34,12 +35,12 @@ class ShareServerTest {
 
     @Test
     void servesOnlySharedProfilesWithPlaceholdersFilledIn() throws Exception {
-        Store s = Store.open(dir.resolve("data.json"), null);
+        Store s = Store.open(dir.resolve("data.json"));
         Store.Item a = s.create(Store.Kind.HOSTS, "en");
         s.updateContent(Store.Kind.HOSTS, a.id, "# dev\n${PROXY_SVR} api.example.test\n");
         Store.Item b = s.create(Store.Kind.HOSTS, "en");
         s.setShared(a.id, true);
-        s.data.settings.shareServerPort = freePort();
+        s.data.settings.web.port = freePort();
 
         ShareServer.start(s);
         assertEquals(ShareServer.State.RUNNING, ShareServer.state(), ShareServer.error());
@@ -81,10 +82,10 @@ class ShareServerTest {
 
         // Survives a reload of the data file, with the same token.
         s.setShared(a.id, true);
-        assertNotNull(Store.open(dir.resolve("data.json"), null).sharedHostsContentByToken(ta));
+        assertNotNull(Store.open(dir.resolve("data.json")).sharedHostsContentByToken(ta));
         // The key is not part of a backup, and another installation (another key) refuses the token.
         assertFalse(s.exportParts(true, true, true).toString().contains(s.data.shareKey));
-        Store other = Store.open(dir.resolve("other.json"), null);
+        Store other = Store.open(dir.resolve("other.json"));
         other.restoreParts(s.exportParts(true, false, false), true, false, false);
         other.shareToken(a.id);
         assertNull(other.sharedHostsContentByToken(ta));
@@ -117,20 +118,20 @@ class ShareServerTest {
         assertFalse(ShareServer.allowedHost("[::2]:1"));
         assertFalse(ShareServer.allowedHost(null));
         // This PC's own network address (a phone reaching it over Wi-Fi), but no other address.
-        for (PhoneSetup.Lan l : PhoneSetup.addresses()) assertTrue(ShareServer.allowedHost(l.ip() + ":36981"), l.ip());
+        for (Network.Lan l : Network.addresses()) assertTrue(ShareServer.allowedHost(l.ip() + ":36981"), l.ip());
         assertFalse(ShareServer.allowedHost("203.0.113.7:36981"));
     }
 
     @Test
     void servesTheSelectedProfilesMerged() throws Exception {
-        Store s = Store.open(dir.resolve("data.json"), null);
+        Store s = Store.open(dir.resolve("data.json"));
         Store.Item a = s.create(Store.Kind.HOSTS, "en");
         s.updateContent(Store.Kind.HOSTS, a.id, "# dev\n${PROXY_SVR} api.example.test\n10.0.0.1 db.example.test\n");
         Store.Item b = s.create(Store.Kind.HOSTS, "en");
         s.updateContent(Store.Kind.HOSTS, b.id, "10.0.0.2 db.example.test\n10.0.0.3 web.example.test\n");
         Store.Item c = s.create(Store.Kind.HOSTS, "en");
         s.updateContent(Store.Kind.HOSTS, c.id, "10.0.0.9 other.example.test\n");
-        s.data.settings.shareServerPort = freePort();
+        s.data.settings.web.port = freePort();
         ShareServer.start(s);
         assertEquals(ShareServer.State.RUNNING, ShareServer.state(), ShareServer.error());
         int port = ShareServer.port();
@@ -157,7 +158,7 @@ class ShareServerTest {
 
         // The same Host rules as the other pages: this PC's names and addresses, nothing else.
         assertEquals(200, rawStatus(port, ShareServer.ACTIVE_PATH, "localhost:" + port));
-        for (PhoneSetup.Lan l : PhoneSetup.addresses()) {
+        for (Network.Lan l : Network.addresses()) {
             assertEquals(200, rawStatus(port, ShareServer.ACTIVE_PATH, l.ip() + ":" + port), l.ip());
         }
         assertEquals(403, rawStatus(port, ShareServer.ACTIVE_PATH, "evil.example:" + port));
@@ -178,8 +179,8 @@ class ShareServerTest {
 
     @Test
     void servesThePhoneSetupPageAndTheCa() throws Exception {
-        Store s = Store.open(dir.resolve("data.json"), null);
-        s.data.settings.shareServerPort = freePort();
+        Store s = Store.open(dir.resolve("data.json"));
+        s.data.settings.web.port = freePort();
         ShareServer.start(s);
         assertEquals(ShareServer.State.RUNNING, ShareServer.state(), ShareServer.error());
         String base = "http://127.0.0.1:" + ShareServer.port();
@@ -217,13 +218,13 @@ class ShareServerTest {
 
     @Test
     void bindsTheChosenAddressAndAlwaysLoopback() throws Exception {
-        java.util.List<PhoneSetup.Lan> lans = PhoneSetup.addresses();
+        java.util.List<Network.Lan> lans = Network.addresses();
         org.junit.jupiter.api.Assumptions.assumeFalse(lans.isEmpty(), "no network card address on this machine");
         String ip = lans.get(0).ip();
-        Store s = Store.open(dir.resolve("data.json"), null);
-        assertEquals("127.0.0.1", s.data.settings.shareServerBindAddress());
-        s.data.settings.shareServerPort = freePort();
-        s.data.settings.shareServerBind = ip;
+        Store s = Store.open(dir.resolve("data.json"));
+        assertEquals("127.0.0.1", s.data.settings.web.bind);
+        s.data.settings.web.port = freePort();
+        s.data.settings.web.bind = ip;
         ShareServer.start(s);
         assertEquals(ShareServer.State.RUNNING, ShareServer.state(), ShareServer.error());
         assertTrue(ShareServer.lan());
@@ -236,14 +237,14 @@ class ShareServerTest {
         assertEquals(200, get(ShareServer.activeUrl(port)).statusCode());
 
         // Every interface.
-        s.data.settings.shareServerBind = "0.0.0.0";
+        s.data.settings.web.bind = "0.0.0.0";
         ShareServer.restart();
         assertEquals(ShareServer.State.RUNNING, ShareServer.state(), ShareServer.error());
         assertEquals(200, get(PhoneSetup.pageUrl(ip, port)).statusCode());
         assertEquals(200, get("http://127.0.0.1:" + port + PhoneSetup.PAGE_PATH).statusCode());
 
         // An address this PC does not have: reported, not moved elsewhere.
-        s.data.settings.shareServerBind = "203.0.113.7";
+        s.data.settings.web.bind = "203.0.113.7";
         ShareServer.restart();
         assertEquals(ShareServer.State.FAILED, ShareServer.state());
     }
@@ -251,8 +252,8 @@ class ShareServerTest {
     @Test
     void reportsAPortInUse() throws Exception {
         try (ServerSocket taken = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            Store s = Store.open(dir.resolve("data.json"), null);
-            s.data.settings.shareServerPort = taken.getLocalPort();
+            Store s = Store.open(dir.resolve("data.json"));
+            s.data.settings.web.port = taken.getLocalPort();
             ShareServer.start(s);
             assertEquals(ShareServer.State.FAILED, ShareServer.state());
             assertNotNull(ShareServer.error());

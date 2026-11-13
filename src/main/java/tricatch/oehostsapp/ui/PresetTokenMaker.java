@@ -8,7 +8,7 @@ import javax.swing.text.Segment;
 /**
  * Colours the preset editor line by line: a comment is one {@link Token#COMMENT_EOL} token, a
  * line that is not a valid "name | value" entry one {@link Token#ERROR_IDENTIFIER} token, and an
- * entry plain text. The rules are {@link SettingsDialog#presetLine}'s, so red means "ignored on save".
+ * entry plain text. The rules are {@link PresetsPage#line}'s, so red means "ignored on save".
  */
 final class PresetTokenMaker extends TokenMakerBase {
 
@@ -22,8 +22,8 @@ final class PresetTokenMaker extends TokenMakerBase {
         String line = new String(text.array, text.offset, text.count);
         int type;
         if (line.isBlank()) type = Token.WHITESPACE;
-        else if (SettingsDialog.isPresetComment(line)) type = Token.COMMENT_EOL;
-        else if (SettingsDialog.presetLine(line) == null) type = Token.ERROR_IDENTIFIER;
+        else if (PresetsPage.isComment(line)) type = Token.COMMENT_EOL;
+        else if (PresetsPage.line(line) == null) type = Token.ERROR_IDENTIFIER;
         else type = Token.IDENTIFIER;
         addToken(text, text.offset, text.offset + text.count - 1, type, startOffset);
         addNullToken();

@@ -3,55 +3,43 @@ package tricatch.oehostsapp.ui;
 import tricatch.oehostsapp.chrome.ChromeArgs;
 import tricatch.oehostsapp.chrome.ChromeLauncher;
 import tricatch.oehostsapp.hosts.HostsRules;
+import tricatch.oehostsapp.store.LauncherOptions;
+import tricatch.oehostsapp.store.Settings;
 import tricatch.oehostsapp.store.Store;
+import tricatch.oehostsapp.web.ShareServer;
 
 import javax.swing.*;
 import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
-import javax.swing.border.MatteBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.text.SimpleAttributeSet;
 import javax.swing.text.StyleConstants;
 import javax.swing.text.StyledDocument;
 import java.awt.*;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * The oeHosts screen, laid out like oeHub's hosts page: profile sidebar, editor with the
- * merged preview, and the Chrome launcher panel. Launcher options are stored in the same
- * {@code hostsConf} keys as oeHub.
+ * merged preview, and the Chrome launcher panel ({@link LauncherOptions}).
  */
 public final class HostsTab extends JPanel {
 
-    static final String DEFAULT_EXTRA_ARGS = "--disable-background-networking\n--disable-sync\n--disk-cache-size=1\n--media-cache-size=1\n--no-first-run";
     private static final boolean WIN = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+    private static final int MERGED_H = 200;
 
     private final AppContext ctx;
-    private final SidebarTree tree;
-    private final JLabel countLabel = Ui.metaText(" ");
-    private final JLabel editorTitle;
-    private final JLabel saveStatus = new JLabel(" ");
-    private final CodeEditor editor = new CodeEditor(null);
-    private final JPanel editorCards = whitePanel(new CardLayout());
-    private final JLabel metaUpdated = Ui.metaText("—");
-    private final JButton btnShare, btnDownload, btnDelete;
+    private final ItemPanel items;
+    private final JButton btnShare;
     private JButton launchBtn;
-    private final Autosave autosave;
 
     private final JPanel mergedSection = new JPanel(new BorderLayout(0, 4));
     private final JLabel mergedLabel = new JLabel();
     private final JTextPane mergedBody = Ui.previewPane();
-    private static final int MERGED_H = 200;
     private JSplitPane mergedSplit;
     private int mergedHeight = MERGED_H;
 
@@ -67,6 +55,7 @@ public final class HostsTab extends JPanel {
     private final JTextField extraLine = new JTextField();
     private final JTextArea extraArea = new JTextArea(5, 20);
     private final JScrollPane extraScroll;
+    private final JPanel extraWrap = new JPanel(new BorderLayout());
     private final Switch swUrl = new Switch(true, Ui.BC500);
     private final JTextField urlField = new JTextField();
     private final JButton urlPreset;
@@ -76,109 +65,47 @@ public final class HostsTab extends JPanel {
     private final JTextPane rulesPreview = Ui.previewPane();
     private final JLabel hostsCount = Ui.metaText("Hosts: 0");
 
-    private Store.Item active;
-
     public HostsTab(AppContext ctx) {
         super(new BorderLayout());
         this.ctx = ctx;
         setBackground(Color.WHITE);
 
-        tree = new SidebarTree(ctx, Store.Kind.HOSTS, new SidebarTree.Listener() {
-            public void activated(Store.Item item) {
-                activate(item.id);
-            }
+        items = new ItemPanel(ctx, new ItemPanel.Spec(Store.Kind.HOSTS, null, ItemFiles.HOSTS_EXT,
+                "hosts.sidebar.header", "tooltip.new.profile", "app.tooltip.import.profile", "tooltip.delete.profile",
+                "confirm.delete.profile", "editor.select.profile", "hosts.empty", "hosts.sidebar.count"),
+                new ItemPanel.Hooks() {
+                    @Override
+                    public void changed() {
+                        updatePreviews();
+                    }
 
-            public void toggled(Store.Item item) {
-                ctx.store(s -> s.toggleSelected(Store.Kind.HOSTS, item.id));
-                tree.render();
-                updatePreviews();
-            }
-
-            public void renamed(Store.Item item) {
-                if (active != null && active.id.equals(item.id)) editorTitle.setText(item.name);
-                updatePreviews();
-            }
-
-            public void deleteRequested(Store.Item item) {
-                deleteItem(item);
-            }
-
-            public void changed() {
-                updatePreviews();
-            }
-        });
-
-        editorTitle = Ui.title(ctx.m("editor.select.profile"));
-        saveStatus.setFont(Ui.font(Font.PLAIN, 12f));
-        saveStatus.setForeground(Ui.MUTED);
+                    @Override
+                    public void opened(Store.Item item) {
+                        btnShare.setEnabled(item != null);
+                        shareIcon(item != null && item.shared);
+                    }
+                });
+        items.bindSaveKey(this);
         btnShare = Ui.iconButton("share-2", ctx.m("app.share.tooltip"), false, this::share);
-        btnDownload = Ui.iconButton("file-down", ctx.m("tooltip.export"), false, this::download);
-        btnDelete = Ui.iconButton("trash", ctx.m("tooltip.delete.profile"), true, () -> {
-            if (active != null) deleteItem(active);
-        });
-        autosave = new Autosave(ctx, editor, saveStatus, (id, content) -> {
-            Store.Item r = ctx.store(s -> s.updateContent(Store.Kind.HOSTS, id, content));
-            if (r == null) return Autosave.Result.retry(ctx.m("status.save.failed"));
-            if (active != null && active.id.equals(id)) {
-                active = r;
-                metaUpdated.setText(fmt(r.updatedAt));
-            }
-            updatePreviews();
-            return Autosave.Result.OK;
-        });
-        autosave.bindSaveKey(this);
-        editor.onEdit(() -> autosave.changed(editor.getText()));
 
         uaPreset = presetButton(ctx.m("hosts.ua.preset.btn"), true);
         urlPreset = presetButton(ctx.m("hosts.url.preset.btn"), false);
         extraScroll = new JScrollPane(extraArea);
 
         JSplitPane split = Ui.rightSplit(ctx, buildEditor(), buildLauncher());
-        add(Ui.sidebarSplit(ctx, buildSidebar(), split), BorderLayout.CENTER);
+        add(Ui.sidebarSplit(ctx, items.sidebar(), split), BorderLayout.CENTER);
 
-        loadConf();
+        loadOptions();
         wireOptions();
         ctx.onSettingsChanged(this::updatePreviews);
-        reload();
-        List<Store.Item> items = ctx.read(() -> ctx.rawStore().list(Store.Kind.HOSTS));
-        items.stream().filter(i -> i.selected).findFirst().or(() -> items.stream().findFirst())
-                .ifPresent(i -> activate(i.id));
+        items.render();
+        items.openFirst();
+        updatePreviews();
     }
 
     // ── Layout ──────────────────────────────────────────────────
 
-    private JComponent buildSidebar() {
-        JPanel p = new JPanel(new BorderLayout());
-        p.setBackground(Color.WHITE);
-        JButton add = Ui.iconButton("square-plus", ctx.m("tooltip.new.profile"), false, this::addItem);
-        JButton importBtn = Ui.iconButton("circle-fading-plus", ctx.m("app.tooltip.import.profile"), false, this::importFiles);
-        JButton addFolder = Ui.iconButton("folder-plus", ctx.m("tooltip.new.folder"), false, () -> {
-            ctx.store(s -> s.createFolder(Store.Kind.HOSTS));
-            tree.render();
-        });
-        p.add(Ui.header(Ui.caps(ctx.m("hosts.sidebar.header")), add, importBtn, addFolder), BorderLayout.NORTH);
-        p.add(tree, BorderLayout.CENTER);
-        JPanel meta = Ui.meta();
-        meta.add(countLabel, BorderLayout.WEST);
-        p.add(meta, BorderLayout.SOUTH);
-        return p;
-    }
-
     private JComponent buildEditor() {
-        JPanel p = new JPanel(new BorderLayout());
-        p.setBackground(Color.WHITE);
-        JPanel titleRow = new JPanel(new BorderLayout(10, 0));
-        titleRow.setOpaque(false);
-        titleRow.add(editorTitle, BorderLayout.WEST);
-        p.add(Ui.header(titleRow, btnShare, btnDownload, btnDelete), BorderLayout.NORTH);
-
-        JLabel empty = new JLabel(ctx.m("hosts.empty"), SwingConstants.CENTER);
-        empty.setForeground(Ui.MUTED);
-        empty.setFont(Ui.font(Font.PLAIN, 13f));
-        editorCards.add(editor.scroll, "editor");
-        editorCards.add(empty, "empty");
-        editorCards.setMinimumSize(new Dimension(10, 80));
-
         // Merged preview (2+ selected profiles), then the meta bar.
         mergedSection.setBackground(Color.WHITE);
         mergedSection.setBorder(new EmptyBorder(6, 14, 10, 14));
@@ -197,23 +124,16 @@ public final class HostsTab extends JPanel {
         mergedSection.add(rounded(Ui.previewScroll(mergedBody)), BorderLayout.CENTER);
         mergedSection.setVisible(false);
 
-        JPanel meta = Ui.meta();
-        meta.add(metaUpdated, BorderLayout.WEST);
-        // Autosave state (editing / saved) at the right end of the date bar.
-        meta.add(saveStatus, BorderLayout.EAST);
-
         // Editor above, merged preview below; the line between them can be dragged. The split hides
         // its divider while the preview is hidden, and the preview keeps its height on window resize.
-        mergedSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, editorCards, mergedSection);
+        mergedSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, items.editorCards(), mergedSection);
         Ui.lineDivider(mergedSplit);
         mergedSplit.setContinuousLayout(true);
         mergedSplit.setResizeWeight(1);
         mergedSplit.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
             if (mergedSection.isVisible() && mergedSection.getHeight() > 0) mergedHeight = mergedSection.getHeight();
         });
-        p.add(mergedSplit, BorderLayout.CENTER);
-        p.add(meta, BorderLayout.SOUTH);
-        return p;
+        return items.editorPanel(mergedSplit, btnShare);
     }
 
     private JComponent buildLauncher() {
@@ -246,7 +166,6 @@ public final class HostsTab extends JPanel {
         extraArea.setFont(Ui.mono(12f));
         extraArea.setLineWrap(false);
         extraScroll.setBorder(new LineBorder(Ui.BORDER, 1, true));
-        JPanel extraWrap = new JPanel(new BorderLayout());
         extraWrap.setOpaque(false);
         extraWrap.setBorder(new EmptyBorder(0, 12, 6, 12));
         extraWrap.add(extraScroll);
@@ -254,7 +173,6 @@ public final class HostsTab extends JPanel {
         extraWrap.setMaximumSize(new Dimension(Integer.MAX_VALUE, 110));
         extraWrap.setPreferredSize(new Dimension(10, 110));
         opts.add(extraWrap);
-        extraScroll.putClientProperty("wrap", extraWrap);
         style(urlField, ctx.m("hosts.url.placeholder"));
         opts.add(option(swUrl, ctx.m("hosts.chrome.open.label"), urlField, urlPreset));
         body.add(opts);
@@ -272,9 +190,8 @@ public final class HostsTab extends JPanel {
         // Launch | Win | Mac share the row 6:2:2: with no preferred width of their own, GridBagLayout
         // hands out the whole width by weight.
         launchBtn = Ui.primary(ctx.m("app.chrome.launch"), Ui.image("chrome.svg", 15, 15), this::launch);
-        JButton launch = launchBtn;
         c.weightx = 6;
-        btnRow.add(ratioWidth(launch), c);
+        btnRow.add(ratioWidth(launchBtn), c);
         JButton cpWin = Ui.secondary("Win", "copy", () -> showDirectCmd(true));
         cpWin.setToolTipText(ctx.m("tooltip.copy.win.chrome"));
         c.weightx = 2;
@@ -345,7 +262,7 @@ public final class HostsTab extends JPanel {
         row.add(l);
         boolean fills = false;
         for (JComponent e : extra) {
-            row.add(Box.createHorizontalStrut(e instanceof JButton && !(e.getClientProperty("info") != null) ? 4 : 8));
+            row.add(Box.createHorizontalStrut(e instanceof JButton && e.getClientProperty("info") == null ? 4 : 8));
             if (e instanceof JTextField || e instanceof JLabel) {
                 e.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
                 fills = true;
@@ -407,8 +324,7 @@ public final class HostsTab extends JPanel {
         b.setPreferredSize(new Dimension(32, 30));
         b.setMaximumSize(new Dimension(32, 30));
         b.addActionListener(e -> {
-            List<Store.Preset> presets = ctx.read(() -> List.copyOf(ua
-                    ? ctx.rawStore().data.settings.uaPresets : ctx.rawStore().data.settings.urlPresets));
+            List<Settings.Preset> presets = ctx.settings(st -> List.copyOf((ua ? st.userAgentPresets : st.openUrlPresets).items));
             JPopupMenu m = new JPopupMenu();
             PresetPreview preview = new PresetPreview(m);
             m.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
@@ -421,7 +337,7 @@ public final class HostsTab extends JPanel {
                 none.setEnabled(false);
                 m.add(none);
             }
-            for (Store.Preset p : presets) {
+            for (Settings.Preset p : presets) {
                 JMenuItem it = new JMenuItem(p.name);
                 // .ua-preset-menu .dropdown-item: inset 6px each side, rounded BC100 hover.
                 it.putClientProperty("FlatLaf.style", "selectionInsets:0,6,0,6; selectionArc:6;"
@@ -432,10 +348,12 @@ public final class HostsTab extends JPanel {
                     else preview.hideIf(p.value);
                 });
                 it.addActionListener(a -> {
-                    JTextField f = ua ? uaField : urlField;
-                    f.setText(p.value);
-                    putConf(ua ? "user_agent" : "open_url", p.value);
-                    updatePreviews();
+                    (ua ? uaField : urlField).setText(p.value);
+                    // Stored at once, not only after the field's debounce.
+                    putOption(o -> {
+                        if (ua) o.userAgent = p.value;
+                        else o.openUrl = p.value;
+                    });
                 });
                 m.add(it);
             }
@@ -518,32 +436,29 @@ public final class HostsTab extends JPanel {
         return p;
     }
 
-    // ── Options (hostsConf) ─────────────────────────────────────
+    // ── Options (LauncherOptions) ───────────────────────────────
 
-    private String conf(String key) {
-        return ctx.read(() -> ctx.rawStore().data.hostsConf.get(key));
-    }
-
-    private void putConf(String key, Object value) {
+    /** Changes the stored launcher options and saves them. */
+    private void putOption(Consumer<LauncherOptions> change) {
         ctx.storeRun(s -> {
-            s.data.hostsConf.put(key, String.valueOf(value));
+            change.accept(s.data.launcher);
             s.save();
         });
     }
 
-    private void loadConf() {
-        swProxy.setOn("true".equals(conf("proxy_server_enabled")));
-        urlField.setText(orEmpty(conf("open_url")));
-        swUdd.setOn("true".equals(conf("user_data_dir_enabled")));
-        swUrl.setOn(!"false".equals(conf("open_url_enabled")));
-        swHrr.setOn(!"false".equals(conf("host_resolver_rules_enabled")));
-        swIncognito.setOn("true".equals(conf("incognito")));
-        swDevTools.setOn("true".equals(conf("dev_tools")));
-        uaField.setText(orEmpty(conf("user_agent")));
-        swUa.setOn("true".equals(conf("user_agent_enabled")));
-        String extra = conf("extra_chrome_args");
-        extraArea.setText(extra == null || extra.isEmpty() ? DEFAULT_EXTRA_ARGS : extra);
-        swExtra.setOn("true".equals(conf("extra_chrome_args_enabled")));
+    private void loadOptions() {
+        LauncherOptions o = ctx.read(() -> ctx.rawStore().data.launcher);
+        swProxy.setOn(o.proxyServer);
+        urlField.setText(o.openUrl);
+        swUdd.setOn(o.userDataDirEnabled);
+        swUrl.setOn(o.openUrlEnabled);
+        swHrr.setOn(o.hostResolverRules);
+        swIncognito.setOn(o.incognito);
+        swDevTools.setOn(o.devTools);
+        uaField.setText(o.userAgent);
+        swUa.setOn(o.userAgentEnabled);
+        extraArea.setText(o.extraArgs);
+        swExtra.setOn(o.extraArgsEnabled);
         applyEnabledStates();
     }
 
@@ -553,11 +468,10 @@ public final class HostsTab extends JPanel {
         urlField.setEnabled(swUrl.isOn());
         urlPreset.setEnabled(swUrl.isOn());
         uddDisplay.setForeground(swUdd.isOn() ? Ui.PREVIEW_TEXT : new Color(0xadb5bd));
-        uddDisplay.setText(ChromeArgs.DEFAULT_USER_DATA_DIR);
         uddDisplay.setEnabled(swUdd.isOn());
         boolean ex = swExtra.isOn();
         extraLine.setVisible(!ex);
-        ((JComponent) extraScroll.getClientProperty("wrap")).setVisible(ex);
+        extraWrap.setVisible(ex);
         updateExtraLine();
         revalidate();
     }
@@ -569,60 +483,51 @@ public final class HostsTab extends JPanel {
         extraLine.setCaretPosition(0);
     }
 
-    private void wireOptions() {
-        swDevTools.onChange(on -> {
-            putConf("dev_tools", on);
-            updatePreviews();
-        });
-        swIncognito.onChange(on -> {
-            putConf("incognito", on);
-            updatePreviews();
-        });
-        swUa.onChange(on -> {
-            putConf("user_agent_enabled", on);
+    /** A switch that stores its state, then updates what depends on it. */
+    private void onSwitch(Switch sw, java.util.function.BiConsumer<LauncherOptions, Boolean> store) {
+        sw.onChange(on -> {
+            putOption(o -> store.accept(o, on));
             applyEnabledStates();
             updatePreviews();
         });
+    }
+
+    private void wireOptions() {
+        onSwitch(swDevTools, (o, on) -> o.devTools = on);
+        onSwitch(swIncognito, (o, on) -> o.incognito = on);
+        onSwitch(swUa, (o, on) -> o.userAgentEnabled = on);
+        onSwitch(swExtra, (o, on) -> o.extraArgsEnabled = on);
+        onSwitch(swUrl, (o, on) -> o.openUrlEnabled = on);
         swUdd.onChange(on -> {
             // Turning it on asks first (wireConfirmToggle in util.js).
             if (on && !OeDialog.confirm(ctx, ctx.m("modal.udd.warn.title"), ctx.plain("hosts.udd.warn"))) {
                 swUdd.setOn(false);
                 return;
             }
-            putConf("user_data_dir_enabled", on);
-            applyEnabledStates();
-            updatePreviews();
-        });
-        swExtra.onChange(on -> {
-            putConf("extra_chrome_args_enabled", on);
-            applyEnabledStates();
-            updatePreviews();
-        });
-        swUrl.onChange(on -> {
-            putConf("open_url_enabled", on);
+            putOption(o -> o.userDataDirEnabled = on);
             applyEnabledStates();
             updatePreviews();
         });
         // --host-resolver-rules and --proxy-server exclude each other.
         swHrr.onChange(on -> {
-            putConf("host_resolver_rules_enabled", on);
-            if (on && swProxy.isOn()) {
-                swProxy.setOn(false);
-                putConf("proxy_server_enabled", false);
-            }
+            if (on && swProxy.isOn()) swProxy.setOn(false);
+            putOption(o -> {
+                o.hostResolverRules = on;
+                if (on) o.proxyServer = false;
+            });
             updatePreviews();
         });
         swProxy.onChange(on -> {
-            putConf("proxy_server_enabled", on);
-            if (on && swHrr.isOn()) {
-                swHrr.setOn(false);
-                putConf("host_resolver_rules_enabled", false);
-            }
+            if (on && swHrr.isOn()) swHrr.setOn(false);
+            putOption(o -> {
+                o.proxyServer = on;
+                if (on) o.hostResolverRules = false;
+            });
             updatePreviews();
         });
-        debounced(uaField, () -> putConf("user_agent", uaField.getText()));
-        debounced(urlField, () -> putConf("open_url", urlField.getText()));
-        debounced(extraArea, () -> putConf("extra_chrome_args", extraArea.getText()));
+        debounced(uaField, () -> putOption(o -> o.userAgent = uaField.getText()));
+        debounced(urlField, () -> putOption(o -> o.openUrl = urlField.getText()));
+        debounced(extraArea, () -> putOption(o -> o.extraArgs = extraArea.getText()));
     }
 
     /** Preview on every keystroke, store 800 ms after the last one. */
@@ -649,29 +554,7 @@ public final class HostsTab extends JPanel {
         });
     }
 
-    // ── Profiles ────────────────────────────────────────────────
-
-    private void reload() {
-        tree.render();
-        updatePreviews();
-    }
-
-    private void activate(String id) {
-        autosave.flush();
-        Store.Item it = ctx.read(() -> ctx.rawStore().list(Store.Kind.HOSTS).stream()
-                .filter(i -> i.id.equals(id)).findFirst().orElse(null));
-        autosave.activate(it == null ? null : it.id, it == null ? null : it.content);
-        active = it;
-        tree.setActive(it == null ? null : it.id);
-        editorTitle.setText(it == null ? ctx.m("editor.select.profile") : it.name);
-        editor.setText(it == null ? "" : it.content);
-        editor.setEditable(it != null);
-        btnDelete.setEnabled(it != null);
-        btnDownload.setEnabled(it != null);
-        btnShare.setEnabled(it != null);
-        shareIcon(it != null && it.shared);
-        metaUpdated.setText(it == null ? "—" : fmt(it.updatedAt));
-    }
+    // ── Sharing ─────────────────────────────────────────────────
 
     /** The share button is green while the open profile is shared. */
     private void shareIcon(boolean shared) {
@@ -679,24 +562,25 @@ public final class HostsTab extends JPanel {
         btnShare.setRolloverIcon(Ui.icon("share-2", 16, shared ? Ui.BC700 : new Color(0, 0, 0, 178)));
     }
 
-    /**
-     * Sharing of the open profile for SwitchHosts and the like: a switch, the URL the web service
-     * (ShareServer) serves it at (with a choice of this PC's address while it is on the network), and
-     * Copy. Turning the switch on or off takes effect at once.
-     */
     /** The share dialog of the open profile (also used by MainWindow's screenshot mode). */
     void showShare() {
         share();
     }
 
+    /**
+     * Sharing of the open profile for SwitchHosts and the like: a switch, the URL the web service
+     * (ShareServer) serves it at (with a choice of this PC's address while it is on the network), and
+     * Copy. Turning the switch on or off takes effect at once.
+     */
     private void share() {
+        Store.Item active = items.active();
         if (active == null) return;
-        autosave.flush();
+        items.flush();
         String id = active.id;
-        int port = ctx.read(() -> ctx.rawStore().data.settings.shareServerPort);
+        int port = ctx.settings(st -> st.web.port);
         String token = ctx.store(s -> s.shareToken(id));
         if (token == null) return;
-        String url = tricatch.oehostsapp.web.ShareServer.url(port, token, active.name);
+        String url = ShareServer.url(port, token, active.name);
         OeDialog.open(ctx, ctx.m("app.share.title", active.name), d -> {
             Switch sw = new Switch(active.shared, Ui.BC500);
             JLabel swLabel = new JLabel(ctx.m("app.share.switch"));
@@ -717,18 +601,11 @@ public final class HostsTab extends JPanel {
             // On the network too: the URL can name this PC by one of the addresses the web service
             // answers on, for SwitchHosts or an agent on another machine. 127.0.0.1 stays the default.
             JComboBox<String> host = null;
-            if (tricatch.oehostsapp.web.ShareServer.lan()) {
-                JComboBox<String> h = new JComboBox<>();
-                h.setFont(Ui.font(Font.PLAIN, 13f));
-                h.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878");
-                h.setFocusable(false);
-                h.addItem(tricatch.oehostsapp.proxy.ForwardProxy.LOOPBACK);
-                String bound = tricatch.oehostsapp.web.ShareServer.bind();
-                for (tricatch.oehostsapp.web.PhoneSetup.Lan l : tricatch.oehostsapp.web.PhoneSetup.addresses()) {
-                    if (tricatch.oehostsapp.proxy.ForwardProxy.ALL.equals(bound) || bound.equals(l.ip())) h.addItem(l.ip());
-                }
-                h.addActionListener(e -> urlField.setText(tricatch.oehostsapp.web.ShareServer.url(
-                        String.valueOf(h.getSelectedItem()), port, token, active.name)));
+            List<String> hosts = ShareServer.urlHosts();
+            if (hosts.size() > 1) {
+                JComboBox<String> h = Ui.combo();
+                for (String a : hosts) h.addItem(a);
+                h.addActionListener(e -> urlField.setText(ShareServer.url(String.valueOf(h.getSelectedItem()), port, token, active.name)));
                 JLabel hostLabel = new JLabel(ctx.m("app.share.host"));
                 hostLabel.setFont(Ui.font(Font.BOLD, 12.5f));
                 hostLabel.setForeground(Ui.MUTED);
@@ -740,9 +617,8 @@ public final class HostsTab extends JPanel {
                 host = h;
             }
             parts.add(urlField);
-            if (tricatch.oehostsapp.web.ShareServer.state() == tricatch.oehostsapp.web.ShareServer.State.FAILED) {
-                JComponent w = OeDialog.warn(ctx.m("app.share.server.failed", port,
-                        String.valueOf(tricatch.oehostsapp.web.ShareServer.error())), null);
+            if (ShareServer.state() == ShareServer.State.FAILED) {
+                JComponent w = OeDialog.warn(ctx.m("app.share.server.failed", port, String.valueOf(ShareServer.error())), null);
                 Dialogs.fixWidth(w, 580);
                 parts.add(w);
             }
@@ -762,88 +638,34 @@ public final class HostsTab extends JPanel {
             sw.onChange(on -> {
                 Store.Item r = ctx.store(s -> s.setShared(id, on));
                 if (r == null) return;
-                if (active != null && active.id.equals(id)) {
-                    active = r;
-                    shareIcon(on);
-                }
-                tree.render();
+                items.refreshActive(r);
+                if (items.active() != null && items.active().id.equals(id)) shareIcon(on);
+                items.tree.render();
                 sync.run();
             });
             sync.run();
         });
     }
 
-    private void addItem() {
-        Store.Item it = ctx.store(s -> s.create(Store.Kind.HOSTS, ctx.lang()));
-        if (it == null) return;
-        reload();
-        activate(it.id);
-    }
-
-    private void deleteItem(Store.Item it) {
-        if (!OeDialog.confirm(ctx, ctx.m("tooltip.delete.profile"), ctx.m("confirm.delete.profile"))) return;
-        if (active != null && active.id.equals(it.id)) {
-            autosave.discard();
-            autosave.activate(null, null);
-        }
-        ctx.storeRun(s -> s.delete(Store.Kind.HOSTS, it.id));
-        if (active != null && active.id.equals(it.id)) activate(null);
-        reload();
-    }
-
-    private void download() {
-        if (active == null) return;
-        if (!ItemFiles.save(this, active.name, ItemFiles.HOSTS_EXT, editor.getText())) ctx.toast(ctx.m("status.save.failed"));
-    }
-
-    /** Each chosen .oehosts file becomes a new profile named after the file; the last one is opened. */
-    private void importFiles() {
-        List<ItemFiles.Loaded> files;
-        try {
-            files = ItemFiles.open(this, ItemFiles.HOSTS_EXT);
-        } catch (Exception e) {
-            ctx.toast(ctx.m("app.import.failed"));
-            return;
-        }
-        if (files.isEmpty()) return;
-        autosave.flush();
-        Store.Item last = null;
-        for (ItemFiles.Loaded f : files) {
-            Store.Item it = ctx.store(s -> s.createFrom(Store.Kind.HOSTS, f.name(), f.content()));
-            if (it != null) last = it;
-        }
-        if (last == null) return;
-        reload();
-        activate(last.id);
-        ctx.toast(ctx.m("app.item.imported", files.size()));
-    }
-
     // ── Rules and previews ──────────────────────────────────────
 
-    private record Entry(String host, String ip, boolean active) {}
-
     private int fwdPort() {
-        return ctx.read(() -> ctx.rawStore().data.settings.fwdproxyPort);
+        return ctx.settings(st -> st.fwdproxy.port);
+    }
+
+    private List<Store.Item> selected() {
+        return ctx.read(() -> ctx.rawStore().selected(Store.Kind.HOSTS));
     }
 
     /** mergeSelectedProfiles: every entry of the selected profiles, the first per host active. */
-    private List<Entry> entries(boolean resolve) {
-        List<Store.Item> sel = ctx.read(() -> ctx.rawStore().list(Store.Kind.HOSTS).stream().filter(i -> i.selected).toList());
-        Set<String> seen = new HashSet<>();
-        List<Entry> out = new ArrayList<>();
-        for (Store.Item i : sel) {
-            String content = resolve ? HostsRules.resolvePlaceholders(i.content) : i.content;
-            for (HostsRules.Rule r : HostsRules.parse(content)) out.add(new Entry(r.host(), r.ip(), seen.add(r.host())));
-        }
-        return out;
+    private static List<HostsRules.Entry> entries(List<Store.Item> selected) {
+        return HostsRules.merge(selected.stream().map(i -> i.content).toList());
     }
 
-    private ChromeArgs.Options options(boolean win) {
+    private ChromeArgs.Options options(boolean win, List<HostsRules.Entry> entries) {
         ChromeArgs.Options o = new ChromeArgs.Options();
-        Map<String, String> rules = new LinkedHashMap<>();
-        for (Entry e : entries(true)) if (e.active) rules.put(e.host, e.ip);
         List<String> maps = new ArrayList<>();
-        rules.forEach((h, ip) -> maps.add("MAP " + h + " " + ip));
+        for (HostsRules.Entry e : entries) if (e.active()) maps.add("MAP " + e.host() + " " + e.ip());
         o.devTools = swDevTools.isOn();
         o.incognito = swIncognito.isOn();
         o.extraArgsEnabled = swExtra.isOn();
@@ -861,13 +683,14 @@ public final class HostsTab extends JPanel {
         return o;
     }
 
-    void updatePreviews() {
-        int total = ctx.read(() -> ctx.rawStore().list(Store.Kind.HOSTS).size());
-        countLabel.setText(ctx.m("hosts.sidebar.count", total));
-        ((CardLayout) editorCards.getLayout()).show(editorCards, total == 0 ? "empty" : "editor");
+    private ChromeArgs.Options options(boolean win) {
+        return options(win, entries(selected()));
+    }
 
-        List<Entry> all = entries(true);
-        long activeCount = all.stream().filter(Entry::active).count();
+    void updatePreviews() {
+        List<Store.Item> sel = selected();
+        List<HostsRules.Entry> all = entries(sel);
+        long activeCount = all.stream().filter(HostsRules.Entry::active).count();
         hostsCount.setText("Hosts: " + (swHrr.isOn() ? activeCount : 0));
         if (!swHrr.isOn()) {
             plain(rulesPreview, ctx.m("hosts.scheme.disabled"));
@@ -876,10 +699,8 @@ public final class HostsTab extends JPanel {
         } else {
             lines(rulesPreview, all, true);
         }
-        ChromeArgs.Options o = options(WIN);
-        setMono(argsPreview, String.join("\n", ChromeArgs.previewLines(o, activeCount > 0)));
+        setMono(argsPreview, String.join("\n", ChromeArgs.previewLines(options(WIN, all), activeCount > 0)));
 
-        List<Store.Item> sel = ctx.read(() -> ctx.rawStore().list(Store.Kind.HOSTS).stream().filter(i -> i.selected).toList());
         boolean showMerged = sel.size() >= 2;
         if (showMerged != mergedSection.isVisible()) {
             mergedSection.setVisible(showMerged);
@@ -887,7 +708,7 @@ public final class HostsTab extends JPanel {
             if (showMerged) SwingUtilities.invokeLater(() -> mergedSplit.setDividerLocation(
                     Math.max(80, mergedSplit.getHeight() - mergedHeight - mergedSplit.getDividerSize())));
         }
-        if (sel.size() >= 2) {
+        if (showMerged) {
             mergedLabel.setText(String.join(", ", sel.stream().map(i -> i.name).toList()));
             if (all.isEmpty()) plain(mergedBody, ctx.m("hosts.scheme.preview.empty"));
             else lines(mergedBody, all, false);
@@ -910,7 +731,7 @@ public final class HostsTab extends JPanel {
     }
 
     /** MAP lines (or "ip host" lines), duplicates struck through and faded. */
-    private static void lines(JTextPane p, List<Entry> entries, boolean map) {
+    private static void lines(JTextPane p, List<HostsRules.Entry> entries, boolean map) {
         p.setFont(Ui.mono(12f));
         p.setText("");
         StyledDocument d = p.getStyledDocument();
@@ -925,12 +746,12 @@ public final class HostsTab extends JPanel {
             // strike all the lines that follow.
             List<int[]> struck = new ArrayList<>();
             for (int i = 0; i < entries.size(); i++) {
-                Entry e = entries.get(i);
-                String line = map ? "MAP " + e.host + " " + e.ip : e.ip + " " + e.host;
+                HostsRules.Entry e = entries.get(i);
+                String line = map ? "MAP " + e.host() + " " + e.ip() : e.ip() + " " + e.host();
                 if (i > 0) d.insertString(d.getLength(), "\n", normal);
                 int start = d.getLength();
-                d.insertString(start, line, e.active ? normal : dup);
-                if (!e.active) struck.add(new int[]{start, start + line.length()});
+                d.insertString(start, line, e.active() ? normal : dup);
+                if (!e.active()) struck.add(new int[]{start, start + line.length()});
             }
             for (int[] r : struck) p.getHighlighter().addHighlight(r[0], r[1], new StrikePainter(faded));
         } catch (javax.swing.text.BadLocationException ignored) {
@@ -1017,28 +838,13 @@ public final class HostsTab extends JPanel {
         }
     }
 
+    /** Stores the selected profiles' active rules ({@code IP host} lines) as a new profile. */
     private void saveMerged() {
-        List<Store.Item> sel = ctx.read(() -> ctx.rawStore().list(Store.Kind.HOSTS).stream().filter(i -> i.selected).toList());
+        List<Store.Item> sel = selected();
         if (sel.size() < 2) return;
         List<String> lines = new ArrayList<>();
-        for (Entry e : entries(false)) if (e.active) lines.add(e.ip + " " + e.host);
-        String name = String.join(" + ", sel.stream().map(i -> i.name).toList());
-        Store.Item it = ctx.store(s -> {
-            Store.Item n = s.create(Store.Kind.HOSTS, ctx.lang());
-            try {
-                s.rename(Store.Kind.HOSTS, n.id, name);
-            } catch (Store.StoreException ignored) {
-                // keep the generated name when the merged one is taken
-            }
-            return s.updateContent(Store.Kind.HOSTS, n.id, String.join("\n", lines));
-        });
-        if (it == null) {
-            ctx.toast(ctx.m("toast.merge.save.failed"));
-            return;
-        }
-        reload();
-        activate(it.id);
-        ctx.toast(ctx.m("toast.merge.saved"));
+        for (HostsRules.Entry e : entries(sel)) if (e.active()) lines.add(e.ip() + " " + e.host());
+        items.addMerged(String.join(" + ", sel.stream().map(i -> i.name).toList()), String.join("\n", lines));
     }
 
     // ── Launch ──────────────────────────────────────────────────
@@ -1048,7 +854,7 @@ public final class HostsTab extends JPanel {
      * same profile is closed first once the user agrees. The process work runs off the UI thread.
      */
     private void launch() {
-        autosave.flush();
+        items.flush();
         ChromeArgs.Options o = options(WIN);
         List<String> words = ChromeLauncher.words(ChromeArgs.parts(o), o.urlEnabled ? o.url : null);
         launchBtn.setEnabled(false);
@@ -1056,7 +862,7 @@ public final class HostsTab extends JPanel {
     }
 
     private void runLaunch(List<String> words, boolean closeRunning) {
-        new Thread(() -> {
+        Thread.ofVirtual().name("chrome-launch").start(() -> {
             ChromeLauncher.Result r = ChromeLauncher.launch(words, closeRunning);
             SwingUtilities.invokeLater(() -> {
                 if (r == ChromeLauncher.Result.RUNNING) {
@@ -1074,7 +880,7 @@ public final class HostsTab extends JPanel {
                 }
                 launchBtn.setEnabled(true);
             });
-        }, "chrome-launch").start();
+        });
     }
 
     void showDirectCmd(boolean win) {
@@ -1087,30 +893,14 @@ public final class HostsTab extends JPanel {
                 cmd);
     }
 
-    private static String fmt(String ts) {
-        return ts == null || ts.isEmpty() ? "—" : ts.substring(0, Math.min(16, ts.length())).replace('T', ' ');
-    }
-
-    private static String orEmpty(String s) {
-        return s == null ? "" : s;
-    }
-
     /** Re-reads everything from the store (after an import). */
     void reloadAll() {
-        autosave.flush();
-        reload();
-        List<Store.Item> items = ctx.read(() -> ctx.rawStore().list(Store.Kind.HOSTS));
-        activate(items.stream().filter(i -> i.selected).findFirst().or(() -> items.stream().findFirst()).map(i -> i.id).orElse(null));
+        loadOptions();
+        items.reloadAll();
     }
 
     /** Saves a pending edit (window closing). */
     public void flush() {
-        autosave.flush();
-    }
-
-    private static JPanel whitePanel(LayoutManager l) {
-        JPanel p = new JPanel(l);
-        p.setBackground(Color.WHITE);
-        return p;
+        items.flush();
     }
 }
