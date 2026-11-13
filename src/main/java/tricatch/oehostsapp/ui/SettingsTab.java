@@ -1114,8 +1114,19 @@ public final class SettingsTab extends JPanel {
         hostRow.add(hostLabel, BorderLayout.WEST);
         hostRow.add(host, BorderLayout.CENTER);
 
+        // A long list scrolls inside its box, which takes the rest of the half's height, instead of
+        // making the page taller. The box keeps the script look: the frame on the scroll pane, the
+        // padding on the text.
         JTextArea preview = OeDialog.script("");
         preview.setColumns(0);
+        preview.setLineWrap(false);
+        preview.setBorder(new EmptyBorder(8, 10, 8, 10));
+        ((javax.swing.text.DefaultCaret) preview.getCaret()).setUpdatePolicy(javax.swing.text.DefaultCaret.NEVER_UPDATE);
+        JScrollPane previewScroll = Ui.plainScroll(preview);
+        previewScroll.setBorder(new LineBorder(Ui.BORDER, 1, true));
+        previewScroll.getViewport().setBackground(preview.getBackground());
+        // Small on purpose: the BorderLayout stretches it, and a large preferred height would make the page scroll.
+        previewScroll.setPreferredSize(new Dimension(0, 120));
         JComponent empty = desc(ctx.m("app.settings.active.empty"));
 
         Runnable showUrl = () -> {
@@ -1152,7 +1163,8 @@ public final class SettingsTab extends JPanel {
         Runnable refreshPreview = () -> {
             String text = ShareServer.activeHosts(ctx.read(() -> ctx.rawStore().selectedHostsContents()));
             preview.setText(text.strip());
-            preview.setVisible(!text.isEmpty());
+            preview.setCaretPosition(0);
+            previewScroll.setVisible(!text.isEmpty());
             empty.setVisible(text.isEmpty());
         };
         // On a part that is always visible (the preview hides while nothing is selected).
@@ -1162,10 +1174,14 @@ public final class SettingsTab extends JPanel {
         ShareServer.onChange(() -> SwingUtilities.invokeLater(refreshUrl));
         refreshUrl.run();
         refreshPreview.run();
+        JPanel right = new JPanel(new BorderLayout(0, 14));
+        right.setOpaque(false);
+        right.add(column(desc(ctx.m("app.settings.active.preview.desc")), line(), empty), BorderLayout.NORTH);
+        right.add(previewScroll, BorderLayout.CENTER);
         return fullPage(halves(
                 column(desc(ctx.m("app.settings.active.desc")), line(), webOff, webOffButtons, hostRow, info, line(),
                         rightAligned(copy)),
-                column(desc(ctx.m("app.settings.active.preview.desc")), line(), preview, empty)));
+                right));
     }
 
     /**

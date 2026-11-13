@@ -3,6 +3,8 @@ package tricatch.oehostsapp.ui;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.fife.ui.rtextarea.Gutter;
+import org.fife.ui.rtextarea.LineNumberFormatter;
+import org.fife.ui.rtextarea.LineNumberList;
 import org.fife.ui.rtextarea.RTextScrollPane;
 
 import javax.swing.*;
@@ -90,6 +92,20 @@ public final class CodeEditor {
         g.setBorderColor(new Color(0xebebeb));
         g.setCurrentLineNumberColor(new Color(0x111111));
         g.setActiveLineRangeColor(new Color(0xdcdcdc));
+        // Room for three digits from the start: the gutter would otherwise widen at line 100 and
+        // shift the text sideways while typing.
+        LineNumberFormatter numbers = LineNumberList.DEFAULT_LINE_NUMBER_FORMATTER;
+        g.setLineNumberFormatter(new LineNumberFormatter() {
+            @Override
+            public String format(int lineNumber) {
+                return numbers.format(lineNumber);
+            }
+
+            @Override
+            public int getMaxLength(int maxLineNumber) {
+                return Math.max(3, numbers.getMaxLength(maxLineNumber));
+            }
+        });
     }
 
     /** Outlines the editor in {@code c} (null: none), as {@link Autosave} does while an edit waits. */

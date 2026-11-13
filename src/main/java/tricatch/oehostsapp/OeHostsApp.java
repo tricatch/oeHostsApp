@@ -103,17 +103,13 @@ public final class OeHostsApp {
 
     /**
      * The macOS Dock shows the Java icon unless the app sets its own through {@link Taskbar}; the
-     * window icons do not reach it. The logo is drawn large (Dock icons are up to 1024px on Retina)
-     * and fills the whole icon, with no margin, the same as packaging/macos/oehostsapp.icns. Windows has
-     * no such feature and keeps the window icons.
+     * window icons do not reach it. It is drawn large (Dock icons are up to 1024px on Retina) by
+     * {@link Ui#appIcon}, the same drawing as packaging/macos/oehostsapp.icns. Windows has no such
+     * feature and keeps the window icons.
      */
     private static void dockIcon() {
         if (!Taskbar.isTaskbarSupported() || !Taskbar.getTaskbar().isSupported(Taskbar.Feature.ICON_IMAGE)) return;
-        BufferedImage img = new BufferedImage(1024, 1024, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = img.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        Ui.image("oe_logo_favicon.svg", 1024, 1024).paintIcon(null, g, 0, 0);
-        g.dispose();
+        BufferedImage img = Ui.appIcon(1024, true);
         try {
             Taskbar.getTaskbar().setIconImage(img);
         } catch (UnsupportedOperationException | SecurityException ignored) {

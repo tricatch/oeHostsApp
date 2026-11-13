@@ -100,6 +100,76 @@ public final class Ui {
         return new FlatSVGIcon(ICON_DIR + file, w, h);
     }
 
+    /** Whether this is macOS, whose app icons sit on a rounded square ({@link #appIcon}). */
+    public static final boolean MAC = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).startsWith("mac");
+
+    /**
+     * The application icon at {@code size} pixels, in this OS's style: {@code framed} (macOS) puts
+     * the logo on a white rounded square with a margin, outlined in light gray so it does not vanish
+     * on a white background; otherwise (Windows) the round logo fills the whole icon with nothing
+     * around it. One drawing for every place the icon appears: the window icons, the macOS Dock
+     * icon set at runtime, and the files in {@code packaging/} (generated from this method:
+     * {@code .icns} and the Linux {@code .png} framed, {@code .ico} not; regenerate them when it changes).
+     */
+    public static java.awt.image.BufferedImage appIcon(int size, boolean framed) {
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(size, size, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = img.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+        if (!framed) {
+            paintLogo(g, 0, 0, size);
+            g.dispose();
+            return img;
+        }
+        float line = Math.max(1f, size / 128f);
+        float arc = size * 0.45f;
+        java.awt.geom.RoundRectangle2D box = new java.awt.geom.RoundRectangle2D.Float(
+                line / 2, line / 2, size - line, size - line, arc, arc);
+        g.setColor(Color.WHITE);
+        g.fill(box);
+        g.setColor(new Color(0xd9d9d9));
+        g.setStroke(new BasicStroke(line));
+        g.draw(box);
+        int margin = Math.round(size * 0.1f);
+        int logo = size - 2 * margin;
+        paintLogo(g, margin, margin, logo);
+        g.dispose();
+        return img;
+    }
+
+    /** Below this size the logo's ten thin seeds blur into a smudge, so {@link #paintLogo} draws a simpler one. */
+    private static final int SMALL_LOGO = 24;
+
+    /**
+     * The logo in an {@code s}-pixel square at ({@code x}, {@code y}). From {@link #SMALL_LOGO} up it
+     * is the SVG; smaller (the 16px title bar icon) it is redrawn for the pixel grid: a slightly
+     * thicker rim and five larger seeds in the darkest brand green, so it still reads as the logo.
+     */
+    private static void paintLogo(Graphics2D g, int x, int y, int s) {
+        if (s >= SMALL_LOGO) {
+            image("oe_logo_favicon.svg", s, s).paintIcon(null, g, x, y);
+            return;
+        }
+        Graphics2D d = (Graphics2D) g.create();
+        d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        d.translate(x, y);
+        double r = s / 2.0;
+        d.setColor(BC300);
+        d.fill(new java.awt.geom.Ellipse2D.Double(0, 0, s, s));
+        double inner = r * 0.78;
+        d.setColor(BC100);
+        d.fill(new java.awt.geom.Ellipse2D.Double(r - inner, r - inner, inner * 2, inner * 2));
+        d.setColor(BC700);
+        double len = r * 0.50, wid = r * 0.26, dist = r * 0.40;
+        for (int i = 0; i < 5; i++) {
+            Graphics2D seed = (Graphics2D) d.create();
+            seed.rotate(Math.toRadians(-90 + 15 + i * 72), r, r);
+            seed.fill(new java.awt.geom.Ellipse2D.Double(r - wid / 2, r - dist - len / 2, wid, len));
+            seed.dispose();
+        }
+        d.dispose();
+    }
+
     public static Border bottomLine() {
         return new MatteBorder(0, 0, 1, 0, BORDER);
     }

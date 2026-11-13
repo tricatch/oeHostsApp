@@ -150,14 +150,9 @@ public final class MainWindow {
                 quit();
             }
         });
+        // Drawn at each size the OS may pick (title bar, taskbar, Alt+Tab, high DPI), in its style.
         List<Image> icons = new ArrayList<>();
-        for (int s : new int[]{16, 32, 48, 128}) {
-            try (var in = MainWindow.class.getResourceAsStream("/icon/oehub/icon" + s + ".png")) {
-                if (in != null) icons.add(ImageIO.read(in));
-            } catch (Exception ignored) {
-                // no icon is fine
-            }
-        }
+        for (int s : new int[]{16, 20, 24, 32, 40, 48, 64, 128, 256}) icons.add(Ui.appIcon(s, Ui.MAC));
         frame.setIconImages(icons);
         frame.setMinimumSize(new Dimension(1000, 600));
         // Window state is also saved shortly after each move/resize/maximize, not only on close:
@@ -290,7 +285,10 @@ public final class MainWindow {
 
         JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         left.setOpaque(false);
-        // No logo: the window's own title-bar icon sits right above it.
+        // The logo in front of the tabs, as in oeHub's navbar.
+        JLabel logo = new JLabel(Ui.image("oe_logo_nav.svg", 28, 28));
+        logo.setBorder(new EmptyBorder(0, 2, 0, 8));
+        left.add(wrapMiddle(logo));
         for (int i = 0; i < NAV_TABS; i++) {
             if (i > 0) {
                 JLabel sep = new JLabel("|");
