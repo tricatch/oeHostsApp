@@ -2,6 +2,7 @@ package tricatch.oehostsapp.ui;
 
 import tricatch.oehostsapp.OeHostsApp;
 import tricatch.oehostsapp.store.Store;
+import tricatch.oehostsapp.update.Update;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -44,6 +45,12 @@ public final class MainWindow {
     private SettingsTab settings;
     private JButton gear;
     private int current = -1;
+    /**
+     * The newer release already announced with a toast, and the one whose dot on the gear the user
+     * already followed. Static: the window is rebuilt on a language change, and neither should come
+     * back then.
+     */
+    private static volatile String toastedUpdate, seenUpdate;
 
     private MainWindow(Store store, JFrame frame) {
         this.frame = frame;
@@ -256,6 +263,7 @@ public final class MainWindow {
         });
         content.add(settings, TABS[SETTINGS]);
         monitor.onGotoProxy(() -> select(1));
+        Update.onChange(() -> SwingUtilities.invokeLater(this::updateChanged));
 
         JPanel root = new JPanel(new BorderLayout());
         root.add(navbar(), BorderLayout.NORTH);
@@ -380,7 +388,26 @@ public final class MainWindow {
         if (gear != null) gear.repaint();
     }
 
-    /** The gear opens the settings tab; it is underlined like a nav tab while that tab is shown. */
+    /** The newer release, while one is available and its dot on the gear has not been followed yet; else null. */
+    private static String pendingUpdate() {
+        Update.Status s = Update.status();
+        return s.state() == Update.State.AVAILABLE && s.latest() != null && !s.latest().equals(seenUpdate) ? s.latest() : null;
+    }
+
+    /** A newer release was found: a dot on the gear, and once per release a toast pointing at it. */
+    private void updateChanged() {
+        if (gear != null) gear.repaint();
+        String v = pendingUpdate();
+        if (v != null && !v.equals(toastedUpdate)) {
+            toastedUpdate = v;
+            ctx.toast(ctx.m("app.update.available.toast", v));
+        }
+    }
+
+    /**
+     * The gear opens the settings tab; it is underlined like a nav tab while that tab is shown.
+     * While a newer release waits it carries a dot and opens Settings → About instead.
+     */
     private JComponent settingsButton() {
         gear = new JButton(Ui.icon("settings", 16, new Color(255, 255, 255, 217))) {
             @Override
@@ -389,6 +416,17 @@ public final class MainWindow {
                 if (current == SETTINGS) {
                     g.setColor(Color.WHITE);
                     g.fillRect(4, getHeight() - 2, getWidth() - 8, 2);
+                }
+                if (pendingUpdate() != null) {
+                    // Top right of the 16px icon: a dark green dot in a white ring, readable on the green bar.
+                    Graphics2D d = (Graphics2D) g.create();
+                    d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    int cx = getWidth() / 2 + 7, cy = getHeight() / 2 - 7;
+                    d.setColor(Color.WHITE);
+                    d.fillOval(cx - 5, cy - 5, 10, 10);
+                    d.setColor(Ui.BC700);
+                    d.fillOval(cx - 3, cy - 3, 6, 6);
+                    d.dispose();
                 }
             }
         };
@@ -399,7 +437,17 @@ public final class MainWindow {
         gear.setToolTipText(ctx.m("nav.settings"));
         gear.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         gear.setPreferredSize(new Dimension(36, 45));
-        gear.addActionListener(e -> select(SETTINGS));
+        gear.addActionListener(e -> {
+            String v = pendingUpdate();
+            select(SETTINGS);
+            if (v != null) {
+                seenUpdate = v;
+                settings.showPage("about");
+                gear.repaint();
+            }
+        });
+        // After the window is up (the check may have finished already, e.g. on a rebuild).
+        SwingUtilities.invokeLater(this::updateChanged);
         return gear;
     }
 

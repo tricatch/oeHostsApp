@@ -1929,7 +1929,7 @@ public final class SettingsTab extends JPanel {
             row.repaint();
         };
         refresh.run();
-        Update.setListener(() -> SwingUtilities.invokeLater(refresh));
+        Update.onChange(() -> SwingUtilities.invokeLater(refresh));
         return row;
     }
 

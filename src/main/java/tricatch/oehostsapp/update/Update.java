@@ -61,7 +61,7 @@ public final class Update {
     public record Status(State state, String latest, int percent, String error) {}
 
     private static volatile Status status = new Status(State.IDLE, null, 0, null);
-    private static volatile Runnable listener = () -> {};
+    private static final java.util.List<Runnable> listeners = new java.util.concurrent.CopyOnWriteArrayList<>();
     private static volatile String[] appArgs = new String[0];
 
     private Update() {}
@@ -75,14 +75,14 @@ public final class Update {
         return status;
     }
 
-    /** Called (on any thread) whenever the status changes; one listener, the last set wins. */
-    public static void setListener(Runnable r) {
-        listener = r == null ? () -> {} : r;
+    /** Runs {@code r} (on the thread that changed it) whenever the status changes: the About page and the navbar's gear. */
+    public static void onChange(Runnable r) {
+        listeners.add(r);
     }
 
     private static void set(Status s) {
         status = s;
-        listener.run();
+        for (Runnable r : listeners) r.run();
     }
 
     /** True when this run can replace its own jar (see the class comment). */
