@@ -56,32 +56,56 @@ final class DataPage {
 
     JComponent build() {
         Path file = ctx.rawStore().path().toAbsolutePath();
-        JTextField[] v = new JTextField[1];
-        JPanel info = table(new String[][]{{ctx.m("app.settings.data.file"), file.toString()}}, v);
         JButton folder = Ui.secondary(ctx.m("app.settings.open.folder"), "folder-open", () -> openFolder(ctx, file.getParent()));
-        // What to export / import: one check box per part, all on by default except the CA (its private key is sensitive).
-        JCheckBox[] parts = new JCheckBox[PARTS.length];
+        JCheckBox[] exParts = new JCheckBox[PARTS.length];
+        JButton ex = Ui.secondary(ctx.m("app.data.export"), "file-down", () -> export(chosen(exParts)));
+        JCheckBox[] inParts = new JCheckBox[PARTS.length];
+        JButton in = Ui.secondary(ctx.m("app.data.import"), "circle-fading-plus", () -> importData(chosen(inParts)));
+        // Left: export above import, each a section of its own (heading, description | its own
+        // choice of parts | its action, set apart by lines); right: where the data file is (looking only).
+        return fullPage(halves(
+                column(section("app.data.export", "app.data.export.desc", exParts, ex),
+                        (JComponent) Box.createVerticalStrut(Ui.px(18)),
+                        section("app.data.import", "app.data.import.desc", inParts, in)),
+                column(heading(ctx.m("app.settings.data.file")), line(), value(file.toString()), fileSize(file), line(),
+                        rightAligned(folder))));
+    }
+
+    /** The data file's size, read again each time the page is shown (the file grows with every save). */
+    private static JComponent fileSize(Path file) {
+        JTextField size = value("");
+        Runnable read = () -> {
+            try {
+                size.setText(Ui.byteSize(Files.size(file)));
+            } catch (IOException e) {
+                size.setText("-");
+            }
+        };
+        read.run();
+        size.addHierarchyListener(e -> {
+            if ((e.getChangeFlags() & java.awt.event.HierarchyEvent.SHOWING_CHANGED) != 0 && size.isShowing()) read.run();
+        });
+        return size;
+    }
+
+    /**
+     * One of the export / import sections: a heading, a description, one check box per part (all
+     * on by default except the CA, whose private key is sensitive) and the action, which is off
+     * while nothing is chosen.
+     */
+    private JComponent section(String titleKey, String descKey, JCheckBox[] parts, JButton action) {
         JPanel checks = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         checks.setOpaque(false);
-        JButton ex = Ui.secondary(ctx.m("app.data.export"), "file-down", () -> export(chosen(parts)));
-        JButton in = Ui.secondary(ctx.m("app.data.import"), "circle-fading-plus", () -> importData(chosen(parts)));
         for (int i = 0; i < parts.length; i++) {
             parts[i] = new JCheckBox(ctx.m(PARTS[i]), i != CA_PART);
             parts[i].setOpaque(false);
             parts[i].setFocusable(false);
             parts[i].setFont(Ui.font(Font.PLAIN, 13f));
-            parts[i].addActionListener(e -> {
-                boolean any = chosen(parts).any();
-                ex.setEnabled(any);
-                in.setEnabled(any);
-            });
-            if (i > 0) checks.add(Box.createHorizontalStrut(18));
+            parts[i].addActionListener(e -> action.setEnabled(chosen(parts).any()));
+            if (i > 0) checks.add(Box.createHorizontalStrut(Ui.px(18)));
             checks.add(parts[i]);
         }
-        // Left: export / import (what changes data), description | choice | actions, set apart by
-        // lines; right: where the data file is (looking only).
-        return fullPage(halves(column(desc(ctx.m("app.data.desc")), line(), checks, line(), rightAligned(ex, in)),
-                column(desc(ctx.m("app.settings.data.desc")), line(), info, line(), rightAligned(folder))));
+        return column(heading(ctx.m(titleKey)), desc(ctx.m(descKey)), line(), checks, line(), rightAligned(action));
     }
 
     private static Parts chosen(JCheckBox[] b) {

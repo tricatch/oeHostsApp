@@ -94,7 +94,7 @@ final class ItemPanel {
             autosave.changed(editor.getText());
         });
         editorCards.setBackground(Color.WHITE);
-        editorCards.setMinimumSize(new Dimension(10, 80));
+        editorCards.setMinimumSize(new Dimension(Ui.px(10), Ui.px(80)));
     }
 
     /** Ctrl+S / Cmd+S saves while the focus is anywhere in {@code root}. */
@@ -148,7 +148,7 @@ final class ItemPanel {
     JComponent editorPanel(JComponent center, JButton... extraButtons) {
         JPanel p = new JPanel(new BorderLayout());
         p.setBackground(Color.WHITE);
-        JPanel titleRow = new JPanel(new BorderLayout(10, 0));
+        JPanel titleRow = new JPanel(new BorderLayout(Ui.px(10), 0));
         titleRow.setOpaque(false);
         titleRow.add(title, BorderLayout.WEST);
         JButton[] buttons = new JButton[extraButtons.length + 2];

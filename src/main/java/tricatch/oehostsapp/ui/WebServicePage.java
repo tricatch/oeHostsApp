@@ -49,6 +49,6 @@ final class WebServicePage {
         });
         // Left: description | settings | action, set apart by lines; right: the server's state.
         return fullPage(halves(column(desc(ctx.m("app.settings.web.desc")), line(), bind.row, bind.warn,
-                buttons(portLabel, port), line(), rightAligned(restart)), column(status.panel)));
+                buttons(portLabel, port), line(), rightAligned(restart)), column(heading(ctx.m("app.settings.server.status.title")), line(), status.panel)));
     }
 }

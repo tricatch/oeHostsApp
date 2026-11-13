@@ -12,7 +12,7 @@ import static tricatch.oehostsapp.ui.SettingsKit.*;
 /**
  * Settings → oeHosts → Java agent (oeHosts-Agent): the {@code -javaagent} option for the profiles
  * selected in oeHosts, ready to copy into a Java command line or an IDE's VM options, on the left;
- * where the app installed the agent, its version and update check on the right. Follows
+ * where the app installed the agent and its version on the right. Follows
  * {@link HostsAgent} as it changes (a release downloaded at start).
  */
 final class AgentPage {
@@ -26,19 +26,18 @@ final class AgentPage {
     }
 
     JComponent build() {
-        JTextField[] v = new JTextField[4];
+        JTextField[] v = new JTextField[2];
         JPanel info = table(new String[][]{
                 {ctx.m("app.settings.agent.file"), "-"},
-                {ctx.m("app.settings.agent.version"), "-"},
-                {ctx.m("app.settings.server.state"), "-"},
-                {ctx.m("app.settings.agent.latest"), "-"}}, v);
-        v[2].setFont(Ui.font(Font.BOLD, 12.5f));
-        v[3].setFont(Ui.font(Font.PLAIN, 12.5f));
+                {ctx.m("app.settings.agent.version"), "-"}}, v);
 
         JTextArea option = OeDialog.script("");
         option.setColumns(0);
         JComponent inUse = desc(ctx.m("app.settings.agent.inuse"));
         JComponent missing = OeDialog.warn(ctx.m("app.settings.agent.missing"), null);
+        // Installing failed: the reason in the red box (a full disk, a folder without write access).
+        JPanel failed = new JPanel(new BorderLayout());
+        failed.setOpaque(false);
         JLabel st = tab.status("agent");
         JButton copy = primary(ctx.m("app.settings.agent.copy"), "copy", () -> {
             OeDialog.copy(option.getText());
@@ -67,28 +66,11 @@ final class AgentPage {
                     && (state == HostsAgent.State.INSTALLED || state == HostsAgent.State.IN_USE);
             v[0].setText(HostsAgent.path() == null ? "-" : HostsAgent.path().toString());
             v[1].setText(HostsAgent.version() == null ? "-" : HostsAgent.version());
-            String stateText = ctx.m(switch (state) {
-                case INSTALLED -> "app.settings.agent.state.installed";
-                case IN_USE -> "app.settings.agent.state.inuse";
-                case MISSING -> "app.settings.agent.state.missing";
-                case FAILED -> "app.settings.agent.state.failed";
-            });
-            if (state == HostsAgent.State.FAILED && HostsAgent.error() != null) stateText += " - " + HostsAgent.error();
-            v[2].setText(stateText);
-            v[2].setForeground(state == HostsAgent.State.INSTALLED ? Ui.BC700
-                    : state == HostsAgent.State.IN_USE ? Ui.MUTED : Ui.DANGER);
-            String latest = HostsAgent.latest();
-            v[3].setText(switch (HostsAgent.check()) {
-                case IDLE -> "-";
-                case CHECKING -> ctx.m("app.update.checking");
-                case LATEST -> ctx.m("app.settings.agent.check.latest", latest);
-                case DOWNLOADING -> ctx.m("app.settings.agent.check.downloading", latest);
-                case UPDATED -> ctx.m("app.settings.agent.check.updated", latest);
-                case PENDING -> ctx.m("app.settings.agent.check.pending", latest);
-                case FAILED -> ctx.m("app.update.check.failed", HostsAgent.checkError());
-            });
-            v[3].setForeground(HostsAgent.check() == HostsAgent.Check.FAILED ? Ui.DANGER : Ui.TEXT);
-            missing.setVisible(!usable[0]);
+            boolean fail = state == HostsAgent.State.FAILED;
+            missing.setVisible(!usable[0] && !fail);
+            failed.removeAll();
+            if (fail) failed.add(OeDialog.warn(ctx.m("app.settings.agent.failed"), HostsAgent.error()));
+            failed.setVisible(fail);
             inUse.setVisible(state == HostsAgent.State.IN_USE);
             option.setVisible(usable[0]);
             actionsLine.setVisible(usable[0]);
@@ -104,7 +86,7 @@ final class AgentPage {
         // The web service restarts on a new port from its settings page.
         ctx.listen(ShareServer::onChange, showOption);
         return fullPage(halves(
-                column(desc(ctx.m("app.settings.agent.desc")), line(), missing, option, actionsLine, actions),
-                column(desc(ctx.m("app.settings.agent.install.desc")), line(), info, inUse, folderLine, folderRow)));
+                column(desc(ctx.m("app.settings.agent.desc")), line(), missing, failed, option, actionsLine, actions),
+                column(heading(ctx.m("app.settings.agent.install.title")), line(), info, inUse, folderLine, folderRow)));
     }
 }

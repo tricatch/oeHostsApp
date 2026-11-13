@@ -22,7 +22,7 @@ public final class Switch extends JComponent {
     public Switch(boolean on, Color onColor) {
         this.on = on;
         this.onColor = onColor;
-        setPreferredSize(new Dimension(28, 16));
+        setPreferredSize(new Dimension(Ui.px(28), Ui.px(16)));
         setMinimumSize(getPreferredSize());
         setMaximumSize(getPreferredSize());
         setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -66,7 +66,7 @@ public final class Switch extends JComponent {
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
         if (!isEnabled()) g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.6f));
-        float w = 26, h = 14;
+        float w = Ui.px(26f), h = Ui.px(14f), m = Ui.px(2f);
         float x = (getWidth() - w) / 2f, y = (getHeight() - h) / 2f;
         RoundRectangle2D track = new RoundRectangle2D.Float(x, y, w, h, h, h);
         if (on) {
@@ -78,10 +78,10 @@ public final class Switch extends JComponent {
             g2.setColor(new Color(0xced4da));
             g2.draw(track);
         }
-        float d = h - 4;
-        float kx = on ? x + w - d - 2 : x + 2;
+        float d = h - 2 * m;
+        float kx = on ? x + w - d - m : x + m;
         g2.setColor(on ? Color.WHITE : new Color(0, 0, 0, 64));
-        g2.fillOval(Math.round(kx), Math.round(y + 2), Math.round(d), Math.round(d));
+        g2.fillOval(Math.round(kx), Math.round(y + m), Math.round(d), Math.round(d));
         g2.dispose();
     }
 }

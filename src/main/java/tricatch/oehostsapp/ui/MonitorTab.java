@@ -73,11 +73,11 @@ public final class MonitorTab extends JPanel {
         panelCards.setBackground(Color.WHITE);
 
         table.setFont(Ui.font(Font.PLAIN, 12.5f));
-        table.setRowHeight(28);
+        table.setRowHeight(Ui.px(28));
         table.setShowGrid(false);
         table.setShowHorizontalLines(true);
         table.setGridColor(new Color(0xf3f3f3));
-        table.setIntercellSpacing(new Dimension(0, 1));
+        table.setIntercellSpacing(new Dimension(0, Ui.px(1)));
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         table.setSelectionBackground(new Color(0xf5fbec));
         table.setSelectionForeground(Ui.TEXT);
@@ -92,7 +92,7 @@ public final class MonitorTab extends JPanel {
             @Override
             public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean focus, int r, int c) {
                 super.getTableCellRendererComponent(t, v, sel, false, r, c);
-                setBorder(new EmptyBorder(0, 10, 0, 10));
+                setBorder(Ui.pad(0, 10, 0, 10));
                 setFont(c == 2 || c == 6 ? Ui.mono(12f) : t.getFont());
                 setForeground(Ui.TEXT);
                 if (c == 5 && v instanceof Integer code) setForeground(code >= 500 ? Ui.DANGER : code >= 400 ? new Color(0xb8860b) : Ui.BC700);
@@ -103,7 +103,7 @@ public final class MonitorTab extends JPanel {
         table.setDefaultRenderer(Object.class, cell);
         table.setDefaultRenderer(Integer.class, cell);
         int[] widths = {80, 220, 480, 110, 90, 70, 90};
-        for (int i = 0; i < widths.length; i++) table.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
+        for (int i = 0; i < widths.length; i++) table.getColumnModel().getColumn(i).setPreferredWidth(Ui.px(widths[i]));
         table.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) populate(table.getSelectedRow());
         });
@@ -115,7 +115,7 @@ public final class MonitorTab extends JPanel {
 
         JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, tableCards, buildDetail());
         split.setResizeWeight(0.55);
-        split.setDividerSize(5);
+        split.setDividerSize(Ui.px(5));
         split.setBorder(null);
         split.setContinuousLayout(true);
         Ui.lineDivider(split);
@@ -158,14 +158,14 @@ public final class MonitorTab extends JPanel {
             a.setBackground(Color.WHITE);
             a.setFont(Ui.mono(12f));
             a.setForeground(Ui.TEXT);
-            a.setBorder(new EmptyBorder(10, 14, 10, 14));
+            a.setBorder(Ui.pad(10, 14, 10, 14));
             panels[i] = a;
             panelCards.add(Ui.plainScroll(a), TABS[i]);
         }
         bar.add(left, BorderLayout.WEST);
         JPanel tabsWrap = new JPanel(new BorderLayout());
         tabsWrap.setBackground(Color.WHITE);
-        tabsWrap.setBorder(new CompoundBorder(new MatteBorder(0, 0, 1, 0, Ui.BORDER), new EmptyBorder(4, 8, 0, 8)));
+        tabsWrap.setBorder(new CompoundBorder(new MatteBorder(0, 0, 1, 0, Ui.BORDER), Ui.pad(4, 8, 0, 8)));
         tabsWrap.add(bar);
         p.add(tabsWrap, BorderLayout.NORTH);
         p.add(panelCards, BorderLayout.CENTER);
@@ -181,15 +181,15 @@ public final class MonitorTab extends JPanel {
                     Graphics2D g2 = (Graphics2D) g.create();
                     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                     g2.setColor(new Color(0xf5fbec));
-                    g2.fillRoundRect(0, 0, getWidth(), getHeight() + 8, 12, 12);
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight() + Ui.px(8), Ui.px(12), Ui.px(12));
                     g2.setColor(Ui.BC300);
-                    g2.fillRect(0, getHeight() - 2, getWidth(), 2);
+                    g2.fillRect(0, getHeight() - Ui.px(2), getWidth(), Ui.px(2));
                     g2.dispose();
                 }
                 super.paintComponent(g);
             }
         };
-        l.setBorder(new EmptyBorder(7, 14, 7, 14));
+        l.setBorder(Ui.pad(7, 14, 7, 14));
         l.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         l.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
@@ -215,7 +215,7 @@ public final class MonitorTab extends JPanel {
 
     /** Navbar actions of the Network tab: start/stop capture and clear. */
     public JComponent navActions() {
-        JPanel p = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 0));
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.CENTER, Ui.px(6), 0));
         p.setOpaque(false);
         recordBtn = Ui.navIconButton("circle-stop", ctx.m("app.monitor.stop"), this::toggleRecording);
         showRecording(recordBtn);

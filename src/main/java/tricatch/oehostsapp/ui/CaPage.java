@@ -223,7 +223,7 @@ final class CaPage {
             }
             f.setText(file.getAbsolutePath());
         });
-        JPanel row = new JPanel(new BorderLayout(6, 0));
+        JPanel row = new JPanel(new BorderLayout(Ui.px(6), 0));
         row.setOpaque(false);
         row.add(f);
         row.add(browse, BorderLayout.EAST);
@@ -339,7 +339,7 @@ final class CaPage {
         qrWrap.setOpaque(false);
         qrWrap.add(qr);
         // The copy button at the right end of the URL row.
-        JPanel urlRow = new JPanel(new BorderLayout(10, 0));
+        JPanel urlRow = new JPanel(new BorderLayout(Ui.px(10), 0));
         urlRow.setOpaque(false);
         urlRow.add(info, BorderLayout.CENTER);
         JPanel copyWrap = new JPanel(new GridBagLayout());
@@ -379,10 +379,7 @@ final class CaPage {
         ctx.listen(ShareServer::onChange, refresh);
         ctx.listen(ForwardProxy::onChange, refresh);
         refresh.run();
-        JLabel heading = new JLabel(ctx.m("app.settings.phone.title"));
-        heading.setFont(Ui.font(Font.BOLD, 13.5f));
-        heading.setForeground(Ui.TEXT);
-        return column(heading, desc(ctx.m("app.settings.phone.desc")), line(), fwdOff, fwdOffButtons, webOff,
+        return column(heading(ctx.m("app.settings.phone.title")), desc(ctx.m("app.settings.phone.desc")), line(), fwdOff, fwdOffButtons, webOff,
                 webOffButtons, noAddress, ready, qrWrap);
     }
 }

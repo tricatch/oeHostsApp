@@ -20,8 +20,8 @@ import java.util.function.Consumer;
 public final class OeDialog extends JDialog {
 
     private static final Color LINE = new Color(0xc4e89a);
-    private final JPanel footer = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 10));
-    private final JPanel footerLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 12));
+    private final JPanel footer = new JPanel(new FlowLayout(FlowLayout.RIGHT, Ui.px(6), Ui.px(10)));
+    private final JPanel footerLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, Ui.px(12)));
     private final JPanel body = new JPanel(new BorderLayout());
 
     public OeDialog(Window owner, String title) {
@@ -33,7 +33,7 @@ public final class OeDialog extends JDialog {
 
         JPanel head = new JPanel(new BorderLayout());
         head.setBackground(Ui.BC100);
-        head.setBorder(new CompoundBorder(new MatteBorder(0, 0, 1, 0, LINE), new EmptyBorder(12, 16, 12, 10)));
+        head.setBorder(new CompoundBorder(new MatteBorder(0, 0, 1, 0, LINE), Ui.pad(12, 16, 12, 10)));
         JLabel t = new JLabel(title);
         t.setFont(Ui.font(Font.BOLD, 15f));
         t.setForeground(new Color(0x1e4a0a));
@@ -62,11 +62,11 @@ public final class OeDialog extends JDialog {
         t.addMouseMotionListener(drag);
 
         body.setOpaque(false);
-        body.setBorder(new EmptyBorder(16, 16, 16, 16));
+        body.setBorder(Ui.pad(16, 16, 16, 16));
 
         JPanel foot = new JPanel(new BorderLayout());
         foot.setOpaque(false);
-        foot.setBorder(new CompoundBorder(new MatteBorder(1, 0, 0, 0, LINE), new EmptyBorder(0, 16, 0, 10)));
+        foot.setBorder(new CompoundBorder(new MatteBorder(1, 0, 0, 0, LINE), Ui.pad(0, 16, 0, 10)));
         footer.setOpaque(false);
         footerLeft.setOpaque(false);
         foot.add(footerLeft, BorderLayout.WEST);
@@ -112,7 +112,7 @@ public final class OeDialog extends JDialog {
     public void showCentered() {
         pack();
         Dimension d = getSize();
-        setSize(Math.max(d.width, 420), d.height);
+        setSize(Math.max(d.width, Ui.px(420)), d.height);
         setLocationRelativeTo(getOwner());
         // Modal: setVisible blocks until the dialog closes, so the backdrop spans exactly its life.
         Backdrop.show(getOwner());
@@ -130,7 +130,7 @@ public final class OeDialog extends JDialog {
         JTextPane a = Ui.copyable(Ui.messagePane());
         a.setFont(Ui.font(Font.PLAIN, 12.5f));
         a.setForeground(Ui.MUTED);
-        a.setBorder(new EmptyBorder(0, 0, 0, 0));
+        a.setBorder(Ui.pad(0, 0, 0, 0));
         a.setText(text);
         return a;
     }
@@ -140,7 +140,7 @@ public final class OeDialog extends JDialog {
         JPanel p = new JPanel();
         p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
         p.setBackground(new Color(0xfdecee));
-        p.setBorder(new CompoundBorder(new LineBorder(new Color(0xf1aeb5), 1, true), new EmptyBorder(8, 10, 8, 10)));
+        p.setBorder(new CompoundBorder(new LineBorder(new Color(0xf1aeb5), 1, true), Ui.pad(8, 10, 8, 10)));
         JComponent a = note(text);
         a.setForeground(new Color(0x842029));
         p.add(a);
@@ -148,7 +148,7 @@ public final class OeDialog extends JDialog {
             JComponent b = note(strong);
             b.setForeground(new Color(0x842029));
             b.setFont(Ui.font(Font.BOLD, 12.5f));
-            p.add(Box.createVerticalStrut(4));
+            p.add(Box.createVerticalStrut(Ui.px(4)));
             p.add(b);
         }
         return p;
@@ -161,7 +161,7 @@ public final class OeDialog extends JDialog {
         a.setEditable(false);
         a.setFont(Ui.mono(12f));
         a.setBackground(Ui.META_BG);
-        a.setBorder(new CompoundBorder(new LineBorder(Ui.BORDER, 1, true), new EmptyBorder(8, 10, 8, 10)));
+        a.setBorder(new CompoundBorder(new LineBorder(Ui.BORDER, 1, true), Ui.pad(8, 10, 8, 10)));
         a.setColumns(60);
         return a;
     }
@@ -176,7 +176,7 @@ public final class OeDialog extends JDialog {
         p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
         p.setOpaque(false);
         for (int i = 0; i < cs.length; i++) {
-            if (i > 0) p.add(Box.createVerticalStrut(gap));
+            if (i > 0) p.add(Box.createVerticalStrut(Ui.px(gap)));
             cs[i].setAlignmentX(LEFT_ALIGNMENT);
             p.add(cs[i]);
         }

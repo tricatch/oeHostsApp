@@ -63,7 +63,7 @@ final class SettingsKit {
 
     private static JComponent scroll(JPanel body) {
         body.setBackground(Color.WHITE);
-        body.setBorder(new EmptyBorder(18, 22, 18, 22));
+        body.setBorder(Ui.pad(18, 22, 18, 22));
         JScrollPane s = Ui.plainScroll(body);
         s.getViewport().setBackground(Color.WHITE);
         return s;
@@ -115,7 +115,7 @@ final class SettingsKit {
         for (int i = 0; i < parts.length; i++) {
             parts[i].setAlignmentX(Component.LEFT_ALIGNMENT);
             if (i > 0) {
-                Component gap = Box.createVerticalStrut(14);
+                Component gap = Box.createVerticalStrut(Ui.px(14));
                 hideWith(parts[i], gap);
                 col.add(gap);
             }
@@ -137,9 +137,9 @@ final class SettingsKit {
 
     /** Two equal halves side by side; the right one is set off by a line, like a side panel. */
     static JComponent halves(JComponent left, JComponent right) {
-        JPanel p = new JPanel(new GridLayout(1, 2, 24, 0));
+        JPanel p = new JPanel(new GridLayout(1, 2, Ui.px(24), 0));
         p.setOpaque(false);
-        right.setBorder(new CompoundBorder(new MatteBorder(0, 1, 0, 0, Ui.BORDER), new EmptyBorder(0, 20, 0, 0)));
+        right.setBorder(new CompoundBorder(new MatteBorder(0, 1, 0, 0, Ui.BORDER), Ui.pad(0, 20, 0, 0)));
         p.add(left);
         p.add(right);
         return p;
@@ -154,17 +154,17 @@ final class SettingsKit {
             @Override
             protected void paintComponent(Graphics g) {
                 g.setColor(Ui.BORDER);
-                g.fillRect(0, MARGIN, getWidth(), 1);
+                g.fillRect(0, Ui.px(MARGIN), getWidth(), 1);
             }
 
             @Override
             public Dimension getPreferredSize() {
-                return new Dimension(0, MARGIN * 2 + 1);
+                return new Dimension(0, Ui.px(MARGIN) * 2 + 1);
             }
 
             @Override
             public Dimension getMaximumSize() {
-                return new Dimension(Integer.MAX_VALUE, MARGIN * 2 + 1);
+                return new Dimension(Integer.MAX_VALUE, Ui.px(MARGIN) * 2 + 1);
             }
         };
     }
@@ -174,7 +174,7 @@ final class SettingsKit {
         JPanel p = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         p.setOpaque(false);
         for (int i = 0; i < buttons.length; i++) {
-            if (i > 0) p.add(Box.createHorizontalStrut(6));
+            if (i > 0) p.add(Box.createHorizontalStrut(Ui.px(6)));
             p.add(buttons[i]);
         }
         return p;
@@ -188,7 +188,7 @@ final class SettingsKit {
             p.add(bs[i]);
             if (i == bs.length - 1) break;
             // The gap follows its button and hides with it.
-            Component gap = Box.createHorizontalStrut(6);
+            Component gap = Box.createHorizontalStrut(Ui.px(6));
             hideWith(bs[i], gap);
             p.add(gap);
         }
@@ -263,7 +263,7 @@ final class SettingsKit {
     /** A green button with an icon, the main action of a page half. */
     static JButton primary(String text, String icon, Runnable action) {
         JButton b = Ui.primary(text, Ui.icon(icon, 13, ON_PRIMARY), action);
-        b.setIconTextGap(5);
+        b.setIconTextGap(Ui.px(5));
         return b;
     }
 
@@ -280,19 +280,45 @@ final class SettingsKit {
     /** A port field showing {@code port}. */
     static JTextField portField(int port) {
         JTextField f = Ui.formField(new JTextField(String.valueOf(port), 8), "");
-        f.setMaximumSize(new Dimension(140, 34));
+        f.setMaximumSize(new Dimension(Ui.px(140), Ui.px(34)));
         return f;
     }
 
     // ── Tables and forms ────────────────────────────────────────
 
     /** Label / value rows (the CA details, the proxy status); the value fields are put into {@code values}. */
+    /**
+     * A monospace value (a path, the SHA-256), selectable so it can be copied. A long one scrolls
+     * inside its row when the page is narrow; the tooltip has it all.
+     */
+    static JTextField value(String text) {
+        JTextField f = still(new JTextField() {
+            @Override
+            public String getToolTipText() {
+                return getText();
+            }
+        }, text);
+        ToolTipManager.sharedInstance().registerComponent(f);
+        f.setMinimumSize(new Dimension(Ui.px(40), Ui.px(18)));
+        f.setFont(Ui.mono(12f));
+        f.setForeground(Ui.TEXT);
+        return f;
+    }
+
+    /** A section heading inside a page (a page with more than one section, e.g. export / import). */
+    static JLabel heading(String text) {
+        JLabel l = new JLabel(text);
+        l.setFont(Ui.font(Font.BOLD, 13.5f));
+        l.setForeground(Ui.TEXT);
+        return l;
+    }
+
     static JPanel table(String[][] rows, JTextField[] values) {
         JPanel p = new JPanel(new GridBagLayout());
         p.setOpaque(false);
         GridBagConstraints c = new GridBagConstraints();
         c.anchor = GridBagConstraints.BASELINE_LEADING;
-        c.insets = new Insets(3, 0, 3, TABLE_GAP);
+        c.insets = new Insets(Ui.px(3), 0, Ui.px(3), Ui.px(TABLE_GAP));
         for (int i = 0; i < rows.length; i++) {
             c.gridy = i;
             c.gridx = 0;
@@ -304,18 +330,7 @@ final class SettingsKit {
             c.gridx = 1;
             c.weightx = 1;
             c.fill = GridBagConstraints.HORIZONTAL;
-            // Selectable so a value (a path, the SHA-256) can be copied. A long one scrolls inside its
-            // row when the page is narrow; the tooltip has it all.
-            values[i] = still(new JTextField() {
-                @Override
-                public String getToolTipText() {
-                    return getText();
-                }
-            }, rows[i][1]);
-            ToolTipManager.sharedInstance().registerComponent(values[i]);
-            values[i].setMinimumSize(new Dimension(40, 18));
-            values[i].setFont(Ui.mono(12f));
-            values[i].setForeground(Ui.TEXT);
+            values[i] = value(rows[i][1]);
             p.add(values[i], c);
             c.fill = GridBagConstraints.NONE;
         }
@@ -326,7 +341,7 @@ final class SettingsKit {
     static void tableRow(JPanel table, int row, String key, JComponent value) {
         GridBagConstraints c = new GridBagConstraints();
         c.anchor = GridBagConstraints.BASELINE_LEADING;
-        c.insets = new Insets(3, 0, 3, TABLE_GAP);
+        c.insets = new Insets(Ui.px(3), 0, Ui.px(3), Ui.px(TABLE_GAP));
         c.gridy = row;
         c.gridx = 0;
         JLabel k = new JLabel(key);
@@ -384,22 +399,22 @@ final class SettingsKit {
         }
         for (JLabel l : tableLabels) w = Math.max(w, l.getPreferredSize().width);
         for (JLabel l : tableLabels) l.setPreferredSize(new Dimension(w, l.getPreferredSize().height));
-        for (JLabel l : rowLabels) l.setPreferredSize(new Dimension(w + TABLE_GAP - gap, l.getPreferredSize().height));
+        for (JLabel l : rowLabels) l.setPreferredSize(new Dimension(w + Ui.px(TABLE_GAP) - Ui.px(gap), l.getPreferredSize().height));
     }
 
     /** Gives the labels of one form the same width (at least {@link #FORM_LABEL_WIDTH}), so their fields line up. */
     static void sameWidth(JLabel... labels) {
-        int w = FORM_LABEL_WIDTH;
+        int w = Ui.px(FORM_LABEL_WIDTH);
         for (JLabel l : labels) {
             l.setFont(Ui.font(Font.BOLD, 12.5f));
-            w = Math.max(w, l.getPreferredSize().width + 10);
+            w = Math.max(w, l.getPreferredSize().width + Ui.px(10));
         }
         for (JLabel l : labels) l.setPreferredSize(new Dimension(w, l.getPreferredSize().height));
     }
 
     /** A label / field row for a form whose labels share {@link #sameWidth}. */
     static JPanel formRow(JLabel label, JComponent field) {
-        JPanel row = new JPanel(new BorderLayout(ROW_GAP, 0));
+        JPanel row = new JPanel(new BorderLayout(Ui.px(ROW_GAP), 0));
         row.setOpaque(false);
         row.add(label, BorderLayout.WEST);
         row.add(field, BorderLayout.CENTER);
@@ -408,7 +423,8 @@ final class SettingsKit {
 
     /** Indents {@code c} to where the fields of a form whose labels are {@code label} start. */
     static <T extends JComponent> T underField(T c, JLabel label) {
-        c.setBorder(new EmptyBorder(0, label.getPreferredSize().width + ROW_GAP, 0, 0));
+        // Unscaled EmptyBorder: the label width is already scaled, Ui.pad would scale it again.
+        c.setBorder(new EmptyBorder(0, label.getPreferredSize().width + Ui.px(ROW_GAP), 0, 0));
         return c;
     }
 
@@ -493,7 +509,7 @@ final class SettingsKit {
         };
         b.setFont(Ui.font(Font.PLAIN, 11f));
         b.setForeground(fg);
-        b.setBorder(new EmptyBorder(1, 8, 1, 8));
+        b.setBorder(Ui.pad(1, 8, 1, 8));
         return b;
     }
 

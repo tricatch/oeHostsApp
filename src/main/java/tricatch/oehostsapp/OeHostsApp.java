@@ -79,7 +79,15 @@ public final class OeHostsApp {
         ProxyRuntime.start(dataDir, store);
         Thread.ofVirtual().name("fwdproxy-start").start(() -> ForwardProxy.start(store));
         Thread.ofVirtual().name("share-start").start(() -> ShareServer.start(store));
-        SwingUtilities.invokeLater(() -> MainWindow.open(store));
+        Integer fontSize;
+        synchronized (store) {
+            fontSize = store.data.settings.fontSize;
+        }
+        SwingUtilities.invokeLater(() -> {
+            // Before any screen is built: every size is scaled when it is created.
+            Ui.applyFontSize(fontSize);
+            MainWindow.open(store);
+        });
         Update.setAppArgs(args);
         Update.cleanUp();
         Update.checkInBackground();

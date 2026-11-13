@@ -69,7 +69,7 @@ public final class Store {
         public String name = "";
         public String content = "";
         public boolean selected;
-        /** oeHosts only: served by the web service at {@code /hosts/<shareToken>} (for hosts switcher programs with remote sources). */
+        /** oeHosts only: served by the web service at {@code /hosts/<shareToken>} (for hosts managers with remote sources). */
         public boolean shared;
         public String folderId;
         public long sortOrder;

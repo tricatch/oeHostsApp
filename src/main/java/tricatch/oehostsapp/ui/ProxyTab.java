@@ -73,7 +73,7 @@ public final class ProxyTab extends JPanel {
     private JComponent buildRoutes() {
         JPanel p = new JPanel(new BorderLayout());
         p.setBackground(Color.WHITE);
-        p.setMinimumSize(new Dimension(360, 10));
+        p.setMinimumSize(new Dimension(Ui.px(360), Ui.px(10)));
         JPanel titleWrap = new JPanel(new GridBagLayout());
         titleWrap.setOpaque(false);
         GridBagConstraints c = new GridBagConstraints();

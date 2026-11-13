@@ -63,7 +63,7 @@ final class LicensesPage {
         for (int i = 0; i < LIBS.size(); i++) {
             Lib l = LIBS.get(i);
             c.gridy = i;
-            c.insets = new Insets(4, 0, 4, 24);
+            c.insets = new Insets(Ui.px(4), 0, Ui.px(4), Ui.px(24));
             c.gridx = 0;
             p.add(link(ctx, l.name(), l.url()), c);
             c.gridx = 1;

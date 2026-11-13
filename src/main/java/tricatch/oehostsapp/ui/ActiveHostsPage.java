@@ -15,7 +15,7 @@ import static tricatch.oehostsapp.ui.SettingsKit.*;
 
 /**
  * Settings → oeHosts → active hosts: the {@code /active-hosts} URL (the profiles selected in
- * oeHosts, merged), for tools that read a hosts list from a URL: oeHosts-Agent, hosts switcher
+ * oeHosts, merged), for tools that read a hosts list from a URL: oeHosts-Agent, hosts manager
  * programs with remote sources, and the like. Reachable like the rest of the web service (127.0.0.1, plus its network
  * address when one is chosen). Left: the URL to copy; right: what it returns now.
  */
@@ -53,13 +53,13 @@ final class ActiveHostsPage {
         JTextArea preview = OeDialog.script("");
         preview.setColumns(0);
         preview.setLineWrap(false);
-        preview.setBorder(new EmptyBorder(8, 10, 8, 10));
+        preview.setBorder(Ui.pad(8, 10, 8, 10));
         ((DefaultCaret) preview.getCaret()).setUpdatePolicy(DefaultCaret.NEVER_UPDATE);
         JScrollPane previewScroll = Ui.plainScroll(preview);
         previewScroll.setBorder(new LineBorder(Ui.BORDER, 1, true));
         previewScroll.getViewport().setBackground(preview.getBackground());
         // Small on purpose: the BorderLayout stretches it, and a large preferred height would make the page scroll.
-        previewScroll.setPreferredSize(new Dimension(0, 120));
+        previewScroll.setPreferredSize(new Dimension(0, Ui.px(120)));
         JComponent empty = desc(ctx.m("app.settings.active.empty"));
 
         Runnable showUrl = () -> {
@@ -101,9 +101,9 @@ final class ActiveHostsPage {
         ctx.listen(ShareServer::onChange, refreshUrl);
         refreshUrl.run();
         refreshPreview.run();
-        JPanel right = new JPanel(new BorderLayout(0, 14));
+        JPanel right = new JPanel(new BorderLayout(0, Ui.px(14)));
         right.setOpaque(false);
-        right.add(column(desc(ctx.m("app.settings.active.preview.desc")), line(), empty), BorderLayout.NORTH);
+        right.add(column(heading(ctx.m("app.settings.active.preview.desc")), line(), empty), BorderLayout.NORTH);
         right.add(previewScroll, BorderLayout.CENTER);
         return fullPage(halves(
                 column(desc(ctx.m("app.settings.active.desc")), line(), webOff, webOffButtons, hostRow, info, line(),

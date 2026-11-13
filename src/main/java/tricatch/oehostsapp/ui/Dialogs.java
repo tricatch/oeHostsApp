@@ -15,7 +15,7 @@ final class Dialogs {
             JScrollPane sp = new JScrollPane(script);
             sp.setBorder(BorderFactory.createEmptyBorder());
             // Fixed height: the command is always a long kill-and-launch script, scrolled inside.
-            sp.setPreferredSize(new Dimension(640, 360));
+            sp.setPreferredSize(Ui.dim(640, 360));
             fixWidth(top, 640);
             d.body(OeDialog.stack(10, top, sp));
             d.button(ctx.m("modal.chrome.cmd.copy"), true, () -> {
@@ -29,12 +29,17 @@ final class Dialogs {
 
     /** Gives a wrapping text area or pane a fixed width so its preferred height is right. */
     static void fixWidth(JComponent c, int w) {
+        fixWidthPx(c, Ui.px(w));
+    }
+
+    /** {@link #fixWidth} with {@code w} already scaled to the zoom. */
+    private static void fixWidthPx(JComponent c, int w) {
         if (c instanceof JTextArea || c instanceof JTextPane) {
             javax.swing.text.JTextComponent a = (javax.swing.text.JTextComponent) c;
             a.setSize(new Dimension(w, Short.MAX_VALUE));
             a.setPreferredSize(new Dimension(w, a.getPreferredSize().height));
         } else if (c instanceof JPanel p) {
-            for (Component k : p.getComponents()) if (k instanceof JComponent j) fixWidth(j, w - 22);
+            for (Component k : p.getComponents()) if (k instanceof JComponent j) fixWidthPx(j, w - Ui.px(22));
         }
     }
 }

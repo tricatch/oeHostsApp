@@ -80,11 +80,11 @@ final class AboutPage {
             }
             if (!text.getText().isEmpty()) {
                 row.add(text);
-                row.add(Box.createHorizontalStrut(10));
+                row.add(Box.createHorizontalStrut(Ui.px(10)));
             }
             if (s.state() == Update.State.AVAILABLE) {
                 row.add(link(ctx, ctx.m("app.update.notes"), Update.releaseUrl(s.latest())));
-                row.add(Box.createHorizontalStrut(10));
+                row.add(Box.createHorizontalStrut(Ui.px(10)));
                 if (action == null) {
                     JLabel manual = new JLabel(ctx.m("app.update.manual"));
                     manual.setFont(Ui.font(Font.PLAIN, 12.5f));

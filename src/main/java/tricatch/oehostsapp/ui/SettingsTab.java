@@ -32,6 +32,9 @@ public final class SettingsTab extends JPanel {
 
         /** Saves the oeHosts/oeProxy editors' pending edits (before an import replaces data, an update). */
         void flushEdits();
+
+        /** Applies a font size to the whole UI (null: the default size) and rebuilds the window. */
+        void fontSize(Integer size);
     }
 
     private record Page(String id, String titleKey, Supplier<JComponent> build) {}
@@ -75,7 +78,7 @@ public final class SettingsTab extends JPanel {
 
         list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
         list.setBackground(Color.WHITE);
-        list.setBorder(new EmptyBorder(8, 8, 8, 8));
+        list.setBorder(Ui.pad(8, 8, 8, 8));
         JPanel sidebar = new JPanel(new BorderLayout());
         sidebar.setBackground(Color.WHITE);
         sidebar.add(Ui.header(Ui.caps(ctx.m("nav.settings"))), BorderLayout.NORTH);
@@ -182,8 +185,9 @@ public final class SettingsTab extends JPanel {
     }
 
     /** A 36px rounded row like the oeHosts list ({@code SidebarTree.Row}), indented for pages. */
-    private JComponent row(Icon icon, String text, boolean active, int indent, Runnable onClick) {
-        JPanel row = new JPanel(new BorderLayout(8, 0)) {
+    private JComponent row(Icon icon, String text, boolean active, int indentAt100, Runnable onClick) {
+        int indent = Ui.px(indentAt100);
+        JPanel row = new JPanel(new BorderLayout(Ui.px(8), 0)) {
             boolean hover;
 
             {
@@ -209,12 +213,12 @@ public final class SettingsTab extends JPanel {
 
             @Override
             public Dimension getMaximumSize() {
-                return new Dimension(Integer.MAX_VALUE, 36);
+                return new Dimension(Integer.MAX_VALUE, Ui.px(36));
             }
 
             @Override
             public Dimension getPreferredSize() {
-                return new Dimension(super.getPreferredSize().width, 36);
+                return new Dimension(super.getPreferredSize().width, Ui.px(36));
             }
 
             @Override
@@ -223,18 +227,18 @@ public final class SettingsTab extends JPanel {
                     Graphics2D g2 = (Graphics2D) g.create();
                     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                     g2.setColor(active ? Ui.BC100 : Ui.HOVER);
-                    g2.fillRoundRect(indent, 0, getWidth() - indent, getHeight(), 16, 16);
+                    g2.fillRoundRect(indent, 0, getWidth() - indent, getHeight(), Ui.px(16), Ui.px(16));
                     g2.dispose();
                 }
                 super.paintComponent(g);
             }
         };
         row.setOpaque(false);
-        row.setBorder(new EmptyBorder(0, 8 + indent, 0, 8));
+        row.setBorder(new EmptyBorder(0, Ui.px(8) + indent, 0, Ui.px(8)));
         row.setAlignmentX(LEFT_ALIGNMENT);
         row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         JLabel name = new JLabel(text, icon, SwingConstants.LEFT);
-        name.setIconTextGap(8);
+        name.setIconTextGap(Ui.px(8));
         name.setFont(Ui.font(active ? Font.BOLD : Font.PLAIN, 13f));
         name.setForeground(active ? Ui.TEXT_STRONG : Ui.TEXT);
         row.add(name, BorderLayout.CENTER);
@@ -259,6 +263,40 @@ public final class SettingsTab extends JPanel {
             g.add(r);
             radios.add(r);
         }
-        return SettingsKit.page(SettingsKit.desc(ctx.m("app.settings.lang.desc")), radios);
+        return SettingsKit.page(SettingsKit.desc(ctx.m("app.settings.lang.desc")), radios,
+                SettingsKit.line(), fontSizeSection());
+    }
+
+    /** The font size the whole UI is scaled to (Ui.applyFontSize), chosen from a few steps. */
+    private JComponent fontSizeSection() {
+        int base = Ui.defaultFontSize();
+        int[] sizes = Ui.fontSizes();
+        Integer stored = ctx.settings(st -> st.fontSize);
+        int current = stored == null ? base : stored;
+        JComboBox<String> combo = new JComboBox<>();
+        int selected = -1;
+        for (int i = 0; i < sizes.length; i++) {
+            combo.addItem(sizes[i] == base ? ctx.m("app.settings.font.default", sizes[i]) : String.valueOf(sizes[i]));
+            if (sizes[i] == current) selected = i;
+        }
+        // A size stored on another OS (another default size) that is not one of the steps here.
+        if (selected < 0) {
+            combo.addItem(String.valueOf(current));
+            selected = combo.getItemCount() - 1;
+        }
+        combo.setSelectedIndex(selected);
+        combo.setFont(Ui.font(Font.PLAIN, 13f));
+        combo.addActionListener(a -> {
+            int i = combo.getSelectedIndex();
+            int size = i < sizes.length ? sizes[i] : current;
+            if (size != current) host.fontSize(size == base ? null : size);
+        });
+        JLabel label = SettingsKit.label(ctx.m("app.settings.font.label"));
+        SettingsKit.sameWidth(label);
+        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        left.setOpaque(false);
+        left.add(combo);
+        String key = Ui.MAC ? "\u2318" : "Ctrl";
+        return OeDialog.stack(10, SettingsKit.desc(ctx.m("app.settings.font.desc", key)), SettingsKit.formRow(label, left));
     }
 }

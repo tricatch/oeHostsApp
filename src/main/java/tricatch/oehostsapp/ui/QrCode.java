@@ -40,7 +40,7 @@ final class QrCode extends JComponent {
 
     @Override
     public Dimension getPreferredSize() {
-        return new Dimension(size, size);
+        return Ui.dim(size, size);
     }
 
     @Override

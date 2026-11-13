@@ -3,6 +3,7 @@ package tricatch.oehostsapp.ui;
 import tricatch.oehostsapp.store.Settings;
 
 import com.formdev.flatlaf.extras.FlatSVGIcon;
+import com.formdev.flatlaf.util.UIScale;
 
 import javax.swing.*;
 import javax.swing.border.Border;
@@ -51,6 +52,80 @@ public final class Ui {
 
     private Ui() {}
 
+    // ── Font size (whole-UI zoom) ───────────────────────────────
+
+    /** Steps offered for the font size, added to the default size (the first one is smaller). */
+    private static final int[] FONT_STEPS = {-1, 0, 1, 2, 4, 6};
+
+    /** The look and feel's default font size before zoom (12 on Windows). */
+    public static int defaultFontSize() {
+        return Math.round(UIManager.getFont("defaultFont").getSize2D() / UIScale.getUserScaleFactor());
+    }
+
+    /** The font sizes to choose from, smallest first; one of them is {@link #defaultFontSize()}. */
+    public static int[] fontSizes() {
+        int base = defaultFontSize();
+        int[] sizes = new int[FONT_STEPS.length];
+        for (int i = 0; i < sizes.length; i++) sizes[i] = base + FONT_STEPS[i];
+        return sizes;
+    }
+
+    /**
+     * Scales the whole UI so the default font is {@code size} points (null: the default size).
+     * FlatLaf's zoom re-creates its defaults at once; screens built afterwards pick up the new
+     * size, and every size this app sets itself goes through {@link #px} or {@link #font}.
+     */
+    public static void applyFontSize(Integer size) {
+        applied = size == null || size <= 0 ? null : size;
+        float base = defaultFontSize();
+        UIScale.setZoomFactor(size == null || size <= 0 ? 1f : size / base);
+    }
+
+    /** The size last given to {@link #applyFontSize} (null: the default). */
+    private static Integer applied;
+
+    public static Integer appliedFontSize() {
+        return applied;
+    }
+
+    /** A size in pixels of the 100% design, scaled to the current zoom. 0 and "unbounded" stay. */
+    public static int px(int v) {
+        if (v == 0 || v >= Short.MAX_VALUE || v <= -Short.MAX_VALUE) return v;
+        return Math.round(v * UIScale.getUserScaleFactor());
+    }
+
+    /** {@link #px(int)} for fractional sizes (font sizes, strokes). */
+    public static float px(float v) {
+        return v * UIScale.getUserScaleFactor();
+    }
+
+    /**
+     * Padding of the 100% design, scaled (see {@link #px(int)}). A plain EmptyBorder on purpose:
+     * FlatLaf's own scaled empty border is a UIResource, so FlatLaf.updateUI (after a font size
+     * change) would replace it with the look and feel's default border.
+     */
+    public static javax.swing.border.EmptyBorder pad(int top, int left, int bottom, int right) {
+        return new javax.swing.border.EmptyBorder(px(top), px(left), px(bottom), px(right));
+    }
+
+    /** A byte count for people: B, KB, MB, GB (1024 based), one decimal above bytes. */
+    public static String byteSize(long n) {
+        if (n < 1024) return n + " B";
+        String[] units = {"KB", "MB", "GB", "TB"};
+        double v = n;
+        int u = -1;
+        do {
+            v /= 1024;
+            u++;
+        } while (v >= 1024 && u < units.length - 1);
+        return String.format(java.util.Locale.ROOT, "%.1f %s", v, units[u]);
+    }
+
+    /** A dimension of the 100% design, scaled (see {@link #px(int)}). */
+    public static Dimension dim(int w, int h) {
+        return new Dimension(px(w), px(h));
+    }
+
     public static Font mono(float size) {
         // CLAUDE.md monospace stack: the first installed one wins. StyleContext returns a composite
         // font, so characters the face lacks (Hangul in Consolas) fall back instead of showing boxes.
@@ -58,10 +133,10 @@ public final class Ui {
                 GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames());
         for (String name : new String[]{"Consolas", "Monaco", "Courier New"}) {
             if (installed.contains(name)) {
-                return javax.swing.text.StyleContext.getDefaultStyleContext().getFont(name, Font.PLAIN, 12).deriveFont(size);
+                return javax.swing.text.StyleContext.getDefaultStyleContext().getFont(name, Font.PLAIN, 12).deriveFont(px(size));
             }
         }
-        return new Font(Font.MONOSPACED, Font.PLAIN, Math.round(size));
+        return new Font(Font.MONOSPACED, Font.PLAIN, Math.round(px(size)));
     }
 
     /**
@@ -91,8 +166,9 @@ public final class Ui {
         return t;
     }
 
+    /** The default font in {@code style} at {@code size} points of the 100% design, scaled to the zoom. */
     public static Font font(int style, float size) {
-        return UIManager.getFont("defaultFont").deriveFont(style, size);
+        return UIManager.getFont("defaultFont").deriveFont(style, px(size));
     }
 
     /** A Lucide icon (file name without .svg) recolored to {@code color}. */
@@ -156,7 +232,12 @@ public final class Ui {
      */
     private static void paintLogo(Graphics2D g, int x, int y, int s) {
         if (s >= SMALL_LOGO) {
-            image("oe_logo_favicon.svg", s, s).paintIcon(null, g, x, y);
+            // An SVG icon paints itself scaled by the UI zoom; undo that, this is a bitmap of s pixels.
+            float f = UIScale.getUserScaleFactor();
+            Graphics2D d = (Graphics2D) g.create();
+            d.scale(1 / f, 1 / f);
+            image("oe_logo_favicon.svg", s, s).paintIcon(null, d, Math.round(x * f), Math.round(y * f));
+            d.dispose();
             return;
         }
         Graphics2D d = (Graphics2D) g.create();
@@ -196,7 +277,7 @@ public final class Ui {
                     Graphics2D g2 = (Graphics2D) g.create();
                     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                     g2.setColor(danger ? DANGER_BG : ICON_HOVER_BG);
-                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), px(12), px(12));
                     g2.dispose();
                 }
                 super.paintComponent(g);
@@ -213,7 +294,7 @@ public final class Ui {
         b.setOpaque(false);
         b.setRolloverEnabled(true);
         b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        b.setPreferredSize(new Dimension(30, 28));
+        b.setPreferredSize(new Dimension(px(30), px(28)));
         b.setMargin(new Insets(0, 0, 0, 0));
         if (action != null) b.addActionListener(e -> action.run());
         return b;
@@ -239,9 +320,9 @@ public final class Ui {
                     line = new Color(0, 0, 0, 64);
                 }
                 g2.setColor(fill);
-                g2.fillRoundRect(0, 0, w, h, 12, 12);
+                g2.fillRoundRect(0, 0, w, h, px(12), px(12));
                 g2.setColor(line);
-                g2.drawRoundRect(0, 0, w, h, 12, 12);
+                g2.drawRoundRect(0, 0, w, h, px(12), px(12));
                 g2.dispose();
                 super.paintComponent(g);
             }
@@ -257,7 +338,7 @@ public final class Ui {
         b.setOpaque(false);
         b.setRolloverEnabled(true);
         b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        b.setPreferredSize(new Dimension(30, 28));
+        b.setPreferredSize(new Dimension(px(30), px(28)));
         b.setMargin(new Insets(0, 0, 0, 0));
         if (action != null) b.addActionListener(e -> action.run());
         return b;
@@ -269,12 +350,12 @@ public final class Ui {
 
     /** Panel header: title on the left, actions on the right, a line under it. */
     public static JPanel header(JComponent title, JComponent... actions) {
-        JPanel p = new JPanel(new BorderLayout(6, 0));
+        JPanel p = new JPanel(new BorderLayout(px(6), 0));
         p.setBackground(Color.WHITE);
-        p.setBorder(new CompoundBorder(bottomLine(), new EmptyBorder(0, 12, 0, 8)));
-        p.setPreferredSize(new Dimension(10, HEADER_H));
+        p.setBorder(new CompoundBorder(bottomLine(), pad(0, 12, 0, 8)));
+        p.setPreferredSize(new Dimension(px(10), px(HEADER_H)));
         p.add(title, BorderLayout.CENTER);
-        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 2, (HEADER_H - 1 - 28) / 2));
+        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, px(2), (px(HEADER_H) - 1 - px(28)) / 2));
         right.setOpaque(false);
         for (JComponent a : actions) right.add(a);
         p.add(right, BorderLayout.EAST);
@@ -299,10 +380,10 @@ public final class Ui {
 
     /** {@code .oe-sidebar-meta} / {@code .oe-editor-meta}: gray bar at the bottom of a panel. */
     public static JPanel meta() {
-        JPanel p = new JPanel(new BorderLayout(8, 0));
+        JPanel p = new JPanel(new BorderLayout(px(8), 0));
         p.setBackground(META_BG);
-        p.setBorder(new CompoundBorder(topLine(), new EmptyBorder(0, 14, 0, 14)));
-        p.setPreferredSize(new Dimension(10, META_H));
+        p.setBorder(new CompoundBorder(topLine(), pad(0, 14, 0, 14)));
+        p.setPreferredSize(new Dimension(px(10), px(META_H)));
         return p;
     }
 
@@ -360,7 +441,7 @@ public final class Ui {
         t.setFont(mono(12f));
         t.setForeground(PREVIEW_TEXT);
         t.setBackground(META_BG);
-        t.setBorder(new EmptyBorder(6, 8, 6, 8));
+        t.setBorder(pad(6, 8, 6, 8));
         return t;
     }
 
@@ -391,7 +472,7 @@ public final class Ui {
     public static JScrollPane plainScroll(JComponent c) {
         JScrollPane s = new JScrollPane(c);
         s.setBorder(BorderFactory.createEmptyBorder());
-        s.getVerticalScrollBar().setUnitIncrement(16);
+        s.getVerticalScrollBar().setUnitIncrement(px(16));
         return s;
     }
 
@@ -415,7 +496,7 @@ public final class Ui {
         b.setBackground(Color.WHITE);
         b.putClientProperty("FlatLaf.style", "arc:6; borderColor:#dee2e6; hoverBackground:#f8f9fa; focusedBorderColor:#a8d878");
         b.setFocusable(false);
-        b.setIconTextGap(4);
+        b.setIconTextGap(px(4));
         if (action != null) b.addActionListener(e -> action.run());
         return b;
     }
@@ -443,7 +524,7 @@ public final class Ui {
             }
         });
         split.setBorder(null);
-        split.setDividerSize(5);
+        split.setDividerSize(px(5));
     }
 
     public static final int SIDEBAR_W = 300;
@@ -457,8 +538,8 @@ public final class Ui {
      * screen ({@code settings.window.sidebarWidth}).
      */
     public static JSplitPane sidebarSplit(AppContext ctx, JComponent sidebar, JComponent rest) {
-        sidebar.setMinimumSize(new Dimension(180, 10));
-        rest.setMinimumSize(new Dimension(400, 10));
+        sidebar.setMinimumSize(new Dimension(px(180), px(10)));
+        rest.setMinimumSize(new Dimension(px(400), px(10)));
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, sidebar, rest);
         split.setResizeWeight(0); // the list keeps its width when the window is resized
         shareDivider(ctx, split, false, SIDEBAR_W, st -> st.window.sidebarWidth, (st, w) -> st.window.sidebarWidth = w);
@@ -471,8 +552,8 @@ public final class Ui {
      * ({@code settings.window.rightPanelWidth}).
      */
     public static JSplitPane rightSplit(AppContext ctx, JComponent main, JComponent panel) {
-        main.setMinimumSize(new Dimension(300, 10));
-        panel.setMinimumSize(new Dimension(240, 10));
+        main.setMinimumSize(new Dimension(px(300), px(10)));
+        panel.setMinimumSize(new Dimension(px(240), px(10)));
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, main, panel);
         split.setResizeWeight(1);
         shareDivider(ctx, split, true, RIGHT_W, st -> st.window.rightPanelWidth, (st, w) -> st.window.rightPanelWidth = w);
@@ -489,9 +570,11 @@ public final class Ui {
                                      java.util.function.BiConsumer<Settings, Integer> set) {
         split.setContinuousLayout(true);
         lineDivider(split);
+        // Widths are stored at 100% (the design size) and scaled to the current zoom here, so a
+        // dragged width keeps its proportion when the font size changes.
         java.util.function.IntSupplier stored = () -> {
             Integer w = ctx.settings(get);
-            return w != null ? w : def;
+            return px(w != null ? w : def);
         };
         java.util.function.IntSupplier current = () -> fromRight
                 ? split.getWidth() - split.getDividerLocation() - split.getDividerSize()
@@ -507,7 +590,7 @@ public final class Ui {
         };
         if (!fromRight) split.setDividerLocation(stored.getAsInt());
         Timer save = new Timer(400, e -> {
-            int w = current.getAsInt();
+            int w = UIScale.unscale(current.getAsInt());
             ctx.storeRun(s -> {
                 Integer old = get.apply(s.data.settings);
                 if (old != null && old == w || old == null && w == def) return;

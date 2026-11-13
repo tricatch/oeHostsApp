@@ -47,11 +47,11 @@ final class ForwardProxyPage {
         }
         JTextField user = Ui.formField(new JTextField(stored.user == null ? "" : stored.user, 10), "");
         user.putClientProperty("JTextField.placeholderText", ctx.m("app.settings.fwdproxy.auth.user"));
-        user.setMaximumSize(new Dimension(180, 34));
+        user.setMaximumSize(new Dimension(Ui.px(180), Ui.px(34)));
         JPasswordField password = Ui.formField(new JPasswordField(stored.password == null ? "" : stored.password, 10),
                 "; showRevealButton:true");
         password.putClientProperty("JTextField.placeholderText", ctx.m("app.settings.fwdproxy.auth.pw"));
-        password.setMaximumSize(new Dimension(220, 34));
+        password.setMaximumSize(new Dimension(Ui.px(220), Ui.px(34)));
         JComponent authNote = underField(desc(ctx.m("app.settings.fwdproxy.auth.note")), nicLabel);
         // The network warning under the PC address shows for any address but 127.0.0.1, with or
         // without a password; the note under the credentials only while Basic is chosen.
@@ -115,6 +115,6 @@ final class ForwardProxyPage {
         JPanel credentials = underField(buttons(user, password), nicLabel);
         return fullPage(halves(column(desc(ctx.m("app.settings.fwdproxy.desc")), line(), bind.row, bind.warn,
                 buttons(portLabel, port), buttons(authLabel, authNone, authPassword), credentials, authNote,
-                line(), rightAligned(restart)), column(status.panel)));
+                line(), rightAligned(restart)), column(heading(ctx.m("app.settings.server.status.title")), line(), status.panel)));
     }
 }

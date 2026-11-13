@@ -60,7 +60,7 @@ public final class CodeEditor {
         area.setBackground(Color.WHITE);
         area.setSelectionColor(new Color(0xb5d5ff));
         area.setBracketMatchingEnabled(false);
-        area.setMargin(new Insets(2, 10, 2, 4));
+        area.setMargin(new Insets(Ui.px(2), Ui.px(10), Ui.px(2), Ui.px(4)));
         scroll = new RTextScrollPane(area, true) {
             // Drawn over the children, like the web's ::after overlay, so the layout never shifts.
             // While it shows, a child's repaint starts here too, or typing would paint over it.
@@ -83,8 +83,8 @@ public final class CodeEditor {
         };
         scroll.setBorder(BorderFactory.createEmptyBorder());
         // A white strip between the gutter and the text, so the current-line band does not touch the gutter.
-        scroll.setViewportBorder(BorderFactory.createMatteBorder(0, 4, 0, 0, Color.WHITE));
-        scroll.getVerticalScrollBar().setUnitIncrement(16);
+        scroll.setViewportBorder(BorderFactory.createMatteBorder(0, Ui.px(4), 0, 0, Color.WHITE));
+        scroll.getVerticalScrollBar().setUnitIncrement(Ui.px(16));
         Gutter g = scroll.getGutter();
         g.setBackground(new Color(0xebebeb));
         g.setLineNumberColor(new Color(0x333333));

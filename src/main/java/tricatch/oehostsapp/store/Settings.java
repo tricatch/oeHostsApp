@@ -105,6 +105,11 @@ public final class Settings {
     public Window window = new Window();
     /** UI language ("en"/"ko"); null follows the OS locale. */
     public String lang;
+    /**
+     * Font size the whole UI is scaled to (FlatLaf zoom: text, icons, spacing alike), in points of
+     * the look and feel's default font; null keeps the default size.
+     */
+    public Integer fontSize;
     /** Folder the CA import dialog last picked a file from. */
     public String caImportDir;
     /** The newer release the "new version" toast was last shown for, so it shows once per release. */

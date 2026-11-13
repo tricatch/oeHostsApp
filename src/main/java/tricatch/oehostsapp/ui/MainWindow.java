@@ -114,8 +114,13 @@ public final class MainWindow {
     }
 
     private static void save(JComponent c, String file) {
-        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(c.getWidth(), c.getHeight(), java.awt.image.BufferedImage.TYPE_INT_RGB);
+        // At the display's scale (e.g. 150%), as on screen: text is measured at that scale, and
+        // painted at 100% it can come out wider than its label and look cut off.
+        double s = c.getGraphicsConfiguration() == null ? 1 : c.getGraphicsConfiguration().getDefaultTransform().getScaleX();
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage((int) Math.ceil(c.getWidth() * s),
+                (int) Math.ceil(c.getHeight() * s), java.awt.image.BufferedImage.TYPE_INT_RGB);
         Graphics2D g = img.createGraphics();
+        g.scale(s, s);
         c.paint(g);
         g.dispose();
         try {
@@ -163,7 +168,8 @@ public final class MainWindow {
         List<Image> icons = new ArrayList<>();
         for (int s : new int[]{16, 20, 24, 32, 40, 48, 64, 128, 256}) icons.add(Ui.appIcon(s, Ui.MAC));
         frame.setIconImages(icons);
-        frame.setMinimumSize(new Dimension(1000, 600));
+        frame.setMinimumSize(Ui.dim(1000, 600));
+        fontSizeKeys(frame);
         // Window state is also saved shortly after each move/resize/maximize, not only on close:
         // quitting another way (e.g. Cmd+Q on macOS) skips windowClosing.
         Timer saveLater = new Timer(600, e -> {
@@ -201,7 +207,7 @@ public final class MainWindow {
         if (r != null && onScreen(r)) {
             frame.setBounds(r);
         } else {
-            frame.setSize(DEFAULT_W, DEFAULT_H);
+            frame.setSize(Ui.px(DEFAULT_W), Ui.px(DEFAULT_H));
             frame.setLocationRelativeTo(null);
         }
         return ctx.settings(st -> st.window.maximized);
@@ -209,7 +215,7 @@ public final class MainWindow {
 
     /** True when enough of the window's title bar lies on some screen to grab it with the mouse. */
     private static boolean onScreen(Rectangle r) {
-        Rectangle titleBar = new Rectangle(r.x, r.y, r.width, 30);
+        Rectangle titleBar = new Rectangle(r.x, r.y, r.width, Ui.px(30));
         for (GraphicsDevice d : GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
             Rectangle hit = titleBar.intersection(d.getDefaultConfiguration().getBounds());
             if (!hit.isEmpty() && hit.width >= 100 && hit.height >= 20) return true;
@@ -270,6 +276,10 @@ public final class MainWindow {
                 hosts.flush();
                 proxy.flush();
             }
+
+            public void fontSize(Integer size) {
+                MainWindow.this.fontSize(size);
+            }
         });
         content.add(settings, TABS[SETTINGS]);
         monitor.onGotoProxy(() -> select(1));
@@ -298,21 +308,21 @@ public final class MainWindow {
             }
         };
         bar.setBackground(Ui.BC300);
-        bar.setBorder(new javax.swing.border.CompoundBorder(new MatteBorder(0, 0, 1, 0, Ui.NAV_BORDER), new EmptyBorder(0, 6, 0, 10)));
-        bar.setPreferredSize(new Dimension(10, 46));
+        bar.setBorder(new javax.swing.border.CompoundBorder(new MatteBorder(0, 0, 1, 0, Ui.NAV_BORDER), Ui.pad(0, 6, 0, 10)));
+        bar.setPreferredSize(new Dimension(Ui.px(10), Ui.px(46)));
 
         JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         left.setOpaque(false);
         // The logo in front of the tabs, as in oeHub's navbar.
         JLabel logo = new JLabel(Ui.image("oe_logo_nav.svg", 28, 28));
-        logo.setBorder(new EmptyBorder(0, 2, 0, 8));
+        logo.setBorder(Ui.pad(0, 2, 0, 8));
         left.add(wrapMiddle(logo));
         for (int i = 0; i < NAV_TABS; i++) {
             if (i > 0) {
                 JLabel sep = new JLabel("|");
                 sep.setForeground(new Color(255, 255, 255, 102));
                 sep.setFont(Ui.font(Font.PLAIN, 13f));
-                sep.setBorder(new EmptyBorder(0, 5, 0, 5));
+                sep.setBorder(Ui.pad(0, 5, 0, 5));
                 left.add(wrapMiddle(sep));
             }
             left.add(wrapMiddle(tab(i)));
@@ -330,10 +340,16 @@ public final class MainWindow {
     }
 
     private static JComponent wrapMiddle(JComponent c) {
-        JPanel p = new JPanel(new GridBagLayout());
+        // The width follows the child every time (not a size fixed at creation), so a label whose
+        // font or text changes later is never cut off.
+        JPanel p = new JPanel(new GridBagLayout()) {
+            @Override
+            public Dimension getPreferredSize() {
+                return new Dimension(c.getPreferredSize().width, Ui.px(45));
+            }
+        };
         p.setOpaque(false);
         p.add(c);
-        p.setPreferredSize(new Dimension(c.getPreferredSize().width, 45));
         return p;
     }
 
@@ -369,17 +385,17 @@ public final class MainWindow {
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 if (current == index) {
                     g2.setColor(Color.WHITE);
-                    g2.fillRect(0, getHeight() - 2, getWidth(), 2);
+                    g2.fillRect(0, getHeight() - Ui.px(2), getWidth(), Ui.px(2));
                 } else if (hover) {
                     g2.setColor(new Color(255, 255, 255, 51));
-                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), Ui.px(12), Ui.px(12));
                 }
                 g2.dispose();
                 super.paintComponent(g);
             }
         };
         l.setFont(Ui.font(Font.BOLD, 14f));
-        l.setBorder(new EmptyBorder(5, 8, 5, 8));
+        l.setBorder(Ui.pad(5, 8, 5, 8));
         l.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         tabLabels.add(l);
         return l;
@@ -430,17 +446,18 @@ public final class MainWindow {
                 super.paintComponent(g);
                 if (current == SETTINGS) {
                     g.setColor(Color.WHITE);
-                    g.fillRect(4, getHeight() - 2, getWidth() - 8, 2);
+                    g.fillRect(Ui.px(4), getHeight() - Ui.px(2), getWidth() - Ui.px(8), Ui.px(2));
                 }
                 if (pendingUpdate() != null) {
                     // Top right of the 16px icon: a dark green dot in a white ring, readable on the green bar.
                     Graphics2D d = (Graphics2D) g.create();
                     d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                    int cx = getWidth() / 2 + 7, cy = getHeight() / 2 - 7;
+                    int cx = getWidth() / 2 + Ui.px(7), cy = getHeight() / 2 - Ui.px(7);
+                    int r1 = Ui.px(5), r2 = Ui.px(3);
                     d.setColor(Color.WHITE);
-                    d.fillOval(cx - 5, cy - 5, 10, 10);
+                    d.fillOval(cx - r1, cy - r1, 2 * r1, 2 * r1);
                     d.setColor(Ui.BC700);
-                    d.fillOval(cx - 3, cy - 3, 6, 6);
+                    d.fillOval(cx - r2, cy - r2, 2 * r2, 2 * r2);
                     d.dispose();
                 }
             }
@@ -451,7 +468,7 @@ public final class MainWindow {
         gear.setFocusable(false);
         gear.setToolTipText(ctx.m("nav.settings"));
         gear.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        gear.setPreferredSize(new Dimension(36, 45));
+        gear.setPreferredSize(new Dimension(Ui.px(36), Ui.px(45)));
         gear.addActionListener(e -> {
             String v = pendingUpdate();
             select(SETTINGS);
@@ -469,6 +486,69 @@ public final class MainWindow {
      * Rebuilds the screens (language change, import) in the same window, on the same tab and
      * settings page: the window itself never closes, so it does not blink or move.
      */
+    /**
+     * Ctrl (Cmd on macOS) with + / - / 0: one font size step up or down, or back to the default.
+     * Bound on the root pane, which outlives the rebuilds, for whichever window is shown.
+     */
+    private static void fontSizeKeys(JFrame frame) {
+        int mod = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+        int shift = java.awt.event.InputEvent.SHIFT_DOWN_MASK;
+        Object[][] keys = {
+                {java.awt.event.KeyEvent.VK_EQUALS, mod, 1}, {java.awt.event.KeyEvent.VK_EQUALS, mod | shift, 1}, {java.awt.event.KeyEvent.VK_PLUS, mod, 1},
+                {java.awt.event.KeyEvent.VK_ADD, mod, 1}, {java.awt.event.KeyEvent.VK_MINUS, mod, -1}, {java.awt.event.KeyEvent.VK_SUBTRACT, mod, -1},
+                {java.awt.event.KeyEvent.VK_0, mod, 0}, {java.awt.event.KeyEvent.VK_NUMPAD0, mod, 0}};
+        for (Object[] k : keys) {
+            int dir = (Integer) k[2];
+            frame.getRootPane().registerKeyboardAction(e -> {
+                if (shown != null) shown.stepFontSize(dir);
+            }, KeyStroke.getKeyStroke((Integer) k[0], (Integer) k[1]), JComponent.WHEN_IN_FOCUSED_WINDOW);
+        }
+    }
+
+    /** One step of {@link Ui#fontSizes()} up (1) or down (-1), or the default size (0). */
+    private void stepFontSize(int dir) {
+        if (dir == 0) {
+            fontSize(null);
+            return;
+        }
+        int[] sizes = Ui.fontSizes();
+        Integer stored = ctx.settings(st -> st.fontSize);
+        int cur = stored == null ? Ui.defaultFontSize() : stored;
+        int next = cur;
+        if (dir > 0) {
+            for (int s : sizes) if (s > cur) { next = s; break; }
+        } else {
+            for (int i = sizes.length - 1; i >= 0; i--) if (sizes[i] < cur) { next = sizes[i]; break; }
+        }
+        if (next != cur) fontSize(next == Ui.defaultFontSize() ? null : next);
+    }
+
+    /**
+     * Saves the font size (null: the default), zooms the whole UI to it and rebuilds the screens
+     * in the same window, like a language change.
+     */
+    private void fontSize(Integer size) {
+        Integer current = ctx.settings(st -> st.fontSize);
+        if (java.util.Objects.equals(current, size)) return;
+        if (!ctx.saveSettings(st -> st.fontSize = size)) return;
+        // Later, not inside the event that asked for it: a combo box's list is a popup in the
+        // window's layered pane that is still closing, and swapping the content pane under it
+        // throws (IndexOutOfBoundsException in Container.remove).
+        // Several quick key presses may queue several of these before the first runs: each one
+        // applies the latest stored size to the window shown then, and only when it changed.
+        SwingUtilities.invokeLater(() -> {
+            MainWindow w = shown;
+            if (w == null) return;
+            Integer latest = w.ctx.settings(st -> st.fontSize);
+            if (java.util.Objects.equals(latest, Ui.appliedFontSize())) return;
+            Ui.applyFontSize(latest);
+            w.frame.setMinimumSize(Ui.dim(1000, 600));
+            // The rebuilt screens are created with the new sizes. No FlatLaf.updateUI(): it would
+            // reset what the screens customize on top of the look and feel (the split dividers).
+            w.relaunch();
+        });
+    }
+
     private void relaunch() {
         flush();
         monitor.dispose();

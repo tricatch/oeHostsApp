@@ -37,11 +37,11 @@ public final class HostsTab extends JPanel {
     private final JButton btnShare;
     private JButton launchBtn;
 
-    private final JPanel mergedSection = new JPanel(new BorderLayout(0, 4));
+    private final JPanel mergedSection = new JPanel(new BorderLayout(0, Ui.px(4)));
     private final JLabel mergedLabel = new JLabel();
     private final JTextPane mergedBody = Ui.previewPane();
     private JSplitPane mergedSplit;
-    private int mergedHeight = MERGED_H;
+    private int mergedHeight = Ui.px(MERGED_H);
 
     // Launcher options
     private final Switch swDevTools = new Switch(false, Ui.BC500);
@@ -108,17 +108,17 @@ public final class HostsTab extends JPanel {
     private JComponent buildEditor() {
         // Merged preview (2+ selected profiles), then the meta bar.
         mergedSection.setBackground(Color.WHITE);
-        mergedSection.setBorder(new EmptyBorder(6, 14, 10, 14));
-        mergedSection.setPreferredSize(new Dimension(10, MERGED_H));
-        mergedSection.setMinimumSize(new Dimension(10, 80));
-        JPanel mergedHead = new JPanel(new BorderLayout(6, 0));
+        mergedSection.setBorder(Ui.pad(6, 14, 10, 14));
+        mergedSection.setPreferredSize(new Dimension(Ui.px(10), Ui.px(MERGED_H)));
+        mergedSection.setMinimumSize(new Dimension(Ui.px(10), Ui.px(80)));
+        JPanel mergedHead = new JPanel(new BorderLayout(Ui.px(6), 0));
         mergedHead.setOpaque(false);
         mergedLabel.setFont(Ui.font(Font.BOLD, 11f));
         mergedLabel.setForeground(Ui.MUTED);
         mergedLabel.setIcon(Ui.icon("layers-plus", 12, Ui.MUTED));
         mergedHead.add(mergedLabel, BorderLayout.CENTER);
         JButton saveMerged = Ui.iconButton("copy-plus", ctx.m("tooltip.save.merged"), false, this::saveMerged);
-        saveMerged.setPreferredSize(new Dimension(26, 22));
+        saveMerged.setPreferredSize(new Dimension(Ui.px(26), Ui.px(22)));
         mergedHead.add(saveMerged, BorderLayout.EAST);
         mergedSection.add(mergedHead, BorderLayout.NORTH);
         mergedSection.add(rounded(Ui.previewScroll(mergedBody)), BorderLayout.CENTER);
@@ -139,7 +139,7 @@ public final class HostsTab extends JPanel {
     private JComponent buildLauncher() {
         JPanel p = new JPanel(new BorderLayout());
         p.setBackground(Color.WHITE);
-        p.setMinimumSize(new Dimension(420, 10));
+        p.setMinimumSize(new Dimension(Ui.px(420), Ui.px(10)));
         p.add(Ui.header(Ui.caps(ctx.m("hosts.chrome.launcher"))), BorderLayout.NORTH);
 
         JPanel body = new JPanel();
@@ -147,7 +147,7 @@ public final class HostsTab extends JPanel {
         body.setBackground(Color.WHITE);
 
         // Options
-        JPanel opts = column(new EmptyBorder(4, 0, 6, 0));
+        JPanel opts = column(Ui.pad(4, 0, 6, 0));
         opts.add(option(swDevTools, "--auto-open-devtools-for-tabs"));
         opts.add(option(swIncognito, "--incognito"));
         style(uaField, ctx.m("hosts.ua.placeholder"));
@@ -156,7 +156,7 @@ public final class HostsTab extends JPanel {
         uddDisplay.setForeground(Ui.PREVIEW_TEXT);
         uddDisplay.setOpaque(true);
         uddDisplay.setBackground(new Color(0xf1f5ec));
-        uddDisplay.setBorder(new CompoundBorder(new LineBorder(new Color(0xd4e8b8), 1, true), new EmptyBorder(4, 8, 4, 8)));
+        uddDisplay.setBorder(new CompoundBorder(new LineBorder(new Color(0xd4e8b8), 1, true), Ui.pad(4, 8, 4, 8)));
         opts.add(option(swUdd, "--user-data-dir", uddDisplay));
         style(extraLine, "—");
         extraLine.setEditable(false);
@@ -167,26 +167,26 @@ public final class HostsTab extends JPanel {
         extraArea.setLineWrap(false);
         extraScroll.setBorder(new LineBorder(Ui.BORDER, 1, true));
         extraWrap.setOpaque(false);
-        extraWrap.setBorder(new EmptyBorder(0, 12, 6, 12));
+        extraWrap.setBorder(Ui.pad(0, 12, 6, 12));
         extraWrap.add(extraScroll);
         extraWrap.setAlignmentX(LEFT_ALIGNMENT);
-        extraWrap.setMaximumSize(new Dimension(Integer.MAX_VALUE, 110));
-        extraWrap.setPreferredSize(new Dimension(10, 110));
+        extraWrap.setMaximumSize(new Dimension(Integer.MAX_VALUE, Ui.px(110)));
+        extraWrap.setPreferredSize(new Dimension(Ui.px(10), Ui.px(110)));
         opts.add(extraWrap);
         style(urlField, ctx.m("hosts.url.placeholder"));
         opts.add(option(swUrl, ctx.m("hosts.chrome.open.label"), urlField, urlPreset));
         body.add(opts);
 
         // Routing switches and launch buttons
-        JPanel routing = column(new CompoundBorder(Ui.topLine(), new EmptyBorder(4, 0, 10, 0)));
+        JPanel routing = column(new CompoundBorder(Ui.topLine(), Ui.pad(4, 0, 10, 0)));
         routing.add(option(swHrr, "--host-resolver-rules", infoButton(() -> ctx.plain("hosts.resolver.rules.info"))));
         routing.add(option(swProxy, "--proxy-server", infoButton(() -> ctx.plain("app.hosts.proxy.server.info", fwdPort()))));
         JPanel btnRow = new JPanel(new GridBagLayout());
         btnRow.setOpaque(false);
-        btnRow.setBorder(new EmptyBorder(6, 12, 0, 12));
+        btnRow.setBorder(Ui.pad(6, 12, 0, 12));
         GridBagConstraints c = new GridBagConstraints();
         c.fill = GridBagConstraints.BOTH;
-        c.insets = new Insets(0, 0, 0, 6);
+        c.insets = new Insets(0, 0, 0, Ui.px(6));
         // Launch | Win | Mac share the row 6:2:2: with no preferred width of their own, GridBagLayout
         // hands out the whole width by weight.
         launchBtn = Ui.primary(ctx.m("app.chrome.launch"), Ui.image("chrome.svg", 15, 15), this::launch);
@@ -201,18 +201,18 @@ public final class HostsTab extends JPanel {
         cpMac.setToolTipText(ctx.m("tooltip.copy.mac.chrome"));
         btnRow.add(ratioWidth(cpMac), c);
         btnRow.setAlignmentX(LEFT_ALIGNMENT);
-        btnRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        btnRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, Ui.px(40)));
         routing.add(btnRow);
         body.add(routing);
 
         // Chrome parameters preview
-        JPanel args = column(new CompoundBorder(Ui.topLine(), new EmptyBorder(12, 12, 6, 12)));
+        JPanel args = column(new CompoundBorder(Ui.topLine(), Ui.pad(12, 12, 6, 12)));
         args.add(sectionLabel(ctx.m("hosts.chrome.args")));
-        args.add(Box.createVerticalStrut(6));
+        args.add(Box.createVerticalStrut(Ui.px(6)));
         JComponent argsBox = rounded(Ui.previewScroll(argsPreview));
         argsBox.setAlignmentX(LEFT_ALIGNMENT);
-        argsBox.setPreferredSize(new Dimension(10, 80));
-        argsBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
+        argsBox.setPreferredSize(new Dimension(Ui.px(10), Ui.px(80)));
+        argsBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, Ui.px(80)));
         args.add(argsBox);
         body.add(args);
 
@@ -221,9 +221,9 @@ public final class HostsTab extends JPanel {
         top.add(body, BorderLayout.NORTH);
 
         // --host-resolver-rules preview fills the rest
-        JPanel rules = new JPanel(new BorderLayout(0, 6));
+        JPanel rules = new JPanel(new BorderLayout(0, Ui.px(6)));
         rules.setBackground(Color.WHITE);
-        rules.setBorder(new EmptyBorder(12, 12, 10, 12));
+        rules.setBorder(Ui.pad(12, 12, 10, 12));
         rules.add(sectionLabel("--host-resolver-rules"), BorderLayout.NORTH);
         rules.add(rounded(Ui.previewScroll(rulesPreview)), BorderLayout.CENTER);
 
@@ -253,26 +253,26 @@ public final class HostsTab extends JPanel {
         JPanel row = new JPanel();
         row.setLayout(new BoxLayout(row, BoxLayout.X_AXIS));
         row.setOpaque(false);
-        row.setBorder(new EmptyBorder(6, 12, 6, 12));
+        row.setBorder(Ui.pad(6, 12, 6, 12));
         row.add(sw);
-        row.add(Box.createHorizontalStrut(8));
+        row.add(Box.createHorizontalStrut(Ui.px(8)));
         JLabel l = new JLabel(label);
         l.setFont(Ui.font(Font.PLAIN, 13f));
         l.setForeground(Ui.PREVIEW_TEXT);
         row.add(l);
         boolean fills = false;
         for (JComponent e : extra) {
-            row.add(Box.createHorizontalStrut(e instanceof JButton && e.getClientProperty("info") == null ? 4 : 8));
+            row.add(Box.createHorizontalStrut(Ui.px(e instanceof JButton && e.getClientProperty("info") == null ? 4 : 8)));
             if (e instanceof JTextField || e instanceof JLabel) {
-                e.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+                e.setMaximumSize(new Dimension(Integer.MAX_VALUE, Ui.px(30)));
                 fills = true;
             }
             row.add(e);
         }
         if (!fills) row.add(Box.createHorizontalGlue());
         row.setAlignmentX(LEFT_ALIGNMENT);
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
-        row.setPreferredSize(new Dimension(10, 42));
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, Ui.px(42)));
+        row.setPreferredSize(new Dimension(Ui.px(10), Ui.px(42)));
         return row;
     }
 
@@ -280,15 +280,15 @@ public final class HostsTab extends JPanel {
         f.setFont(Ui.font(Font.PLAIN, 12.5f));
         f.putClientProperty("JTextField.placeholderText", placeholder);
         f.putClientProperty("FlatLaf.style", "arc:6; focusedBorderColor:#a8d878; borderColor:#dee2e6; margin:3,8,3,8");
-        f.setPreferredSize(new Dimension(100, 30));
+        f.setPreferredSize(new Dimension(Ui.px(100), Ui.px(30)));
     }
 
     private JButton infoButton(java.util.function.Supplier<String> text) {
         JButton b = Ui.iconButton("info", null, false, null);
         b.setIcon(Ui.icon("info", 12, new Color(0, 0, 0, 90)));
         b.setRolloverIcon(Ui.icon("info", 12, new Color(0, 0, 0, 160)));
-        b.setPreferredSize(new Dimension(20, 20));
-        b.setMaximumSize(new Dimension(20, 20));
+        b.setPreferredSize(new Dimension(Ui.px(20), Ui.px(20)));
+        b.setMaximumSize(new Dimension(Ui.px(20), Ui.px(20)));
         b.putClientProperty("info", true);
         b.addActionListener(e -> {
             JTextArea a = new JTextArea(text.get());
@@ -297,9 +297,9 @@ public final class HostsTab extends JPanel {
             a.setEditable(false);
             a.setFont(Ui.font(Font.PLAIN, 12f));
             a.setForeground(Ui.PREVIEW_TEXT);
-            a.setBorder(new EmptyBorder(8, 10, 8, 10));
-            a.setSize(new Dimension(320, Short.MAX_VALUE));
-            a.setPreferredSize(new Dimension(320, a.getPreferredSize().height));
+            a.setBorder(Ui.pad(8, 10, 8, 10));
+            a.setSize(new Dimension(Ui.px(320), Short.MAX_VALUE));
+            a.setPreferredSize(new Dimension(Ui.px(320), a.getPreferredSize().height));
             JPopupMenu pop = new JPopupMenu();
             pop.setLayout(new BorderLayout());
             pop.add(a);
@@ -310,8 +310,8 @@ public final class HostsTab extends JPanel {
 
     /** Zero preferred/minimum width (height 34) so the row's weights alone set the button's width. */
     private static JButton ratioWidth(JButton b) {
-        b.setPreferredSize(new Dimension(0, 34));
-        b.setMinimumSize(new Dimension(0, 34));
+        b.setPreferredSize(new Dimension(0, Ui.px(34)));
+        b.setMinimumSize(new Dimension(0, Ui.px(34)));
         return b;
     }
 
@@ -321,8 +321,8 @@ public final class HostsTab extends JPanel {
         b.setFocusable(false);
         b.setBackground(Color.WHITE);
         b.putClientProperty("FlatLaf.style", "arc:6; borderColor:#dee2e6; hoverBackground:#f8f9fa");
-        b.setPreferredSize(new Dimension(32, 30));
-        b.setMaximumSize(new Dimension(32, 30));
+        b.setPreferredSize(new Dimension(Ui.px(32), Ui.px(30)));
+        b.setMaximumSize(new Dimension(Ui.px(32), Ui.px(30)));
         b.addActionListener(e -> {
             List<Settings.Preset> presets = ctx.settings(st -> List.copyOf((ua ? st.userAgentPresets : st.openUrlPresets).items));
             JPopupMenu m = new JPopupMenu();
@@ -388,11 +388,11 @@ public final class HostsTab extends JPanel {
             a.setFont(Ui.mono(12f));
             a.setForeground(Ui.PREVIEW_TEXT);
             a.setBackground(Color.WHITE);
-            a.setBorder(new CompoundBorder(new LineBorder(Ui.BC300, 1, true), new EmptyBorder(6, 10, 6, 10)));
-            int w = MIN_WIDTH;
+            a.setBorder(new CompoundBorder(new LineBorder(Ui.BC300, 1, true), Ui.pad(6, 10, 6, 10)));
+            int w = Ui.px(MIN_WIDTH);
             a.setSize(new Dimension(w, Short.MAX_VALUE));
             a.setPreferredSize(new Dimension(w, a.getPreferredSize().height));
-            int x = menu.getLocationOnScreen().x - w - 4;
+            int x = menu.getLocationOnScreen().x - w - Ui.px(4);
             int y = item.getLocationOnScreen().y;
             popup = PopupFactory.getSharedInstance().getPopup(menu, a, x, y);
             popup.show();
@@ -426,12 +426,12 @@ public final class HostsTab extends JPanel {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g2.setColor(Ui.META_BG);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), Ui.px(8), Ui.px(8));
                 g2.dispose();
             }
         };
         p.setOpaque(false);
-        p.setBorder(new EmptyBorder(2, 2, 2, 2));
+        p.setBorder(Ui.pad(2, 2, 2, 2));
         p.add(c);
         return p;
     }
@@ -568,7 +568,7 @@ public final class HostsTab extends JPanel {
     }
 
     /**
-     * Sharing of the open profile for hosts switcher programs: a switch, the URL the web service
+     * Sharing of the open profile for hosts managers: a switch, the URL the web service
      * (ShareServer) serves it at (with a choice of this PC's address while it is on the network), and
      * Copy. Turning the switch on or off takes effect at once.
      */
@@ -585,7 +585,7 @@ public final class HostsTab extends JPanel {
             Switch sw = new Switch(active.shared, Ui.BC500);
             JLabel swLabel = new JLabel(ctx.m("app.share.switch"));
             swLabel.setFont(Ui.font(Font.BOLD, 13f));
-            JPanel swRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+            JPanel swRow = new JPanel(new FlowLayout(FlowLayout.LEFT, Ui.px(8), 0));
             swRow.setOpaque(false);
             swRow.add(sw);
             swRow.add(swLabel);
@@ -599,7 +599,7 @@ public final class HostsTab extends JPanel {
             Dialogs.fixWidth(desc, 580);
             List<JComponent> parts = new ArrayList<>(List.of(desc, swRow));
             // On the network too: the URL can name this PC by one of the addresses the web service
-            // answers on, for a hosts switcher or an agent on another machine. 127.0.0.1 stays the default.
+            // answers on, for a hosts manager or an agent on another machine. 127.0.0.1 stays the default.
             JComboBox<String> host = null;
             List<String> hosts = ShareServer.urlHosts();
             if (hosts.size() > 1) {
@@ -609,7 +609,7 @@ public final class HostsTab extends JPanel {
                 JLabel hostLabel = new JLabel(ctx.m("app.share.host"));
                 hostLabel.setFont(Ui.font(Font.BOLD, 12.5f));
                 hostLabel.setForeground(Ui.MUTED);
-                JPanel hostRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+                JPanel hostRow = new JPanel(new FlowLayout(FlowLayout.LEFT, Ui.px(8), 0));
                 hostRow.setOpaque(false);
                 hostRow.add(hostLabel);
                 hostRow.add(h);
@@ -706,7 +706,7 @@ public final class HostsTab extends JPanel {
             mergedSection.setVisible(showMerged);
             // Reopen at the height it had last time (dragged or the default).
             if (showMerged) SwingUtilities.invokeLater(() -> mergedSplit.setDividerLocation(
-                    Math.max(80, mergedSplit.getHeight() - mergedHeight - mergedSplit.getDividerSize())));
+                    Math.max(Ui.px(80), mergedSplit.getHeight() - mergedHeight - mergedSplit.getDividerSize())));
         }
         if (showMerged) {
             mergedLabel.setText(String.join(", ", sel.stream().map(i -> i.name).toList()));

@@ -50,10 +50,10 @@ final class NetworkChoice {
             changed();
         });
         // Label and drop-down: the drop-down takes what width is left (a long network card name is cut).
-        row = new JPanel(new BorderLayout(SettingsKit.ROW_GAP, 0)) {
+        row = new JPanel(new BorderLayout(Ui.px(SettingsKit.ROW_GAP), 0)) {
             @Override
             public Dimension getMaximumSize() {
-                return new Dimension(ROW_MAX_WIDTH, getPreferredSize().height);
+                return new Dimension(Ui.px(ROW_MAX_WIDTH), getPreferredSize().height);
             }
         };
         row.setOpaque(false);

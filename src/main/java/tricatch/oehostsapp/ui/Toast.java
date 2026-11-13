@@ -22,24 +22,25 @@ final class Toast {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g2.setColor(new Color(0, 0, 0, 18));
-                g2.fillRoundRect(1, 3, getWidth() - 2, getHeight() - 3, 24, 24);
+                int arc = Ui.px(24), sh = Ui.px(3);
+                g2.fillRoundRect(1, sh, getWidth() - 2, getHeight() - sh, arc, arc);
                 g2.setColor(Color.WHITE);
-                g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 3, 24, 24);
+                g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - sh, arc, arc);
                 g2.setColor(Ui.BC300);
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 4, 24, 24);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - sh - 1, arc, arc);
                 g2.dispose();
                 super.paintComponent(g);
             }
         };
-        l.setIconTextGap(10);
+        l.setIconTextGap(Ui.px(10));
         l.setFont(Ui.font(Font.BOLD, 13f));
         l.setForeground(new Color(0x3a6b1a));
-        l.setBorder(new EmptyBorder(12, 22, 15, 22));
+        l.setBorder(Ui.pad(12, 22, 15, 22));
         l.setHorizontalAlignment(SwingConstants.CENTER);
         // Short messages ("Exported.") would make a stubby box: keep a minimum width.
         Dimension d = l.getPreferredSize();
-        d.width = Math.max(d.width, MIN_WIDTH);
-        l.setBounds((layers.getWidth() - d.width) / 2, 24, d.width, d.height);
+        d.width = Math.max(d.width, Ui.px(MIN_WIDTH));
+        l.setBounds((layers.getWidth() - d.width) / 2, Ui.px(24), d.width, d.height);
         layers.add(l, JLayeredPane.POPUP_LAYER);
         layers.repaint();
         current = l;

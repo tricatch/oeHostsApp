@@ -65,7 +65,7 @@ public final class SidebarTree extends JPanel {
         setBackground(Color.WHITE);
         rows.setLayout(new BoxLayout(rows, BoxLayout.Y_AXIS));
         rows.setBackground(Color.WHITE);
-        rows.setBorder(new EmptyBorder(12, 12, 16, 12));
+        rows.setBorder(Ui.pad(12, 12, 16, 12));
         JPanel top = new JPanel(new BorderLayout());
         top.setBackground(Color.WHITE);
         top.add(rows, BorderLayout.NORTH);
@@ -88,7 +88,7 @@ public final class SidebarTree extends JPanel {
         List<Store.Folder> folders = tree.stream().map(Store.Node::folder).filter(java.util.Objects::nonNull).toList();
         boolean first = true;
         for (Store.Node n : tree) {
-            if (!first) rows.add(Box.createVerticalStrut(4));
+            if (!first) rows.add(Box.createVerticalStrut(Ui.px(4)));
             first = false;
             if (n.folder() != null) {
                 Store.Folder f = n.folder();
@@ -99,10 +99,10 @@ public final class SidebarTree extends JPanel {
                     group.setLayout(new BoxLayout(group, BoxLayout.Y_AXIS));
                     group.setOpaque(false);
                     group.setBorder(BorderFactory.createCompoundBorder(
-                            new EmptyBorder(2, 14, 6, 0),
-                            BorderFactory.createCompoundBorder(new MatteBorder(0, 1, 0, 0, Ui.GUIDE), new EmptyBorder(0, 4, 0, 0))));
+                            Ui.pad(2, 14, 6, 0),
+                            BorderFactory.createCompoundBorder(new MatteBorder(0, 1, 0, 0, Ui.GUIDE), Ui.pad(0, 4, 0, 0))));
                     for (int k = 0; k < kids.size(); k++) {
-                        if (k > 0) group.add(Box.createVerticalStrut(2));
+                        if (k > 0) group.add(Box.createVerticalStrut(Ui.px(2)));
                         group.add(itemRow(kids.get(k), folders, f.id));
                     }
                     group.setAlignmentX(LEFT_ALIGNMENT);
@@ -123,21 +123,21 @@ public final class SidebarTree extends JPanel {
         String mark;
 
         Row() {
-            super(new BorderLayout(8, 0));
+            super(new BorderLayout(Ui.px(8), 0));
             setOpaque(false);
-            setBorder(new EmptyBorder(0, 8, 0, 8));
+            setBorder(Ui.pad(0, 8, 0, 8));
             setAlignmentX(LEFT_ALIGNMENT);
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         }
 
         @Override
         public Dimension getMaximumSize() {
-            return new Dimension(Integer.MAX_VALUE, 36);
+            return new Dimension(Integer.MAX_VALUE, Ui.px(36));
         }
 
         @Override
         public Dimension getPreferredSize() {
-            return new Dimension(super.getPreferredSize().width, 36);
+            return new Dimension(super.getPreferredSize().width, Ui.px(36));
         }
 
         @Override
@@ -147,17 +147,17 @@ public final class SidebarTree extends JPanel {
             if ("into".equals(mark)) {
                 // oe-panel.css .drop-into: BC100 fill with a 1px BC300 outline.
                 g2.setColor(Ui.BC100);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), Ui.px(16), Ui.px(16));
                 g2.setColor(Ui.BC300);
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 16, 16);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, Ui.px(16), Ui.px(16));
             } else if (active || hover) {
                 g2.setColor(active ? Ui.BC100 : Ui.HOVER);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), Ui.px(16), Ui.px(16));
             }
             if ("before".equals(mark) || "after".equals(mark)) {
                 // .drop-before / .drop-after: a 2px BC300 line on that edge.
                 g2.setColor(Ui.BC300);
-                g2.fillRect(0, "before".equals(mark) ? 0 : getHeight() - 2, getWidth(), 2);
+                g2.fillRect(0, "before".equals(mark) ? 0 : getHeight() - Ui.px(2), getWidth(), Ui.px(2));
             }
             g2.dispose();
             super.paintComponent(g);
@@ -208,7 +208,7 @@ public final class SidebarTree extends JPanel {
             JLabel shared = new JLabel(Ui.icon("share-2", 13, Ui.BC500));
             shared.setToolTipText(ctx.m("app.share.shared"));
             east.add(shared);
-            east.add(Box.createHorizontalStrut(6));
+            east.add(Box.createHorizontalStrut(Ui.px(6)));
             east.add(sw);
             row.add(east, BorderLayout.EAST);
         } else {
@@ -310,7 +310,7 @@ public final class SidebarTree extends JPanel {
                     }
                 }
                 Point p = SwingUtilities.convertPoint(e.getComponent(), e.getPoint(), rows);
-                rows.scrollRectToVisible(new Rectangle(p.x, p.y - 18, 1, 36));
+                rows.scrollRectToVisible(new Rectangle(p.x, p.y - Ui.px(18), 1, Ui.px(36)));
                 updateDrop(p);
             }
 
@@ -522,14 +522,15 @@ public final class SidebarTree extends JPanel {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g2.setColor(on > 0 ? Ui.BC100 : new Color(0xeeefea));
-                g2.fillRoundRect(0, (getHeight() - 20) / 2, getWidth(), 20, 20, 20);
+                int bh = Ui.px(20);
+                g2.fillRoundRect(0, (getHeight() - bh) / 2, getWidth(), bh, bh, bh);
                 g2.dispose();
                 super.paintComponent(g);
             }
         };
         badge.setFont(Ui.mono(11f));
         badge.setForeground(on > 0 ? new Color(0x23251f) : new Color(0x5e6158));
-        badge.setBorder(new EmptyBorder(0, 7, 0, 7));
+        badge.setBorder(Ui.pad(0, 7, 0, 7));
         badge.setHorizontalAlignment(SwingConstants.CENTER);
         JButton del = Ui.iconButton("trash", ctx.m("tooltip.delete.folder"), true, () -> {
             if (!ctx.confirm(this, ctx.m("confirm.delete.folder"))) return;
@@ -537,9 +538,9 @@ public final class SidebarTree extends JPanel {
             render();
             listener.changed();
         });
-        del.setPreferredSize(new Dimension(26, 26));
+        del.setPreferredSize(new Dimension(Ui.px(26), Ui.px(26)));
         del.setVisible(false);
-        JPanel east = new JPanel(new FlowLayout(FlowLayout.RIGHT, 2, 8));
+        JPanel east = new JPanel(new FlowLayout(FlowLayout.RIGHT, Ui.px(2), Ui.px(8)));
         east.setOpaque(false);
         east.add(badge);
         east.add(del);

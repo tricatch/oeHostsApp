@@ -37,6 +37,7 @@ final class ReverseProxyPage {
             if (ctx.saveSettings(s -> s.reverseProxy.bind = to)) status.restart(self[0], st, ProxyRuntime::restart);
         });
         return fullPage(halves(column(desc(ctx.m("app.settings.server.desc")), line(), bind.row, bind.warn,
-                line(), rightAligned(restart)), column(status.panel)));
+                line(), rightAligned(restart)),
+                column(heading(ctx.m("app.settings.server.status.title")), line(), status.panel)));
     }
 }

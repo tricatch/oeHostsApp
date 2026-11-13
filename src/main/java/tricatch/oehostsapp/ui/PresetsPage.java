@@ -40,7 +40,7 @@ final class PresetsPage {
         });
         editor.setText(initial);
         JComponent box = SettingsKit.framed(editor.scroll);
-        box.setPreferredSize(new Dimension(600, 320));
+        box.setPreferredSize(new Dimension(Ui.px(600), Ui.px(320)));
         String pageId = ua ? "ua" : "url";
         JLabel st = tab.status(pageId);
         Autosave autosave = new Autosave(ctx, editor, st, (id, text) -> {
@@ -58,9 +58,9 @@ final class PresetsPage {
         tab.track(autosave);
         editor.onEdit(() -> autosave.changed(editor.getText()));
         // Not SettingsKit.page(): the editor fills the height down to the bottom bar instead of scrolling with the page.
-        JPanel page = new JPanel(new BorderLayout(0, 14));
+        JPanel page = new JPanel(new BorderLayout(0, Ui.px(14)));
         page.setBackground(Color.WHITE);
-        page.setBorder(new EmptyBorder(18, 22, 18, 22));
+        page.setBorder(Ui.pad(18, 22, 18, 22));
         page.add(SettingsKit.desc(ctx.m(ua ? "app.settings.ua.presets.desc" : "app.settings.url.presets.desc")), BorderLayout.NORTH);
         page.add(box, BorderLayout.CENTER);
         autosave.bindSaveKey(page);
