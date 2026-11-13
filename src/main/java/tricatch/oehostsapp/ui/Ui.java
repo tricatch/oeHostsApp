@@ -69,6 +69,15 @@ public final class Ui {
      * (Ctrl+C / Cmd+C): no border, no background, no caret.
      */
     public static <T extends javax.swing.text.JTextComponent> T copyable(T t) {
+        // A caret that never paints: the look and feel paints the caret on click despite a
+        // transparent caret color. Keeps the old caret's update policy (see SettingsKit.still).
+        javax.swing.text.DefaultCaret hidden = new javax.swing.text.DefaultCaret() {
+            @Override
+            public void paint(Graphics g) {
+            }
+        };
+        if (t.getCaret() instanceof javax.swing.text.DefaultCaret old) hidden.setUpdatePolicy(old.getUpdatePolicy());
+        t.setCaret(hidden);
         t.setEditable(false);
         t.setOpaque(false);
         t.setBorder(null);
@@ -302,6 +311,41 @@ public final class Ui {
         l.setFont(font(Font.PLAIN, 12f));
         l.setForeground(MUTED);
         return l;
+    }
+
+    /** Extra space between the lines of a message, as a fraction of the line height. */
+    public static final float MESSAGE_LINE_SPACING = 0.3f;
+
+    /**
+     * An empty text pane for messages (dialog and settings page descriptions) with wider space
+     * between lines, which a text area cannot have. The spacing sits on the document's default
+     * style, so it survives later {@code setText} calls. Pass it through {@link #copyable}.
+     */
+    public static JTextPane messagePane() {
+        // Wraps at spaces only, as a word-wrapping text area does. Once non-ASCII text is inserted,
+        // a document turns on its "multiByte" property and its views then wrap by the locale's line
+        // breaker, which splits Korean words between syllables. Clearing the property after each
+        // insert keeps the whitespace breaker: listeners added later are notified first, so this
+        // runs before the views lay out the new text.
+        JTextPane t = new JTextPane();
+        t.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override
+            public void insertUpdate(javax.swing.event.DocumentEvent e) {
+                e.getDocument().putProperty("multiByte", Boolean.FALSE);
+            }
+
+            @Override
+            public void removeUpdate(javax.swing.event.DocumentEvent e) {
+            }
+
+            @Override
+            public void changedUpdate(javax.swing.event.DocumentEvent e) {
+            }
+        });
+        javax.swing.text.StyledDocument d = t.getStyledDocument();
+        javax.swing.text.StyleConstants.setLineSpacing(
+                d.getStyle(javax.swing.text.StyleContext.DEFAULT_STYLE), MESSAGE_LINE_SPACING);
+        return t;
     }
 
     /** {@code .hosts-scheme-preview}: monospace text on a light gray rounded box. */

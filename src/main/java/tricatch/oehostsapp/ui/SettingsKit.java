@@ -216,11 +216,9 @@ final class SettingsKit {
         return Ui.copyable(t);
     }
 
-    /** Gray explanatory text that wraps to the page width. */
-    static JTextArea desc(String text) {
-        JTextArea a = still(new JTextArea(), text);
-        a.setLineWrap(true);
-        a.setWrapStyleWord(true);
+    /** Gray explanatory text that wraps to the page width, with the wider message line spacing. */
+    static JTextPane desc(String text) {
+        JTextPane a = still(Ui.messagePane(), text);
         a.setOpaque(false);
         a.setBorder(null);
         a.setFont(Ui.font(Font.PLAIN, 12.5f));

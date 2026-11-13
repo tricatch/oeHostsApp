@@ -15,8 +15,8 @@ import static tricatch.oehostsapp.ui.SettingsKit.*;
 
 /**
  * Settings → oeHosts → active hosts: the {@code /active-hosts} URL (the profiles selected in
- * oeHosts, merged), for tools that read a hosts list from a URL: oeHosts-Agent, SwitchHosts' remote
- * hosts, and the like. Reachable like the rest of the web service (127.0.0.1, plus its network
+ * oeHosts, merged), for tools that read a hosts list from a URL: oeHosts-Agent, hosts switcher
+ * programs with remote sources, and the like. Reachable like the rest of the web service (127.0.0.1, plus its network
  * address when one is chosen). Left: the URL to copy; right: what it returns now.
  */
 final class ActiveHostsPage {

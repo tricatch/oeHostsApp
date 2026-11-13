@@ -31,7 +31,7 @@ final class NetworkChoice {
     /** The form label and the drop-down. */
     final JPanel row;
     /** The network-exposure warning, shown while the choice is not 127.0.0.1; placed by the page. */
-    final JTextArea warn;
+    final JTextPane warn;
     private final JComboBox<Choice> combo = Ui.combo();
     private String selected;
     /** Runs after the choice changes, instead of showing {@link #warn}: the page decides what shows. */

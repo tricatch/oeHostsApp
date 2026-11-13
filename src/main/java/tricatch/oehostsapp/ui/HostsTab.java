@@ -568,7 +568,7 @@ public final class HostsTab extends JPanel {
     }
 
     /**
-     * Sharing of the open profile for SwitchHosts and the like: a switch, the URL the web service
+     * Sharing of the open profile for hosts switcher programs: a switch, the URL the web service
      * (ShareServer) serves it at (with a choice of this PC's address while it is on the network), and
      * Copy. Turning the switch on or off takes effect at once.
      */
@@ -599,7 +599,7 @@ public final class HostsTab extends JPanel {
             Dialogs.fixWidth(desc, 580);
             List<JComponent> parts = new ArrayList<>(List.of(desc, swRow));
             // On the network too: the URL can name this PC by one of the addresses the web service
-            // answers on, for SwitchHosts or an agent on another machine. 127.0.0.1 stays the default.
+            // answers on, for a hosts switcher or an agent on another machine. 127.0.0.1 stays the default.
             JComboBox<String> host = null;
             List<String> hosts = ShareServer.urlHosts();
             if (hosts.size() > 1) {
@@ -866,7 +866,7 @@ public final class HostsTab extends JPanel {
             ChromeLauncher.Result r = ChromeLauncher.launch(words, closeRunning);
             SwingUtilities.invokeLater(() -> {
                 if (r == ChromeLauncher.Result.RUNNING) {
-                    if (OeDialog.confirm(ctx, ctx.m("app.chrome.launch"), ctx.m("app.chrome.running.confirm"))) {
+                    if (OeDialog.confirm(ctx, ctx.m("app.chrome.launch"), ctx.m("app.chrome.running.confirm"), 560)) {
                         ctx.toast(ctx.m("app.chrome.closing"));
                         runLaunch(words, true);
                         return;

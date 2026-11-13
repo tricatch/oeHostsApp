@@ -24,7 +24,7 @@ import java.util.concurrent.Executors;
  * The web service: the app's built-in HTTP server. It serves
  * <ul>
  *   <li>the shared oeHosts profiles as plain hosts text, for hosts managers that subscribe to a URL
- *   (SwitchHosts' "Remote" entries): {@code GET /hosts/<id>-<tag>/<name>}, the tag being an HMAC of
+ *   (their "Remote" entries): {@code GET /hosts/<id>-<tag>/<name>}, the tag being an HMAC of
  *   the id under a key only this installation has ({@link Store#shareToken}). The trailing name
  *   ({@link Store#shareSlug}) is only there for people and is ignored, so a renamed profile keeps
  *   working under its old URL. Only profiles whose {@link Store.Item#shared} is on are served; a

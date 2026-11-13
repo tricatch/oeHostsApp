@@ -125,14 +125,13 @@ public final class OeDialog extends JDialog {
 
     // ── Body building blocks ────────────────────────────────────
 
-    /** Small gray wrapped text ({@code .small.text-muted}). */
+    /** Small gray wrapped text ({@code .small.text-muted}), with the wider message line spacing. */
     public static JComponent note(String text) {
-        JTextArea a = Ui.copyable(new JTextArea(text));
-        a.setLineWrap(true);
-        a.setWrapStyleWord(true);
+        JTextPane a = Ui.copyable(Ui.messagePane());
         a.setFont(Ui.font(Font.PLAIN, 12.5f));
         a.setForeground(Ui.MUTED);
         a.setBorder(new EmptyBorder(0, 0, 0, 0));
+        a.setText(text);
         return a;
     }
 
@@ -186,10 +185,15 @@ public final class OeDialog extends JDialog {
 
     /** Asks with OK/Cancel; returns true on OK. */
     public static boolean confirm(AppContext ctx, String title, String text) {
+        return confirm(ctx, title, text, 440);
+    }
+
+    /** {@link #confirm(AppContext, String, String)} with the message wrapped at {@code width}. */
+    public static boolean confirm(AppContext ctx, String title, String text, int width) {
         boolean[] ok = {false};
         OeDialog d = new OeDialog(ctx.frame(), title);
         JComponent n = note(text);
-        Dialogs.fixWidth(n, 440);
+        Dialogs.fixWidth(n, width);
         d.body(n);
         d.button(ctx.m("btn.confirm"), true, () -> {
             ok[0] = true;

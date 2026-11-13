@@ -27,9 +27,10 @@ final class Dialogs {
         });
     }
 
-    /** Gives a wrapping text area a fixed width so its preferred height is right. */
+    /** Gives a wrapping text area or pane a fixed width so its preferred height is right. */
     static void fixWidth(JComponent c, int w) {
-        if (c instanceof JTextArea a) {
+        if (c instanceof JTextArea || c instanceof JTextPane) {
+            javax.swing.text.JTextComponent a = (javax.swing.text.JTextComponent) c;
             a.setSize(new Dimension(w, Short.MAX_VALUE));
             a.setPreferredSize(new Dimension(w, a.getPreferredSize().height));
         } else if (c instanceof JPanel p) {

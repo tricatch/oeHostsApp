@@ -51,7 +51,6 @@ final class AgentPage {
         JPanel actions = rightAligned(copy);
         JComponent folderLine = line();
         JPanel folderRow = rightAligned(folder);
-        JComponent hint = desc(ctx.m("app.settings.agent.hint"));
 
         boolean[] usable = {false};
         // The agent reads the profiles selected in oeHosts (ShareServer.ACTIVE_PATH), so the option
@@ -94,7 +93,6 @@ final class AgentPage {
             option.setVisible(usable[0]);
             actionsLine.setVisible(usable[0]);
             actions.setVisible(usable[0]);
-            hint.setVisible(usable[0]);
             folderLine.setVisible(HostsAgent.path() != null);
             folderRow.setVisible(HostsAgent.path() != null);
             showOption.run();
@@ -106,7 +104,7 @@ final class AgentPage {
         // The web service restarts on a new port from its settings page.
         ctx.listen(ShareServer::onChange, showOption);
         return fullPage(halves(
-                column(desc(ctx.m("app.settings.agent.desc")), line(), missing, option, hint, actionsLine, actions),
+                column(desc(ctx.m("app.settings.agent.desc")), line(), missing, option, actionsLine, actions),
                 column(desc(ctx.m("app.settings.agent.install.desc")), line(), info, inUse, folderLine, folderRow)));
     }
 }
