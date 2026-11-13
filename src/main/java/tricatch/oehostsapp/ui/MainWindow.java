@@ -74,7 +74,8 @@ public final class MainWindow {
 
     /**
      * Development aid ({@code -Doehostsapp.shot=<prefix>}): saves each tab as {@code <prefix>-<n>.png}
-     * once the window has settled, then exits. Lets the UI be checked without a person at the screen.
+     * once the window has settled, each dialog as {@code <prefix>-d<n>.png} and the window behind it
+     * as {@code <prefix>-d<n>-window.png}, then exits. Lets the UI be checked without a person at the screen.
      */
     private void screenshots(String prefix) {
         Runnable[] dialogs = {() -> hosts.showDirectCmd(true), hosts::showShare};
@@ -99,6 +100,8 @@ public final class MainWindow {
                 for (Window w : Window.getWindows()) {
                     if (w instanceof JDialog dl && dl.isVisible()) {
                         save(dl.getRootPane(), prefix + "-d" + d);
+                        // The window behind it, with the dialog backdrop.
+                        save(frame.getRootPane(), prefix + "-d" + d + "-window");
                         dl.dispose();
                     }
                 }
