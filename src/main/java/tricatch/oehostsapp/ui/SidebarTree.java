@@ -56,6 +56,12 @@ public final class SidebarTree extends JPanel {
     private String dropPos;
     /** Event time of the release that ended a drag; the click it may produce is ignored. */
     private long dragEndedAt;
+    /**
+     * The row ({@code i:<id>} / {@code f:<id>}) and event time of the last click; a double click
+     * needs both clicks on the same row (see {@link #clickUnlessDragged}).
+     */
+    private String lastClickKey;
+    private long lastClickAt;
 
     public SidebarTree(AppContext ctx, Store.Kind kind, Listener listener) {
         super(new BorderLayout());
@@ -215,7 +221,7 @@ public final class SidebarTree extends JPanel {
             row.add(sw, BorderLayout.EAST);
         }
         row.hoverOn(name, icon);
-        MouseAdapter activate = clickUnlessDragged(row, n -> {
+        MouseAdapter activate = clickUnlessDragged(row, "i:" + it.id, n -> {
             if (n == 1) {
                 listener.activated(it);
             } else if (n == 2) {
@@ -284,12 +290,25 @@ public final class SidebarTree extends JPanel {
     /**
      * {@link Ui#clickOn} for a row that is also a drag handle: a press that turned into a drag (moved
      * 5px or more, see {@link #draggable}) is not a click, whichever listener sees the release first.
+     * {@code onClick} gets 2 only when the previous click was on this same row ({@code key}) within
+     * the system's double-click time: the toolkit's own click count is per window, so a press that
+     * was not a click on this row (a drag, a press elsewhere) could otherwise make a single click
+     * count as a double one and start a rename.
      */
-    private MouseAdapter clickUnlessDragged(Row row, java.util.function.IntConsumer onClick) {
+    private MouseAdapter clickUnlessDragged(Row row, String key, java.util.function.IntConsumer onClick) {
         return Ui.clickOn(row, n -> {
-            if (dragging || EventQueue.getMostRecentEventTime() <= dragEndedAt) return;
-            onClick.accept(n);
+            long now = EventQueue.getMostRecentEventTime();
+            if (dragging || now <= dragEndedAt) return;
+            boolean dbl = n >= 2 && key.equals(lastClickKey) && now - lastClickAt <= multiClickInterval();
+            // After a double click the next click is a single one again.
+            lastClickKey = dbl ? null : key;
+            lastClickAt = now;
+            onClick.accept(dbl ? 2 : 1);
         });
+    }
+
+    private static int multiClickInterval() {
+        return Toolkit.getDefaultToolkit().getDesktopProperty("awt.multiClickInterval") instanceof Integer i ? i : 500;
     }
 
     /** The whole row is the drag handle; the switch and the delete button keep their clicks. */
@@ -580,7 +599,7 @@ public final class SidebarTree extends JPanel {
             render();
         });
         toggle.setRepeats(false);
-        MouseAdapter activate = clickUnlessDragged(row, n -> {
+        MouseAdapter activate = clickUnlessDragged(row, "f:" + f.id, n -> {
             if (n == 1) {
                 toggle.restart();
             } else {
@@ -624,7 +643,11 @@ public final class SidebarTree extends JPanel {
         return row;
     }
 
-    /** Swaps the name label for a text field; Enter or focus loss commits, Esc cancels. */
+    /**
+     * Swaps the name label for a text field; Enter, focus loss or a press anywhere outside the field
+     * commits, Esc cancels. The press matters because blank parts of the tree, headers and panels
+     * do not take the focus, so clicking them would otherwise leave the field open.
+     */
     private void startRename(JPanel holder, String current, Consumer<String> commit) {
         JTextField field = new JTextField(current);
         field.setFont(Ui.font(Font.BOLD, 13f));
@@ -635,13 +658,32 @@ public final class SidebarTree extends JPanel {
         field.selectAll();
         field.requestFocusInWindow();
         boolean[] done = {false};
+        java.awt.event.AWTEventListener[] outside = {null};
+        Runnable stopWatching = () -> {
+            if (outside[0] != null) Toolkit.getDefaultToolkit().removeAWTEventListener(outside[0]);
+            outside[0] = null;
+        };
         Runnable finish = () -> {
             if (done[0]) return;
             done[0] = true;
+            stopWatching.run();
             String n = field.getText().strip();
             if (n.isEmpty() || n.equals(current)) render();
             else commit.accept(n);
         };
+        outside[0] = ev -> {
+            if (ev.getID() != MouseEvent.MOUSE_PRESSED) return;
+            Component c = ((MouseEvent) ev).getComponent();
+            if (c == null || !SwingUtilities.isDescendingFrom(c, field)) finish.run();
+        };
+        Toolkit.getDefaultToolkit().addAWTEventListener(outside[0], AWTEvent.MOUSE_EVENT_MASK);
+        // Whatever ends the edit (a re-render included), stop watching once the field is gone.
+        field.addHierarchyListener(e -> {
+            if ((e.getChangeFlags() & java.awt.event.HierarchyEvent.DISPLAYABILITY_CHANGED) != 0 && !field.isDisplayable()) {
+                done[0] = true;
+                stopWatching.run();
+            }
+        });
         field.addActionListener(e -> finish.run());
         field.addFocusListener(new java.awt.event.FocusAdapter() {
             @Override
