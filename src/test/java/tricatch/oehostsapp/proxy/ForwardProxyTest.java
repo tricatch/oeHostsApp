@@ -159,6 +159,60 @@ class ForwardProxyTest {
                 io.netty.handler.codec.http.HttpVersion.HTTP_1_1, io.netty.handler.codec.http.HttpMethod.CONNECT, "example.com:443")));
     }
 
+    @Test
+    void sendsAnEnglishDateHeaderUnderAKoreanLocale() throws Exception {
+        // LittleProxy fills a missing Date in the default locale; Korean names went out as "?".
+        java.util.Locale before = java.util.Locale.getDefault();
+        java.util.regex.Pattern rfc1123 = java.util.regex.Pattern.compile(
+                "[A-Z][a-z]{2}, \\d{2} [A-Z][a-z]{2} \\d{4} \\d{2}:\\d{2}:\\d{2} GMT");
+        // An upstream server that sends no Date at all.
+        try (ServerSocket upstream = new ServerSocket(0, 5, InetAddress.getLoopbackAddress())) {
+            Thread t = new Thread(() -> {
+                try (Socket c = upstream.accept()) {
+                    BufferedReader in = new BufferedReader(new InputStreamReader(c.getInputStream(), StandardCharsets.US_ASCII));
+                    String l;
+                    while ((l = in.readLine()) != null && !l.isEmpty()) { /* request headers */ }
+                    c.getOutputStream().write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"
+                            .getBytes(StandardCharsets.US_ASCII));
+                } catch (Exception ignored) {
+                }
+            });
+            t.setDaemon(true);
+            t.start();
+            java.util.Locale.setDefault(java.util.Locale.KOREA);
+            Store s = Store.open(dir.resolve("data.json"));
+            s.data.settings.fwdproxy.port = freePort();
+            ForwardProxy.start(s);
+            assertEquals(ForwardProxy.State.RUNNING, ForwardProxy.state(), ForwardProxy.error());
+            int port = ForwardProxy.port();
+
+            String own = dateHeader(port, "GET " + ShareServer.ACTIVE_PATH + " HTTP/1.1\r\nHost: 127.0.0.1:" + port + "\r\n");
+            assertTrue(rfc1123.matcher(own).matches(), "own page Date: " + own);
+            String target = "127.0.0.1:" + upstream.getLocalPort();
+            String proxied = dateHeader(port, "GET http://" + target + "/ HTTP/1.1\r\nHost: " + target + "\r\n");
+            assertTrue(rfc1123.matcher(proxied).matches(), "proxied Date: " + proxied);
+        } finally {
+            java.util.Locale.setDefault(before);
+        }
+    }
+
+    /** The Date header value of the response to {@code head} sent to the proxy on 127.0.0.1. */
+    private static String dateHeader(int port, String head) throws Exception {
+        try (Socket sock = new Socket("127.0.0.1", port)) {
+            sock.setSoTimeout(5000);
+            sock.getOutputStream().write((head + "Connection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+            BufferedReader in = new BufferedReader(new InputStreamReader(sock.getInputStream(), StandardCharsets.ISO_8859_1));
+            String status = in.readLine();
+            assertNotNull(status);
+            assertTrue(status.contains(" 200 "), status);
+            String l;
+            while ((l = in.readLine()) != null && !l.isEmpty()) {
+                if (l.regionMatches(true, 0, "date:", 0, 5)) return l.substring(5).trim();
+            }
+            return "(no Date header)";
+        }
+    }
+
     private static io.netty.handler.codec.http.HttpRequest get(String uri) {
         return new io.netty.handler.codec.http.DefaultHttpRequest(io.netty.handler.codec.http.HttpVersion.HTTP_1_1,
                 io.netty.handler.codec.http.HttpMethod.GET, uri);
@@ -166,6 +220,7 @@ class ForwardProxyTest {
 
     @Test
     void asksOnceAboutAnotherDeviceAndKeepsTheAnswer() throws Exception {
+        ClientAccess.attach(null); // memory only: an earlier test's store is gone with its temp folder
         ClientAccess.clear();
         java.util.List<ClientAccess.Request> asked = new java.util.ArrayList<>();
         ClientAccess.setAsker(asked::add);
@@ -197,6 +252,44 @@ class ForwardProxyTest {
             assertEquals(2, asked.size());
         } finally {
             ClientAccess.setAsker(null);
+            ClientAccess.clear();
+        }
+    }
+
+    @Test
+    void savesTheAnswersAndRemovesThemOneByOneOrAll() throws Exception {
+        Path file = dir.resolve("data.json");
+        java.util.List<ClientAccess.Request> asked = new java.util.ArrayList<>();
+        ClientAccess.setAsker(asked::add);
+        try {
+            ClientAccess.attach(Store.open(file));
+            ClientAccess.clear();
+            InetAddress phone = InetAddress.getByAddress(new byte[]{(byte) 203, 0, 113, 8});
+            InetAddress tablet = InetAddress.getByAddress(new byte[]{(byte) 203, 0, 113, 9});
+            ClientAccess.check(phone, "Phone UA");
+            ClientAccess.check(tablet, "Tablet UA");
+            ClientAccess.decide(asked.get(0), true);
+            ClientAccess.decide(asked.get(1), false);
+
+            // As after a restart: a fresh store from the same file brings the answers back.
+            ClientAccess.attach(Store.open(file));
+            assertEquals(java.util.List.of(new ClientAccess.Entry("203.0.113.8", "Phone UA", true),
+                    new ClientAccess.Entry("203.0.113.9", "Tablet UA", false)), ClientAccess.decisions());
+            assertEquals(ClientAccess.Decision.ALLOWED, ClientAccess.check(phone, null));
+            assertEquals(ClientAccess.Decision.DENIED, ClientAccess.check(tablet, null));
+            assertEquals(2, asked.size());
+
+            // One removed: only that device is asked again, and the file no longer has it.
+            ClientAccess.forget("203.0.113.9");
+            assertEquals(ClientAccess.Decision.PENDING, ClientAccess.check(tablet, null));
+            assertEquals(3, asked.size());
+            assertEquals(1, Store.open(file).data.settings.fwdproxy.devices.size());
+
+            ClientAccess.clear();
+            assertTrue(Store.open(file).data.settings.fwdproxy.devices.isEmpty());
+        } finally {
+            ClientAccess.setAsker(null);
+            ClientAccess.attach(null);
             ClientAccess.clear();
         }
     }

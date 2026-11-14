@@ -10,6 +10,7 @@ import tricatch.oehostsapp.web.ShareServer;
 
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.DateFormatter;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -104,6 +105,7 @@ public final class ForwardProxy {
     public static synchronized void start(Store s) {
         store = s;
         ShareServer.init(s);
+        ClientAccess.attach(s);
         int p;
         synchronized (s) {
             p = s.data.settings.fwdproxy.port;
@@ -171,6 +173,12 @@ public final class ForwardProxy {
                 public InetSocketAddress proxyToServerResolutionStarted(String hostAndPort) {
                     return override(hostAndPort);
                 }
+
+                @Override
+                public HttpObject serverToProxyResponse(HttpObject httpObject) {
+                    if (httpObject instanceof HttpResponse res) ensureDate(res);
+                    return httpObject;
+                }
             };
         }
     };
@@ -236,7 +244,20 @@ public final class ForwardProxy {
         res.headers().set(HttpHeaderNames.CONTENT_LENGTH, body.length);
         res.headers().set(HttpHeaderNames.CACHE_CONTROL, "no-store");
         res.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
+        ensureDate(res);
         return res;
+    }
+
+    /**
+     * Sets an RFC 1123 Date when the response has none. LittleProxy 2.9.1 fills a missing Date with a
+     * formatter in the JVM's default locale, so on a Korean system the day and month went out as
+     * Korean text that the header encoding turned into "?" ("?, 14 11? 2026 ..."). Netty's
+     * DateFormatter is locale-independent.
+     */
+    static void ensureDate(HttpResponse res) {
+        if (!res.headers().contains(HttpHeaderNames.DATE)) {
+            res.headers().set(HttpHeaderNames.DATE, DateFormatter.format(new java.util.Date()));
+        }
     }
 
     /**

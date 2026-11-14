@@ -11,8 +11,8 @@ import static tricatch.oehostsapp.ui.SettingsKit.*;
 
 /**
  * Settings → General → proxy service: its port on the left (saving restarts it); its state and
- * addresses on the right, then the devices allowed or refused on screen this run
- * ({@link ClientAccess}), with a button that forgets them.
+ * addresses on the right, then the devices allowed or refused on screen ({@link ClientAccess},
+ * saved until removed), each with a delete button, and one that removes them all.
  */
 final class ForwardProxyPage {
 
@@ -53,44 +53,71 @@ final class ForwardProxyPage {
                         (JComponent) Box.createVerticalStrut(Ui.px(18)), devices())));
     }
 
-    /** The devices answered on screen this run: address, allowed or refused, User-Agent; and a reset. */
+    /**
+     * The devices answered on screen (saved until removed), one row each: address with allowed or
+     * refused, a short device name from the User-Agent (the full one as tooltip) and a delete button;
+     * below, a button that removes them all after asking.
+     */
     private JComponent devices() {
-        JPanel list = new JPanel();
-        list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
+        // One grid for all rows, so the columns (address | state | device | delete) line up from row
+        // to row and the texts of a row share one baseline.
+        JPanel list = new JPanel(new GridBagLayout());
         list.setOpaque(false);
+        list.setAlignmentX(Component.LEFT_ALIGNMENT);
         JComponent none = desc(ctx.m("app.access.devices.none"));
-        JButton clear = Ui.secondary(ctx.m("app.access.devices.clear"), "trash", ClientAccess::clear);
+        JButton clear = Ui.secondary(ctx.m("app.access.devices.clear"), "trash", () -> {
+            if (OeDialog.confirm(ctx, ctx.m("app.access.devices.title"), ctx.plain("app.access.devices.clear.confirm"))) {
+                ClientAccess.clear();
+            }
+        });
         JPanel clearRow = rightAligned(clear);
+        // A line between the list and its button, as between a page's settings and its actions.
+        JComponent clearLine = line();
         Runnable fill = () -> {
             list.removeAll();
             java.util.List<ClientAccess.Entry> all = ClientAccess.decisions();
+            int y = 0;
             for (ClientAccess.Entry e : all) {
+                JTextField ip = value(e.ip());
+                ip.setColumns(0);
                 JLabel state = new JLabel(ctx.m(e.allowed() ? "app.access.allowed" : "app.access.denied"));
-                state.setFont(Ui.font(Font.BOLD, 12.5f));
+                state.setFont(Ui.font(Font.BOLD, 12f));
                 state.setForeground(e.allowed() ? Ui.BC700 : Ui.DANGER);
-                JPanel head = new JPanel(new FlowLayout(FlowLayout.LEFT, Ui.px(10), 0));
-                head.setOpaque(false);
-                head.add(value(e.ip()));
-                head.add(state);
-                JTextField ua = value(e.userAgent() == null ? "-" : e.userAgent());
-                ua.setForeground(Ui.MUTED);
-                JPanel row = new JPanel(new BorderLayout(0, Ui.px(2)));
-                row.setOpaque(false);
-                row.setBorder(Ui.pad(0, 0, 10, 0));
-                row.add(head, BorderLayout.NORTH);
-                row.add(ua, BorderLayout.CENTER);
-                row.setAlignmentX(Component.LEFT_ALIGNMENT);
-                list.add(row);
+                JLabel model = new JLabel(UaSummary.of(e.userAgent()));
+                model.setFont(Ui.font(Font.PLAIN, 12.5f));
+                model.setForeground(Ui.MUTED);
+                model.setToolTipText(e.userAgent());
+                model.setMinimumSize(new Dimension(0, model.getPreferredSize().height));
+                JButton remove = Ui.iconButton("trash", ctx.m("app.access.devices.remove"), true, () -> ClientAccess.forget(e.ip()));
+                GridBagConstraints c = new GridBagConstraints();
+                c.gridy = y++;
+                c.anchor = GridBagConstraints.BASELINE_LEADING;
+                c.insets = new Insets(Ui.px(2), 0, Ui.px(2), Ui.px(12));
+                c.gridx = 0;
+                list.add(ip, c);
+                c.gridx = 1;
+                list.add(state, c);
+                c.gridx = 2;
+                c.weightx = 1;
+                c.fill = GridBagConstraints.HORIZONTAL;
+                list.add(model, c);
+                c.gridx = 3;
+                c.weightx = 0;
+                c.fill = GridBagConstraints.NONE;
+                c.anchor = GridBagConstraints.CENTER;
+                c.insets = new Insets(Ui.px(2), 0, Ui.px(2), 0);
+                list.add(remove, c);
             }
             none.setVisible(all.isEmpty());
             list.setVisible(!all.isEmpty());
             clearRow.setVisible(!all.isEmpty());
+            clearLine.setVisible(!all.isEmpty());
             list.revalidate();
             list.repaint();
         };
         ctx.listen(ClientAccess::onChange, fill);
         fill.run();
         return column(heading(ctx.m("app.access.devices.title")), desc(ctx.m("app.access.devices.desc")), line(), none, list,
-                clearRow);
+                clearLine, clearRow);
     }
 }

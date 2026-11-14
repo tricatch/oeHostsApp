@@ -17,6 +17,24 @@ public final class Settings {
      */
     public static class ForwardProxy {
         public int port = DEFAULT_FWDPROXY_PORT;
+        /** Devices answered on screen, oldest first; kept until removed on the proxy service page. */
+        public List<Device> devices = new ArrayList<>();
+    }
+
+    /** A device other than this PC and the answer given for it. */
+    public static class Device {
+        public String ip;
+        /** The User-Agent of its first request (may be null). */
+        public String userAgent;
+        public boolean allowed;
+
+        public Device() {}
+
+        public Device(String ip, String userAgent, boolean allowed) {
+            this.ip = ip;
+            this.userAgent = userAgent;
+            this.allowed = allowed;
+        }
     }
 
     /** The embedded reverse proxy's binding (a network card's address is bound together with 127.0.0.1). */
@@ -100,6 +118,8 @@ public final class Settings {
     /** Fills parts a data file left out (an older or hand-edited file), so callers never see null. */
     void fillDefaults() {
         if (fwdproxy == null) fwdproxy = new ForwardProxy();
+        if (fwdproxy.devices == null) fwdproxy.devices = new ArrayList<>();
+        fwdproxy.devices.removeIf(d -> d == null || d.ip == null || d.ip.isBlank());
         if (reverseProxy == null) reverseProxy = new ReverseProxy();
         if (userAgentPresets == null) userAgentPresets = new PresetList();
         if (openUrlPresets == null) openUrlPresets = new PresetList();
