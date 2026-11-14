@@ -140,7 +140,7 @@ public final class HostsTab extends JPanel {
         JPanel p = new JPanel(new BorderLayout());
         p.setBackground(Color.WHITE);
         p.setMinimumSize(new Dimension(Ui.px(420), Ui.px(10)));
-        p.add(Ui.header(Ui.caps(ctx.m("hosts.chrome.launcher"))), BorderLayout.NORTH);
+        p.add(Ui.header(Ui.caps(ctx.m("hosts.chrome.launcher")), optionsHelpButton()), BorderLayout.NORTH);
 
         JPanel body = new JPanel();
         body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
@@ -179,8 +179,8 @@ public final class HostsTab extends JPanel {
 
         // Routing switches and launch buttons
         JPanel routing = column(new CompoundBorder(Ui.topLine(), Ui.pad(4, 0, 10, 0)));
-        routing.add(option(swHrr, "--host-resolver-rules", infoButton(() -> ctx.plain("hosts.resolver.rules.info"))));
-        routing.add(option(swProxy, "--proxy-server", infoButton(() -> ctx.plain("app.hosts.proxy.server.info", fwdPort()))));
+        routing.add(option(swHrr, "--host-resolver-rules"));
+        routing.add(option(swProxy, "--proxy-server"));
         JPanel btnRow = new JPanel(new GridBagLayout());
         btnRow.setOpaque(false);
         btnRow.setBorder(Ui.pad(6, 12, 0, 12));
@@ -283,29 +283,52 @@ public final class HostsTab extends JPanel {
         f.setPreferredSize(new Dimension(Ui.px(100), Ui.px(30)));
     }
 
-    private JButton infoButton(java.util.function.Supplier<String> text) {
-        JButton b = Ui.iconButton("info", null, false, null);
-        b.setIcon(Ui.icon("info", 12, new Color(0, 0, 0, 90)));
-        b.setRolloverIcon(Ui.icon("info", 12, new Color(0, 0, 0, 160)));
-        b.setPreferredSize(new Dimension(Ui.px(20), Ui.px(20)));
-        b.setMaximumSize(new Dimension(Ui.px(20), Ui.px(20)));
-        b.putClientProperty("info", true);
-        b.addActionListener(e -> {
-            JTextArea a = new JTextArea(text.get());
-            a.setLineWrap(true);
-            a.setWrapStyleWord(true);
-            a.setEditable(false);
-            a.setFont(Ui.font(Font.PLAIN, 12f));
-            a.setForeground(Ui.PREVIEW_TEXT);
-            a.setBorder(Ui.pad(8, 10, 8, 10));
-            a.setSize(new Dimension(Ui.px(320), Short.MAX_VALUE));
-            a.setPreferredSize(new Dimension(Ui.px(320), a.getPreferredSize().height));
-            JPopupMenu pop = new JPopupMenu();
-            pop.setLayout(new BorderLayout());
-            pop.add(a);
-            pop.show(b, 0, b.getHeight() + 2);
-        });
-        return b;
+    /** Official page on running Chrome with command-line switches (there is no official list of all switches). */
+    private static final String CHROME_SWITCHES_DOC = "https://www.chromium.org/developers/how-tos/run-chromium-with-flags/";
+    /** Unofficial list of switches that the official page above points to. */
+    private static final String CHROME_SWITCHES_LIST = "https://peter.sh/experiments/chromium-command-line-switches/";
+
+    /** Header button that opens {@link #showOptionsHelp()}. */
+    private JButton optionsHelpButton() {
+        return Ui.iconButton("info", ctx.m("app.chrome.options.help"), false, this::showOptionsHelp);
+    }
+
+    /** One dialog with a short line per launcher option and a link to the official Chromium docs. */
+    private void showOptionsHelp() {
+        String[][] rows = {
+                {"--auto-open-devtools-for-tabs", ctx.plain("app.chrome.options.devtools")},
+                {"--incognito", ctx.plain("app.chrome.options.incognito")},
+                {"--user-agent", ctx.plain("app.chrome.options.ua")},
+                {"--user-data-dir", ctx.plain("app.chrome.options.udd")},
+                {"extraArgs", ctx.plain("app.chrome.options.extra")},
+                {"open", ctx.plain("app.chrome.options.open")},
+                {"--host-resolver-rules", ctx.plain("app.chrome.options.hrr")},
+                {"--proxy-server", ctx.plain("app.chrome.options.proxy", fwdPort())},
+        };
+        JPanel list = new JPanel();
+        list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
+        list.setOpaque(false);
+        for (int i = 0; i < rows.length; i++) {
+            JLabel name = new JLabel(rows[i][0]);
+            name.setFont(Ui.mono(12.5f).deriveFont(Font.BOLD));
+            name.setForeground(Ui.TEXT);
+            name.setAlignmentX(LEFT_ALIGNMENT);
+            JComponent desc = OeDialog.note(rows[i][1]);
+            Dialogs.fixWidth(desc, 520);
+            desc.setAlignmentX(LEFT_ALIGNMENT);
+            if (i > 0) list.add(Box.createVerticalStrut(Ui.px(12)));
+            list.add(name);
+            list.add(Box.createVerticalStrut(Ui.px(2)));
+            list.add(desc);
+        }
+        OeDialog d = new OeDialog(ctx.frame(), ctx.m("app.chrome.options.title"));
+        d.body(list);
+        d.footerLeft(SettingsKit.link(ctx, ctx.m("app.chrome.options.docs"), CHROME_SWITCHES_DOC));
+        JComponent switchesLink = SettingsKit.link(ctx, ctx.m("app.chrome.options.list"), CHROME_SWITCHES_LIST);
+        switchesLink.setBorder(Ui.pad(0, 16, 0, 0));
+        d.footerLeft(switchesLink);
+        d.button(ctx.m("btn.close"), false, d::dispose);
+        d.showCentered();
     }
 
     /** Zero preferred/minimum width (height 34) so the row's weights alone set the button's width. */
@@ -500,7 +523,7 @@ public final class HostsTab extends JPanel {
         onSwitch(swUrl, (o, on) -> o.openUrlEnabled = on);
         swUdd.onChange(on -> {
             // Turning it on asks first (wireConfirmToggle in util.js).
-            if (on && !OeDialog.confirm(ctx, ctx.m("modal.udd.warn.title"), ctx.plain("hosts.udd.warn"))) {
+            if (on && !OeDialog.confirm(ctx, ctx.m("modal.udd.warn.title"), ctx.plain("hosts.udd.warn"), 600)) {
                 swUdd.setOn(false);
                 return;
             }
