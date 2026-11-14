@@ -332,17 +332,8 @@ final class CaPage {
         QrCode qr = new QrCode(196);
         qr.setBorder(new LineBorder(Ui.BORDER));
         // Under the line: the QR code at its own size on the left, the copy button at the right,
-        // both at the top of the row.
-        JPanel qrWrap = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        qrWrap.setOpaque(false);
-        qrWrap.add(qr);
-        JPanel copyWrap = new JPanel(new BorderLayout());
-        copyWrap.setOpaque(false);
-        copyWrap.add(copyUrl, BorderLayout.NORTH);
-        JPanel qrRow = new JPanel(new BorderLayout(Ui.px(10), 0));
-        qrRow.setOpaque(false);
-        qrRow.add(qrWrap, BorderLayout.WEST);
-        qrRow.add(copyWrap, BorderLayout.EAST);
+        // both at the top of the row; on a narrow page the button goes under the QR code.
+        JPanel qrRow = sideOrBelow(qr, copyUrl, 10);
         JComponent ready = column(addressRow, urlStack, line(), qrRow);
 
         Runnable fill = () -> {

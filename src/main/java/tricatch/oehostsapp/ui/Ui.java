@@ -627,12 +627,36 @@ public final class Ui {
 
     /** Adds a double-click handler. */
     public static void onDoubleClick(Component c, Runnable r) {
-        c.addMouseListener(new MouseAdapter() {
+        c.addMouseListener(clickOn(c, n -> {
+            if (n == 2) r.run();
+        }));
+    }
+
+    /**
+     * A left click on {@code area}: press, then release with the pointer still inside it. Use this
+     * instead of {@code mouseClicked}, which Swing drops when the pointer moves even 1px between press
+     * and release, so ordinary clicks were often lost. Add the returned listener to {@code area} and
+     * to any child that receives the mouse events; {@code onClick} gets the click count (2 = double).
+     */
+    public static MouseAdapter clickOn(Component area, java.util.function.IntConsumer onClick) {
+        return new MouseAdapter() {
+            boolean pressed;
+
             @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) r.run();
+            public void mousePressed(MouseEvent e) {
+                pressed = SwingUtilities.isLeftMouseButton(e);
             }
-        });
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                boolean was = pressed;
+                pressed = false;
+                if (!was || !SwingUtilities.isLeftMouseButton(e)) return;
+                if (area.contains(SwingUtilities.convertPoint(e.getComponent(), e.getPoint(), area))) {
+                    onClick.accept(e.getClickCount());
+                }
+            }
+        };
     }
 
     public static String esc(String s) {

@@ -215,21 +215,19 @@ public final class SidebarTree extends JPanel {
             row.add(sw, BorderLayout.EAST);
         }
         row.hoverOn(name, icon);
-        MouseAdapter click = new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getWhen() <= dragEndedAt) return;
-                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 1) {
-                    listener.activated(it);
-                } else if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2) {
-                    startRename(center, it.name, n -> {
-                        Store.Item r = ctx.store(s -> s.rename(kind, it.id, n));
-                        if (r != null) listener.renamed(r);
-                        render();
-                    });
-                }
+        MouseAdapter activate = clickUnlessDragged(row, n -> {
+            if (n == 1) {
+                listener.activated(it);
+            } else if (n == 2) {
+                startRename(center, it.name, name2 -> {
+                    Store.Item r = ctx.store(s -> s.rename(kind, it.id, name2));
+                    if (r != null) listener.renamed(r);
+                    render();
+                });
             }
-
+        });
+        for (Component c : new Component[]{row, name, icon}) c.addMouseListener(activate);
+        MouseAdapter click = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
                 popup(e);
@@ -282,6 +280,17 @@ public final class SidebarTree extends JPanel {
     // item's folder or the root). Over a folder: an item goes into it unless it is near the top
     // edge (then before the folder); a folder goes before/after it by half. A folder dropped on
     // another folder's item lands next to that folder. Below the last row: the end of the root.
+
+    /**
+     * {@link Ui#clickOn} for a row that is also a drag handle: a press that turned into a drag (moved
+     * 5px or more, see {@link #draggable}) is not a click, whichever listener sees the release first.
+     */
+    private MouseAdapter clickUnlessDragged(Row row, java.util.function.IntConsumer onClick) {
+        return Ui.clickOn(row, n -> {
+            if (dragging || EventQueue.getMostRecentEventTime() <= dragEndedAt) return;
+            onClick.accept(n);
+        });
+    }
 
     /** The whole row is the drag handle; the switch and the delete button keep their clicks. */
     private void draggable(Row row, Object entry, String parentId, Component... parts) {
@@ -571,21 +580,19 @@ public final class SidebarTree extends JPanel {
             render();
         });
         toggle.setRepeats(false);
-        MouseAdapter click = new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (!SwingUtilities.isLeftMouseButton(e) || e.getWhen() <= dragEndedAt) return;
-                if (e.getClickCount() == 1) {
-                    toggle.restart();
-                } else {
-                    toggle.stop();
-                    startRename(center, f.name, n -> {
-                        ctx.store(s -> s.updateFolder(kind, f.id, n, null));
-                        render();
-                    });
-                }
+        MouseAdapter activate = clickUnlessDragged(row, n -> {
+            if (n == 1) {
+                toggle.restart();
+            } else {
+                toggle.stop();
+                startRename(center, f.name, name2 -> {
+                    ctx.store(s -> s.updateFolder(kind, f.id, name2, null));
+                    render();
+                });
             }
-
+        });
+        for (Component c : new Component[]{row, name, icon, badge}) c.addMouseListener(activate);
+        MouseAdapter click = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
                 popup(e);

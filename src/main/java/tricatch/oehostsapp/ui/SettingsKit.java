@@ -146,6 +146,71 @@ final class SettingsKit {
     }
 
     /**
+     * {@code left} at the top left and {@code right} at the top right while both fit side by side;
+     * when the row is too narrow, {@code right} moves under {@code left} instead of overlapping it
+     * (BorderLayout WEST/EAST would draw them on top of each other).
+     */
+    static JPanel sideOrBelow(JComponent left, JComponent right, int gapAt100) {
+        int gap = Ui.px(gapAt100);
+        JPanel p = new JPanel();
+        p.setOpaque(false);
+        p.setLayout(new LayoutManager() {
+            Boolean lastFits;
+
+            private boolean fits(Container c) {
+                Insets in = c.getInsets();
+                int w = c.getWidth() - in.left - in.right;
+                // Not laid out yet (width 0): ask for the side-by-side size.
+                return c.getWidth() == 0
+                        || w >= left.getPreferredSize().width + gap + right.getPreferredSize().width;
+            }
+
+            private Dimension size(Container c, boolean fits) {
+                Dimension l = left.getPreferredSize(), r = right.getPreferredSize();
+                Insets in = c.getInsets();
+                Dimension d = fits
+                        ? new Dimension(l.width + gap + r.width, Math.max(l.height, r.height))
+                        : new Dimension(Math.max(l.width, r.width), l.height + gap + r.height);
+                return new Dimension(d.width + in.left + in.right, d.height + in.top + in.bottom);
+            }
+
+            @Override
+            public Dimension preferredLayoutSize(Container c) {
+                return size(c, fits(c));
+            }
+
+            @Override
+            public Dimension minimumLayoutSize(Container c) {
+                return size(c, false);
+            }
+
+            @Override
+            public void layoutContainer(Container c) {
+                Insets in = c.getInsets();
+                Dimension l = left.getPreferredSize(), r = right.getPreferredSize();
+                boolean fits = fits(c);
+                left.setBounds(in.left, in.top, l.width, l.height);
+                if (fits) right.setBounds(c.getWidth() - in.right - r.width, in.top, r.width, r.height);
+                else right.setBounds(in.left, in.top + l.height + gap, r.width, r.height);
+                // The height depends on the mode, so the parent has to lay out again when it flips.
+                if (lastFits != null && lastFits != fits) SwingUtilities.invokeLater(c::revalidate);
+                lastFits = fits;
+            }
+
+            @Override
+            public void addLayoutComponent(String name, Component comp) {
+            }
+
+            @Override
+            public void removeLayoutComponent(Component comp) {
+            }
+        });
+        p.add(left);
+        p.add(right);
+        return p;
+    }
+
+    /**
      * A full-width command box (URL, launch option) under an address drop-down: its text starts at
      * the same x as the drop-down's, so the left padding is 4px less than {@link OeDialog#script}'s.
      */
@@ -513,17 +578,15 @@ final class SettingsKit {
                 hover[0] = false;
                 l.setForeground(Ui.TEXT);
             }
-
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                try {
-                    Desktop.getDesktop().browse(URI.create(url));
-                } catch (Exception ex) {
-                    OeDialog.copy(url);
-                    ctx.toast(ctx.m("app.settings.copied"));
-                }
-            }
         });
+        l.addMouseListener(Ui.clickOn(l, n -> {
+            try {
+                Desktop.getDesktop().browse(URI.create(url));
+            } catch (Exception ex) {
+                OeDialog.copy(url);
+                ctx.toast(ctx.m("app.settings.copied"));
+            }
+        }));
         return l;
     }
 

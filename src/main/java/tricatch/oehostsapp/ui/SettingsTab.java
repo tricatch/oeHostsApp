@@ -190,6 +190,7 @@ public final class SettingsTab extends JPanel {
             boolean hover;
 
             {
+                addMouseListener(Ui.clickOn(this, n -> onClick.run()));
                 addMouseListener(new MouseAdapter() {
                     @Override
                     public void mouseEntered(MouseEvent e) {
@@ -201,11 +202,6 @@ public final class SettingsTab extends JPanel {
                     public void mouseExited(MouseEvent e) {
                         hover = false;
                         repaint();
-                    }
-
-                    @Override
-                    public void mouseClicked(MouseEvent e) {
-                        if (SwingUtilities.isLeftMouseButton(e)) onClick.run();
                     }
                 });
             }
