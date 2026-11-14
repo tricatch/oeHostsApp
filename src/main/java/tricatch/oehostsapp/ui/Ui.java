@@ -190,9 +190,11 @@ public final class Ui {
 
     /**
      * The application icon at {@code size} pixels, in this OS's style: {@code framed} (macOS) puts
-     * the logo on a white rounded square with a margin, outlined in light gray so it does not vanish
-     * on a white background; otherwise (Windows) the round logo fills the whole icon with nothing
-     * around it. One drawing for every place the icon appears: the window icons, the macOS Dock
+     * the logo on a white rounded square outlined in light gray so it does not vanish on a white
+     * background, laid out on Apple's macOS icon grid: the square is 824/1024 of the canvas, centred,
+     * with a corner radius of about 22.5% of its side and a transparent margin around it. macOS 26
+     * and later show an icon that ignores this grid (e.g. a square filling the whole canvas) shrunk
+     * onto a gray plate. Otherwise (Windows) the round logo fills the whole icon with nothing around it. One drawing for every place the icon appears: the window icons, the macOS Dock
      * icon set at runtime, and the files in {@code packaging/} (generated from this method:
      * {@code .icns} and the Linux {@code .png} framed, {@code .ico} not; regenerate them when it changes).
      */
@@ -206,18 +208,20 @@ public final class Ui {
             g.dispose();
             return img;
         }
-        float line = Math.max(1f, size / 128f);
-        float arc = size * 0.45f;
+        float line = Math.max(1f, size / 256f);
+        float side = size * 824f / 1024f;
+        float at = (size - side) / 2;
+        float arc = side * 0.45f; // diameter: radius 22.5% of the side
         java.awt.geom.RoundRectangle2D box = new java.awt.geom.RoundRectangle2D.Float(
-                line / 2, line / 2, size - line, size - line, arc, arc);
+                at + line / 2, at + line / 2, side - line, side - line, arc, arc);
         g.setColor(Color.WHITE);
         g.fill(box);
         g.setColor(new Color(0xd9d9d9));
         g.setStroke(new BasicStroke(line));
         g.draw(box);
-        int margin = Math.round(size * 0.1f);
-        int logo = size - 2 * margin;
-        paintLogo(g, margin, margin, logo);
+        int logo = Math.round(side * 0.8f);
+        int logoAt = Math.round((size - logo) / 2f);
+        paintLogo(g, logoAt, logoAt, logo);
         g.dispose();
         return img;
     }
