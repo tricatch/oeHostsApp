@@ -25,16 +25,28 @@ tasks.withType<JavaCompile> {
 dependencies {
     // 0.3.0: setBindAddresses (the reverse proxy on a network card plus 127.0.0.1).
     implementation("io.github.tricatch:oe-proxy:0.3.0")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.22.4")
-    implementation("org.slf4j:slf4j-simple:2.0.17")
-    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.4")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.23.0")
+    implementation("org.slf4j:slf4j-simple:2.0.20")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.23.0")
     implementation("com.formdev:flatlaf:3.8")
     implementation("com.formdev:flatlaf-extras:3.8")
-    implementation("com.fifesoft:rsyntaxtextarea:3.6.0")
+    implementation("com.fifesoft:rsyntaxtextarea:4.0.1")
     // Forward proxy (same version as oeHub).
     implementation("io.github.littleproxy:littleproxy:2.9.1")
     // QR code on the phone setup page (pure Java, no native parts).
     implementation("com.google.zxing:core:3.5.4")
+
+    // Newer than what littleproxy / oe-proxy / jackson pull in, for their security fixes:
+    // guava 33.7.1 has GHSA-xxph-c9ww-hj94 (fixed in 33.7.2); netty, bouncycastle and snakeyaml
+    // parse network or certificate input, so they track the latest patch release.
+    implementation(platform("io.netty:netty-bom:4.2.20.Final"))
+    constraints {
+        implementation("com.google.guava:guava:33.8.0-jre")
+        implementation("org.bouncycastle:bcprov-jdk18on:1.87")
+        implementation("org.bouncycastle:bcpkix-jdk18on:1.87")
+        implementation("org.bouncycastle:bcutil-jdk18on:1.87")
+        implementation("org.yaml:snakeyaml:2.7")
+    }
 
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
