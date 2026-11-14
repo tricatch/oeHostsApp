@@ -24,4 +24,50 @@ class HostsRulesTest {
         assertEquals(4, all.size());
         assertFalse(all.get(2).active());
     }
+
+    @Test
+    void problemsFlagLinesNotStartingWithAnIp() {
+        String ok = """
+                # comment
+
+                1.2.3.4 a.com
+                  10.0.0.1\tb.com c.com # x
+                ::1 v6.com
+                fe80::1 *.w.com
+                ${PROXY_SVR} p.com
+                ${LOCAL_SVR} l.com
+                """;
+        assertEquals(List.of(), HostsRules.problems(ok));
+        assertEquals(List.of(), HostsRules.problems(""));
+
+        List<HostsRules.Problem> p = HostsRules.problems("""
+                a.com 1.2.3.4
+                1.2.3.4 a.com
+                256.1.1.1 b.com
+                1.2.3 c.com
+                cafe.be d.com
+                1::2::3 e.com
+                1.2.3.4
+                1.2.3.4 "x"
+                1.2.3.4 # only a comment
+                """);
+        assertEquals(List.of(
+                new HostsRules.Problem(0, HostsRules.PROBLEM_IP),
+                new HostsRules.Problem(2, HostsRules.PROBLEM_IP),
+                new HostsRules.Problem(3, HostsRules.PROBLEM_IP),
+                new HostsRules.Problem(4, HostsRules.PROBLEM_IP),
+                new HostsRules.Problem(5, HostsRules.PROBLEM_IP),
+                new HostsRules.Problem(6, HostsRules.PROBLEM_HOST),
+                new HostsRules.Problem(7, HostsRules.PROBLEM_HOST),
+                new HostsRules.Problem(8, HostsRules.PROBLEM_HOST)), p);
+    }
+
+    @Test
+    void bundledExamplesAreValid() throws Exception {
+        for (String lang : List.of("en", "ko")) {
+            try (var in = HostsRules.class.getResourceAsStream("/example/hosts_example_" + lang + ".txt")) {
+                assertEquals(List.of(), HostsRules.problems(new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)));
+            }
+        }
+    }
 }

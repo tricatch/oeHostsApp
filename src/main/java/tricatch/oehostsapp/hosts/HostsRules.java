@@ -1,5 +1,7 @@
 package tricatch.oehostsapp.hosts;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -35,7 +37,22 @@ public final class HostsRules {
     private static final Pattern WS = Pattern.compile("[\\s\\uFEFF]+");
     private static final Pattern TRIM = Pattern.compile("^[\\s\\uFEFF]+|[\\s\\uFEFF]+$");
 
+    /** Strict address check of {@link #problems}: a dotted IPv4 address, or IPv6 characters only. */
+    private static final Pattern IPV4 = Pattern.compile("^(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)$");
+    private static final Pattern IPV6_CHARS = Pattern.compile("^[0-9A-Fa-f:.]+$");
+
     public record Rule(String host, String ip) {}
+
+    /**
+     * Why a line of a profile is invalid: {@code key} is a message key, {@code line} the line's
+     * index (0-based).
+     */
+    public record Problem(int line, String key) {}
+
+    /** The line does not start with an IP address (or one of the placeholders). */
+    public static final String PROBLEM_IP = "app.hosts.invalid.ip";
+    /** The IP address is not followed by a valid host name. */
+    public static final String PROBLEM_HOST = "app.hosts.invalid.host";
 
     /** A rule of the merged profiles; {@code active} is false when an earlier profile already maps the host. */
     public record Entry(String host, String ip, boolean active) {}
@@ -58,6 +75,39 @@ public final class HostsRules {
             rules.add(new Rule(w[1], w[0]));
         }
         return rules;
+    }
+
+    /**
+     * The invalid lines of {@code content}, in order; empty when every line that is not blank or a
+     * {@code #} comment is an IP address (IPv4, IPv6, {@code ${PROXY_SVR}} or {@code ${LOCAL_SVR}})
+     * followed by a host name. Stricter than {@link #parse}, which silently drops such lines: an
+     * edit with a problem is never stored, so a typo cannot quietly turn a rule off.
+     */
+    public static List<Problem> problems(String content) {
+        List<Problem> out = new ArrayList<>();
+        String[] lines = content.split("\n", -1);
+        for (int i = 0; i < lines.length; i++) {
+            String trimmed = TRIM.matcher(lines[i]).replaceAll("");
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) continue;
+            String[] w = WS.split(trimmed);
+            if (!isAddress(w[0])) out.add(new Problem(i, PROBLEM_IP));
+            else if (w.length < 2 || !HOST.matcher(w[1]).matches()) out.add(new Problem(i, PROBLEM_HOST));
+        }
+        return out;
+    }
+
+    /** An IPv4 or IPv6 literal, or a placeholder; never a host name (no lookup is made). */
+    static boolean isAddress(String s) {
+        if (s.equals(PROXY_SVR_PLACEHOLDER) || s.equals(LOCAL_SVR_PLACEHOLDER)) return true;
+        if (IPV4.matcher(s).matches()) return true;
+        if (s.indexOf(':') < 0 || !IPV6_CHARS.matcher(s).matches()) return false;
+        try {
+            // With a ':' the JDK only parses the text as an IPv6 literal; it never resolves it.
+            InetAddress.getByName(s);
+            return true;
+        } catch (UnknownHostException e) {
+            return false;
+        }
     }
 
     /**

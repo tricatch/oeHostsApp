@@ -75,6 +75,13 @@ public final class HostsTab extends JPanel {
                 "confirm.delete.profile", "editor.select.profile", "hosts.empty", "hosts.sidebar.count"),
                 new ItemPanel.Hooks() {
                     @Override
+                    public ItemPanel.Invalid invalid(String content) {
+                        List<HostsRules.Problem> p = HostsRules.problems(content);
+                        return p.isEmpty() ? null
+                                : new ItemPanel.Invalid(p.get(0).line(), ctx.m(p.get(0).key(), String.valueOf(p.get(0).line() + 1)));
+                    }
+
+                    @Override
                     public void changed() {
                         updatePreviews();
                     }

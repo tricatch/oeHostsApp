@@ -33,9 +33,9 @@ public final class ProxyTab extends JPanel {
                 "tooltip.delete.vhost", "confirm.delete.vhost", "editor.select.vhost", "proxy.empty", "proxy.sidebar.count"),
                 new ItemPanel.Hooks() {
                     @Override
-                    public String invalid(String content) {
+                    public ItemPanel.Invalid invalid(String content) {
                         List<Vhosts.Problem> p = Vhosts.problems(content);
-                        return p.isEmpty() ? null : message(p.get(0));
+                        return p.isEmpty() ? null : new ItemPanel.Invalid(p.get(0).line(), message(p.get(0)));
                     }
 
                     @Override
@@ -45,15 +45,6 @@ public final class ProxyTab extends JPanel {
                         showMerged();
                     }
 
-                    @Override
-                    public void opened(Store.Item item) {
-                        lint(item == null ? "" : item.content);
-                    }
-
-                    @Override
-                    public void edited(String text) {
-                        lint(text);
-                    }
                 });
         items.bindSaveKey(this);
         btnSaveMerged = Ui.iconButton("copy-plus", ctx.m("tooltip.save.merged"), false, this::saveMerged);
@@ -120,29 +111,11 @@ public final class ProxyTab extends JPanel {
         }
     }
 
-    // ── Validation (validateSchema / lintDoc of proxy.html) ─────
+    // ── Validation (validateSchema of proxy.html; ItemPanel marks the line) ─────
 
     private String message(Vhosts.Problem p) {
         if (p.key() == null) return p.detail();
         return p.path() == null ? ctx.m(p.key()) : p.path() + ": " + ctx.m(p.key());
-    }
-
-    /** Marks the first problem's line in the editor and its text as the tooltip of the status. */
-    private void lint(String content) {
-        CodeEditor editor = items.editor;
-        editor.area.removeAllLineHighlights();
-        List<Vhosts.Problem> problems = Vhosts.problems(content);
-        if (problems.isEmpty()) {
-            items.saveStatus.setToolTipText(null);
-            return;
-        }
-        Vhosts.Problem p = problems.get(0);
-        try {
-            editor.area.addLineHighlight(Math.min(p.line(), editor.area.getLineCount() - 1), new Color(255, 0, 0, 28));
-        } catch (javax.swing.text.BadLocationException ignored) {
-            // the line is clamped to the document
-        }
-        items.saveStatus.setToolTipText(message(p));
     }
 
     // ── Merge ───────────────────────────────────────────────────

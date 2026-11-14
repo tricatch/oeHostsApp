@@ -18,10 +18,16 @@ final class ItemPanel {
     record Spec(Store.Kind kind, String syntax, String ext, String headerKey, String newKey, String importKey,
                 String deleteKey, String confirmDeleteKey, String selectKey, String emptyKey, String countKey) {}
 
+    /** Why the content may not be stored: the first problem's {@code line} (0-based) and its text. */
+    record Invalid(int line, String message) {}
+
     /** What the screen does on top of the shared behavior. */
     interface Hooks {
-        /** Why {@code content} may not be stored (shown, and the edit stays unsaved), or null. */
-        default String invalid(String content) {
+        /**
+         * Why {@code content} may not be stored, or null. Its line is marked in the editor and its
+         * text is the save status's tooltip; the edit stays unsaved and an import is skipped.
+         */
+        default Invalid invalid(String content) {
             return null;
         }
 
@@ -90,6 +96,7 @@ final class ItemPanel {
         });
         autosave = new Autosave(ctx, editor, saveStatus, this::save);
         editor.onEdit(() -> {
+            lint(editor.getText());
             hooks.edited(editor.getText());
             autosave.changed(editor.getText());
         });
@@ -195,7 +202,21 @@ final class ItemPanel {
         btnDelete.setEnabled(it != null);
         btnDownload.setEnabled(it != null);
         metaUpdated.setText(it == null ? "—" : date(it.updatedAt));
+        lint(it == null ? "" : it.content);
         hooks.opened(it);
+    }
+
+    /** Marks the first problem's line in the editor and puts its text in the save status's tooltip. */
+    private void lint(String content) {
+        editor.area.removeAllLineHighlights();
+        Invalid p = hooks.invalid(content);
+        saveStatus.setToolTipText(p == null ? null : p.message());
+        if (p == null) return;
+        try {
+            editor.area.addLineHighlight(Math.min(p.line(), editor.area.getLineCount() - 1), new Color(255, 0, 0, 28));
+        } catch (javax.swing.text.BadLocationException ignored) {
+            // the line is clamped to the document
+        }
     }
 
     /** Replaces the open item with what the store now holds for it (sharing turned on, say). */
@@ -204,9 +225,9 @@ final class ItemPanel {
     }
 
     private Autosave.Result save(String id, String content) {
-        String invalid = hooks.invalid(content);
+        Invalid invalid = hooks.invalid(content);
         // Not saved and not retried: the next edit tries again.
-        if (invalid != null) return Autosave.Result.refused(invalid);
+        if (invalid != null) return Autosave.Result.refused(invalid.message());
         Store.Item r = ctx.store(s -> s.updateContent(spec.kind(), id, content));
         if (r == null) return Autosave.Result.retry(ctx.m("status.save.failed"));
         if (isActive(id)) {
@@ -274,9 +295,9 @@ final class ItemPanel {
         int imported = 0;
         String invalid = null;
         for (ItemFiles.Loaded f : files) {
-            String why = hooks.invalid(f.content());
+            Invalid why = hooks.invalid(f.content());
             if (why != null) {
-                if (invalid == null) invalid = ctx.m("app.item.import.invalid", f.name(), why);
+                if (invalid == null) invalid = ctx.m("app.item.import.invalid", f.name(), why.message());
                 continue;
             }
             Store.Item it = ctx.store(s -> s.createFrom(spec.kind(), f.name(), f.content()));

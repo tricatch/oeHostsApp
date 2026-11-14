@@ -60,7 +60,7 @@ public final class CodeEditor {
         area.setBackground(Color.WHITE);
         area.setSelectionColor(new Color(0xb5d5ff));
         area.setBracketMatchingEnabled(false);
-        area.setMargin(new Insets(Ui.px(2), Ui.px(10), Ui.px(2), Ui.px(4)));
+        area.setMargin(new Insets(Ui.px(2), Ui.px(4), Ui.px(2), Ui.px(4)));
         scroll = new RTextScrollPane(area, true) {
             // Drawn over the children, like the web's ::after overlay, so the layout never shifts.
             // While it shows, a child's repaint starts here too, or typing would paint over it.
