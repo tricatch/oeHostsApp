@@ -66,6 +66,17 @@ final class ItemPanel {
             }
 
             public void toggled(Store.Item item) {
+                // An item with a problem cannot be turned on; for the open item that is what the
+                // editor shows, even while the edit is still unsaved. Turning one off always works.
+                if (!item.selected) {
+                    String text = isActive(item.id) ? editor.getText() : item.content;
+                    Invalid why = hooks.invalid(text == null ? "" : text);
+                    if (why != null) {
+                        tree.render();
+                        ctx.toast(ctx.m("app.item.select.invalid", why.message()));
+                        return;
+                    }
+                }
                 ctx.store(s -> s.toggleSelected(spec.kind(), item.id));
                 tree.render();
                 hooks.changed();

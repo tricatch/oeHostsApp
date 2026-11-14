@@ -111,11 +111,12 @@ public final class ProxyTab extends JPanel {
         }
     }
 
-    // ── Validation (validateSchema of proxy.html; ItemPanel marks the line) ─────
+    // ── Validation (Vhosts.problems; ItemPanel marks the line) ─────
 
+    /** "Line N: why", as the hosts screen words its problems. */
     private String message(Vhosts.Problem p) {
-        if (p.key() == null) return p.detail();
-        return p.path() == null ? ctx.m(p.key()) : p.path() + ": " + ctx.m(p.key());
+        String why = p.key() == null ? p.detail() : ctx.m(p.key(), p.detail());
+        return ctx.m("app.proxy.problem.line", String.valueOf(p.line() + 1), why);
     }
 
     // ── Merge ───────────────────────────────────────────────────

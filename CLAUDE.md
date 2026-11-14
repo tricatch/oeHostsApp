@@ -54,9 +54,10 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
 
 - The screens keep oeHub's look and behavior. Colors, sizes and wording come from oeHub's CSS and messages; when the oeHub counterpart changes, update the matching class here:
   - `ChromeArgs` ↔ `static/js/chrome-launch-args.js` and `util.js` (`resolveUDD`, `winArgQuote`, `macArgQuote`). Deliberate difference: the start URL is passed as it is, not through `wrapDelayedUrl` (the delay only served oeHub's oeOID browser extension). This app does not use oeOID at all: no identifier header/codec setup, no extension hints in messages.
-  - `HostsRules` ↔ `util.js` `parseHostsToMap` and the hosts page's `mergeSelectedProfiles`
+  - `HostsRules` ↔ `util.js` `parseHostsToMap` and the hosts page's `mergeSelectedProfiles`. Deliberate difference: `HostsRules.problems` (no oeHub counterpart) refuses to store a profile with a line that `parse` would silently drop; `parse` itself stays as in oeHub.
   - `ui.HostsTab` ↔ `templates/oehub/hosts.pebble` (the options of `store.LauncherOptions`)
-  - `proxy.Vhosts` ↔ `templates/oehub/proxy.pebble` (`validateSchema`, `buildMergedVirtualYaml`); `ui.ProxyTab` ↔ the rest of that page
+  - `proxy.Vhosts` ↔ `templates/oehub/proxy.pebble` (`validateSchema`, `buildMergedVirtualYaml`); `ui.ProxyTab` ↔ the rest of that page. Deliberate difference: `Vhosts.problems` is stricter than `validateSchema` (it also checks what oe-proxy would ignore or reject when loading routes: unknown or repeated keys, domain, host, path and header formats) and reports each problem's own line. When oe-proxy's `VirtualHostUtil` or its header rules change, update it.
+  - Both editors mark the first problem's line through `ItemPanel.Hooks.invalid`; a profile or vhost with a problem is never stored or imported.
   - `ui.MonitorTab` ↔ `templates/oehub/proxy-monitor.pebble`
   - `ui.SidebarTree` ↔ `static/js/list-folders.js`
   - `ui.Ui`, `ui.OeDialog` ↔ `static/css/app.css`, `oe-panel.css`, `hosts.css`
