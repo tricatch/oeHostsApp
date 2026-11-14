@@ -20,7 +20,8 @@ import java.util.function.Consumer;
  * list-folders.js: 36px rounded rows, BC100 for the selected row, a BC300 switch per item, an
  * "on/total" badge per folder and a guide line under an open folder.
  *
- * <p>Click a folder to open/close it, double-click a name to rename it, right-click for move and
+ * <p>Click a folder to open/close it, double-click a folder or the name text of the already open
+ * item to rename it (or use the right-click menu), right-click for move and
  * delete, drag a row to reorder it or to drop an item into a folder.
  */
 public final class SidebarTree extends JPanel {
@@ -62,6 +63,8 @@ public final class SidebarTree extends JPanel {
      */
     private String lastClickKey;
     private long lastClickAt;
+    /** Whether the item was already open when the first click of a possible double click landed. */
+    private boolean firstClickOnOpen;
 
     public SidebarTree(AppContext ctx, Store.Kind kind, Listener listener) {
         super(new BorderLayout());
@@ -221,10 +224,25 @@ public final class SidebarTree extends JPanel {
             row.add(sw, BorderLayout.EAST);
         }
         row.hoverOn(name, icon);
+        // Whether the last press was on the name's text itself (the label is as wide as the row).
+        boolean[] pressOnText = {false};
+        MouseAdapter textPress = new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                Point p = SwingUtilities.convertPoint(e.getComponent(), e.getPoint(), name);
+                int left = name.getInsets().left;
+                int width = name.getFontMetrics(name.getFont()).stringWidth(name.getText());
+                pressOnText[0] = name.contains(p) && p.x >= left && p.x <= left + width;
+            }
+        };
+        for (Component c : new Component[]{row, name, icon}) c.addMouseListener(textPress);
         MouseAdapter activate = clickUnlessDragged(row, "i:" + it.id, n -> {
             if (n == 1) {
+                firstClickOnOpen = it.id.equals(activeId);
                 listener.activated(it);
-            } else if (n == 2) {
+            } else if (n == 2 && firstClickOnOpen && pressOnText[0]) {
+                // Only a double click on the name's text of an item that was already open before
+                // it renames, so clicking quickly through the list never lands in the rename field.
                 startRename(center, it.name, name2 -> {
                     Store.Item r = ctx.store(s -> s.rename(kind, it.id, name2));
                     if (r != null) listener.renamed(r);
