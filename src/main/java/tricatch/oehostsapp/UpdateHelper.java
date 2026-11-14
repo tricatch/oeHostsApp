@@ -31,6 +31,9 @@ import java.util.jar.JarFile;
 public final class UpdateHelper {
 
     private static final boolean WIN = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+    private static final boolean MAC = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac");
+    /** {@code CFBundleIdentifier} of the oeHostsApp.app bundle install.sh makes. */
+    private static final String MAC_BUNDLE_ID = "io.github.tricatch.oehostsapp";
     private static final String UNINSTALL_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\oeHostsApp";
 
     private UpdateHelper() {}
@@ -100,6 +103,7 @@ public final class UpdateHelper {
 
     /** Starts the app again, its output where the launcher would put it. */
     private static void start(List<String> command, Path dir) {
+        if (MAC && MAC_BUNDLE_ID.equals(System.getenv("__CFBundleIdentifier")) && openBundle(command)) return;
         try {
             ProcessBuilder pb = new ProcessBuilder(command).directory(dir.toFile());
             // install.sh's launcher writes the app's output to oehostsapp.log next to the jar;
@@ -115,6 +119,33 @@ public final class UpdateHelper {
         } catch (Exception e) {
             log("could not start the app: " + e);
         }
+    }
+
+    /**
+     * macOS, when the old app was started from oeHostsApp.app (Launch Services passes the bundle id
+     * down to its processes, this one included): starts the app through the bundle again with
+     * {@code open -b}, keeping only the app arguments after {@code -jar JAR}. Started as a plain
+     * {@code java} process instead, it is not part of the bundle, and the Dock shows a generic
+     * executable icon for it. False when that failed, so the caller runs {@code command} itself.
+     */
+    private static boolean openBundle(List<String> command) {
+        int jar = command.indexOf("-jar");
+        List<String> cmd = new java.util.ArrayList<>(List.of("/usr/bin/open", "-b", MAC_BUNDLE_ID));
+        if (jar >= 0 && jar + 2 < command.size()) {
+            cmd.add("--args");
+            cmd.addAll(command.subList(jar + 2, command.size()));
+        }
+        try {
+            Process p = new ProcessBuilder(cmd).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+            if (p.waitFor(15, TimeUnit.SECONDS) && p.exitValue() == 0) {
+                log("started " + String.join(" ", cmd));
+                return true;
+            }
+            log("open -b " + MAC_BUNDLE_ID + " failed; starting the command instead");
+        } catch (Exception e) {
+            log("open -b " + MAC_BUNDLE_ID + " failed (" + e + "); starting the command instead");
+        }
+        return false;
     }
 
     /**
