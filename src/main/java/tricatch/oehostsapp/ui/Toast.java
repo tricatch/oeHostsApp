@@ -37,11 +37,14 @@ final class Toast {
         l.setForeground(new Color(0x3a6b1a));
         l.setBorder(Ui.pad(12, 22, 15, 22));
         l.setHorizontalAlignment(SwingConstants.CENTER);
-        // Short messages ("Exported.") would make a stubby box: keep a minimum width.
-        Dimension d = l.getPreferredSize();
-        d.width = Math.max(d.width, Ui.px(MIN_WIDTH));
-        l.setBounds((layers.getWidth() - d.width) / 2, Ui.px(24), d.width, d.height);
+        // Measured once in the window: before that the label has no graphics configuration, its
+        // font metrics come out narrower than what is painted (HiDPI, Korean fallback font) and
+        // a long message ends in "...". A few pixels spare cover rounding.
         layers.add(l, JLayeredPane.POPUP_LAYER);
+        Dimension d = l.getPreferredSize();
+        // Short messages ("Exported.") would make a stubby box: keep a minimum width.
+        d.width = Math.max(d.width + Ui.px(6), Ui.px(MIN_WIDTH));
+        l.setBounds((layers.getWidth() - d.width) / 2, Ui.px(24), d.width, d.height);
         layers.repaint();
         current = l;
         Timer t = new Timer(2500, e -> {
