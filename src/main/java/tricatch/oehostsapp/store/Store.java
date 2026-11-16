@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.crypto.Mac;
@@ -272,9 +273,15 @@ public final class Store {
         return base + " (" + newId() + ")";
     }
 
-    private Set<String> takenNames(Kind kind, String exceptId) {
+    /**
+     * The names (lower case) used in folder {@code folderId} (null: the root), leaving out item
+     * {@code exceptId}. Names only have to be unique within one folder.
+     */
+    private Set<String> takenNames(Kind kind, String folderId, String exceptId) {
         Set<String> out = new HashSet<>();
-        for (Item i : items(kind)) if (!i.id.equals(exceptId)) out.add(i.name.toLowerCase(Locale.ROOT));
+        for (Item i : items(kind)) {
+            if (!i.id.equals(exceptId) && Objects.equals(i.folderId, folderId)) out.add(i.name.toLowerCase(Locale.ROOT));
+        }
         return out;
     }
 
@@ -312,7 +319,7 @@ public final class Store {
         String base = name == null ? "" : name.strip();
         if (base.length() > 190) base = base.substring(0, 190).strip();
         if (base.isEmpty()) base = kind.defaultName;
-        Item i = newItem(kind, nextUniqueName(takenNames(kind, null), base), content, false, null);
+        Item i = newItem(kind, nextUniqueName(takenNames(kind, null, null), base), content, false, null);
         items(kind).add(i);
         save();
         return i;
@@ -343,7 +350,7 @@ public final class Store {
         String n = name == null ? "" : name.strip();
         if (n.isEmpty() || n.length() > 200) throw StoreException.invalid("name");
         Item i = item(kind, id);
-        if (takenNames(kind, id).contains(n.toLowerCase(Locale.ROOT))) throw StoreException.nameTaken();
+        if (takenNames(kind, i.folderId, id).contains(n.toLowerCase(Locale.ROOT))) throw StoreException.nameTaken();
         i.name = n;
         i.updatedAt = now();
         save();
@@ -474,20 +481,32 @@ public final class Store {
         return f;
     }
 
-    /** Moves an item into {@code folderId} (null = root), placing it last. */
+    /** Moves an item into {@code folderId} (null = root), placing it last; refused when that folder already has its name. */
     public Item moveItem(Kind kind, String id, String folderId) {
         Item i = item(kind, id);
         if (folderId != null && folders(kind).stream().noneMatch(f -> f.id.equals(folderId))) throw StoreException.notFound();
+        if (takenNames(kind, folderId, id).contains(i.name.toLowerCase(Locale.ROOT))) throw StoreException.nameTaken();
         i.folderId = folderId;
         i.sortOrder = nextSortOrder(kind);
         save();
         return i;
     }
 
-    /** Deletes a folder; its items move to the root (oeHub: FK ON DELETE SET NULL). */
+    /**
+     * Deletes a folder; its items move to the root (oeHub: FK ON DELETE SET NULL). One whose name the
+     * root already has gets a " (n)" suffix, since names are unique per folder.
+     */
     public void deleteFolder(Kind kind, String id) {
         if (!folders(kind).removeIf(f -> f.id.equals(id))) throw StoreException.notFound();
-        for (Item i : items(kind)) if (id.equals(i.folderId)) i.folderId = null;
+        for (Item i : items(kind)) {
+            if (!id.equals(i.folderId)) continue;
+            String name = nextUniqueName(takenNames(kind, null, i.id), i.name);
+            i.folderId = null;
+            if (!name.equals(i.name)) {
+                i.name = name;
+                i.updatedAt = now();
+            }
+        }
         save();
     }
 
@@ -504,6 +523,17 @@ public final class Store {
             boolean known = p.folder() ? folders.containsKey(p.id()) : items.containsKey(p.id());
             if (!known) throw StoreException.notFound();
             if (!p.folder() && p.folderId() != null && !folders.containsKey(p.folderId())) throw StoreException.invalid("folderId");
+        }
+        // An item changing folder must not meet its name there (names are unique per folder).
+        Map<String, String> after = new HashMap<>();
+        for (Item i : items.values()) after.put(i.id, i.folderId);
+        for (Placement p : entries) if (!p.folder()) after.put(p.id(), p.folderId());
+        for (Item i : items.values()) {
+            String to = after.get(i.id);
+            if (Objects.equals(to, i.folderId)) continue;
+            for (Item o : items.values()) {
+                if (o != i && Objects.equals(after.get(o.id), to) && o.name.equalsIgnoreCase(i.name)) throw StoreException.nameTaken();
+            }
         }
         long n = 0;
         for (Placement p : entries) {
@@ -599,7 +629,7 @@ public final class Store {
             String name = it.name == null ? "" : it.name.strip();
             if (name.isEmpty()) continue;
             String folderId = it.folderId == null ? null : folderNames.get(it.folderId);
-            items(kind).add(newItem(kind, nextUniqueName(takenNames(kind, null), name),
+            items(kind).add(newItem(kind, nextUniqueName(takenNames(kind, folderId, null), name),
                     it.content == null ? "" : it.content, it.selected, folderId));
         }
     }

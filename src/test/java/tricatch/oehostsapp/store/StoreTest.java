@@ -75,6 +75,33 @@ class StoreTest {
     }
 
     @Test
+    void namesAreUniquePerFolder() throws Exception {
+        Store s = open();
+        Store.Item a = s.createFrom(Store.Kind.HOSTS, "dev", "");
+        Store.Folder f = s.createFolder(Store.Kind.HOSTS);
+        Store.Item b = s.createFrom(Store.Kind.HOSTS, "other", "");
+        s.moveItem(Store.Kind.HOSTS, b.id, f.id);
+        assertEquals("DEV", s.rename(Store.Kind.HOSTS, b.id, "DEV").name, "another folder may use the name");
+        assertEquals("dev (2)", s.createFrom(Store.Kind.HOSTS, "dev", "").name, "the root already has it");
+
+        // Moving into a folder that has the name is refused, by menu and by drag.
+        assertEquals("name_taken", assertThrows(Store.StoreException.class,
+                () -> s.moveItem(Store.Kind.HOSTS, a.id, f.id)).code);
+        assertEquals("name_taken", assertThrows(Store.StoreException.class,
+                () -> s.saveTreeOrder(Store.Kind.HOSTS, List.of(new Store.Placement(f.id, true, null),
+                        new Store.Placement(b.id, false, f.id), new Store.Placement(a.id, false, f.id)), null)).code);
+        assertNull(s.find(Store.Kind.HOSTS, a.id).folderId);
+        s.moveItem(Store.Kind.HOSTS, b.id, f.id); // within its own folder: fine
+        assertEquals("name_taken", assertThrows(Store.StoreException.class,
+                () -> s.rename(Store.Kind.HOSTS, a.id, "dev (2)")).code);
+
+        // Deleting the folder brings its items to the root, renaming a clash.
+        s.deleteFolder(Store.Kind.HOSTS, f.id);
+        assertEquals("DEV (3)", s.find(Store.Kind.HOSTS, b.id).name);
+        assertNull(s.find(Store.Kind.HOSTS, b.id).folderId);
+    }
+
+    @Test
     void fillsWhatAnOlderFileLeavesOut() throws Exception {
         Files.writeString(dir.resolve("oehostsapp.json"), "{\"version\":1,\"settings\":{\"lang\":\"ko\",\"fwdproxy\":null}}");
         Store s = open();
