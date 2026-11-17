@@ -87,7 +87,7 @@ public final class Settings {
         }
     }
 
-    /** The main window's last normal bounds and state, and the shared list/panel widths. */
+    /** The main window's last normal bounds and state, and the shared list/panel sizes. */
     public static class Window {
         /** Null until the window has been moved or resized. */
         public Integer x, y, width, height;
@@ -96,6 +96,8 @@ public final class Settings {
         public Integer sidebarWidth;
         /** Width of the right-hand panel (oeHosts launcher, oeProxy routes), shared likewise. */
         public Integer rightPanelWidth;
+        /** Height of the list search panel (oeHosts, oeProxy), shared likewise; null: 30% of the list. */
+        public Integer searchHeight;
     }
 
     public ForwardProxy fwdproxy = new ForwardProxy();

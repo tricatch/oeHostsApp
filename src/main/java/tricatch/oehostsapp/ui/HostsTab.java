@@ -72,7 +72,7 @@ public final class HostsTab extends JPanel {
 
         items = new ItemPanel(ctx, new ItemPanel.Spec(Store.Kind.HOSTS, null, ItemFiles.HOSTS_EXT,
                 "hosts.sidebar.header", "tooltip.new.profile", "app.tooltip.import.profile", "tooltip.delete.profile",
-                "confirm.delete.profile", "editor.select.profile", "hosts.empty", "hosts.sidebar.count"),
+                "confirm.delete.profile", "editor.select.profile", "hosts.empty", "hosts.sidebar.count", "hosts.search.placeholder"),
                 new ItemPanel.Hooks() {
                     @Override
                     public ItemPanel.Invalid invalid(String content) {

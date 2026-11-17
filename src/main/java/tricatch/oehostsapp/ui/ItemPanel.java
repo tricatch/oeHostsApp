@@ -1,5 +1,6 @@
 package tricatch.oehostsapp.ui;
 
+import tricatch.oehostsapp.store.ItemSearch;
 import tricatch.oehostsapp.store.Store;
 
 import javax.swing.*;
@@ -16,7 +17,8 @@ final class ItemPanel {
 
     /** The screen's message keys, file extension and editor syntax. */
     record Spec(Store.Kind kind, String syntax, String ext, String headerKey, String newKey, String importKey,
-                String deleteKey, String confirmDeleteKey, String selectKey, String emptyKey, String countKey) {}
+                String deleteKey, String confirmDeleteKey, String selectKey, String emptyKey, String countKey,
+                String searchKey) {}
 
     /** Why the content may not be stored: the first problem's {@code line} (0-based) and its text. */
     record Invalid(int line, String message) {}
@@ -51,8 +53,10 @@ final class ItemPanel {
     final JLabel saveStatus = new JLabel(" ");
     private final JPanel editorCards = new JPanel(new CardLayout());
     private final JLabel metaUpdated = Ui.metaText("—");
-    private final JButton btnDownload, btnDelete;
+    private final JButton btnFind, btnDownload, btnDelete;
     private final Autosave autosave;
+    private final SearchPanel search;
+    private final FindBar findBar;
     private Store.Item active;
 
     ItemPanel(AppContext ctx, Spec spec, Hooks hooks) {
@@ -106,18 +110,53 @@ final class ItemPanel {
             if (active != null) delete(active);
         });
         autosave = new Autosave(ctx, editor, saveStatus, this::save);
+        findBar = new FindBar(ctx, editor);
+        btnFind = Ui.iconButton("search-code", ctx.m("app.find.tooltip", FindBar.shortcutText()), false, findBar::toggle);
         editor.onEdit(() -> {
             lint(editor.getText());
             hooks.edited(editor.getText());
             autosave.changed(editor.getText());
+            findBar.textEdited();
+        });
+        search = new SearchPanel(ctx, spec.searchKey(), new SearchPanel.Target() {
+            public List<ItemSearch.Hit> find(String query) {
+                // The open item is searched as the editor shows it, so line numbers match.
+                return ctx.read(() -> ItemSearch.search(ctx.rawStore().tree(spec.kind()), query,
+                        it -> isActive(it.id) ? editor.getText() : it.content));
+            }
+
+            public void open(Store.Item item, ItemSearch.Line line, String query) {
+                // Re-opening the open item would reload it from the store and drop an edit that
+                // could not be saved, so it stays as it is.
+                if (!isActive(item.id)) activate(item.id);
+                if (!isActive(item.id)) return;
+                // The list search's highlights take the editor over from the find bar.
+                findBar.close(false);
+                // Show the opened item in the list: open its folder when it is collapsed.
+                boolean collapsed = item.folderId != null && ctx.read(() -> ctx.rawStore().tree(spec.kind()).stream()
+                        .map(Store.Node::folder)
+                        .anyMatch(f -> f != null && f.id.equals(item.folderId) && f.collapsed));
+                if (collapsed) {
+                    ctx.store(s -> s.updateFolder(spec.kind(), item.folderId, null, false));
+                    tree.render();
+                }
+                editor.markAll(query);
+                if (line != null) editor.goTo(line.line(), line.start());
+            }
+
+            public void closed() {
+                if (findBar.isVisible()) findBar.refresh();
+                else editor.clearMarks();
+            }
         });
         editorCards.setBackground(Color.WHITE);
         editorCards.setMinimumSize(new Dimension(Ui.px(10), Ui.px(80)));
     }
 
-    /** Ctrl+S / Cmd+S saves while the focus is anywhere in {@code root}. */
+    /** Ctrl+S / Cmd+S saves and Ctrl+F / Cmd+F finds in the open item while the focus is anywhere in {@code root}. */
     void bindSaveKey(JComponent root) {
         autosave.bindSaveKey(root);
+        findBar.bind(root);
     }
 
     Store.Item active() {
@@ -140,12 +179,63 @@ final class ItemPanel {
             ctx.store(s -> s.createFolder(spec.kind()));
             tree.render();
         });
-        p.add(Ui.header(Ui.caps(ctx.m(spec.headerKey())), add, importBtn, addFolder), BorderLayout.NORTH);
-        p.add(tree, BorderLayout.CENTER);
+        p.add(Ui.header(Ui.caps(ctx.m(spec.headerKey())), add, importBtn, search.toggleButton(), addFolder), BorderLayout.NORTH);
+        p.add(searchSplit(), BorderLayout.CENTER);
         JPanel meta = Ui.meta();
         meta.add(countLabel, BorderLayout.WEST);
         p.add(meta, BorderLayout.SOUTH);
         return p;
+    }
+
+    /**
+     * Search panel above the list, the line between them draggable while the panel is open (no
+     * divider while the panel is hidden). The panel opens at the height last
+     * dragged to ({@code settings.window.searchHeight}, shared by both screens), else at oeHub's
+     * 30% of the list, and keeps it when the window is resized.
+     */
+    private JSplitPane searchSplit() {
+        search.setMinimumSize(new Dimension(Ui.px(10), Ui.px(90)));
+        tree.setMinimumSize(new Dimension(Ui.px(10), Ui.px(60)));
+        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, search, tree);
+        Ui.lineDivider(split);
+        split.setContinuousLayout(true);
+        split.setResizeWeight(0);
+        int dividerSize = split.getDividerSize();
+        // The panel starts hidden; a hidden panel leaves no divider line above the list.
+        split.setDividerSize(0);
+        boolean[] applying = {false};
+        search.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentHidden(java.awt.event.ComponentEvent e) {
+                split.setDividerSize(0);
+            }
+
+            @Override
+            public void componentShown(java.awt.event.ComponentEvent e) {
+                split.setDividerSize(dividerSize);
+                Integer stored = ctx.settings(st -> st.window.searchHeight);
+                int total = split.getHeight();
+                int h = stored != null ? Ui.px(stored) : Math.max(Ui.px(140), Math.round(total * 0.3f));
+                applying[0] = true;
+                split.setDividerLocation(Math.max(Ui.px(90), Math.min(h, total - Ui.px(60) - split.getDividerSize())));
+                applying[0] = false;
+            }
+        });
+        // Only a drag by the user is saved (stored at 100%, like the list width).
+        Timer save = new Timer(400, e -> {
+            if (!search.isVisible()) return;
+            int h = com.formdev.flatlaf.util.UIScale.unscale(split.getDividerLocation());
+            ctx.storeRun(st -> {
+                if (Integer.valueOf(h).equals(st.data.settings.window.searchHeight)) return;
+                st.data.settings.window.searchHeight = h;
+                st.save();
+            });
+        });
+        save.setRepeats(false);
+        split.addPropertyChangeListener(JSplitPane.LAST_DIVIDER_LOCATION_PROPERTY, e -> {
+            if (!applying[0] && search.isVisible() && split.isShowing()) save.restart();
+        });
+        return split;
     }
 
     /** The editor, or the empty-list notice when there is no item; {@link #editorPanel} shows it by default. */
@@ -153,13 +243,16 @@ final class ItemPanel {
         JLabel empty = new JLabel(ctx.m(spec.emptyKey()), SwingConstants.CENTER);
         empty.setForeground(Ui.MUTED);
         empty.setFont(Ui.font(Font.PLAIN, 13f));
-        editorCards.add(editor.scroll, "editor");
+        JPanel withFind = new JPanel(new BorderLayout());
+        withFind.add(findBar, BorderLayout.NORTH);
+        withFind.add(editor.scroll, BorderLayout.CENTER);
+        editorCards.add(withFind, "editor");
         editorCards.add(empty, "empty");
         return editorCards;
     }
 
     /**
-     * The editor column: title row with {@code extraButtons} before export and delete, then
+     * The editor column: title row with find, then {@code extraButtons}, then export and delete, then
      * {@code center} (the {@link #editorCards}, possibly with more below it), then the date / save
      * status bar.
      */
@@ -169,10 +262,11 @@ final class ItemPanel {
         JPanel titleRow = new JPanel(new BorderLayout(Ui.px(10), 0));
         titleRow.setOpaque(false);
         titleRow.add(title, BorderLayout.WEST);
-        JButton[] buttons = new JButton[extraButtons.length + 2];
-        System.arraycopy(extraButtons, 0, buttons, 0, extraButtons.length);
-        buttons[extraButtons.length] = btnDownload;
-        buttons[extraButtons.length + 1] = btnDelete;
+        JButton[] buttons = new JButton[extraButtons.length + 3];
+        buttons[0] = btnFind;
+        System.arraycopy(extraButtons, 0, buttons, 1, extraButtons.length);
+        buttons[extraButtons.length + 1] = btnDownload;
+        buttons[extraButtons.length + 2] = btnDelete;
         p.add(Ui.header(titleRow, buttons), BorderLayout.NORTH);
         p.add(center, BorderLayout.CENTER);
         JPanel meta = Ui.meta();
@@ -191,6 +285,7 @@ final class ItemPanel {
         int total = ctx.read(() -> ctx.rawStore().list(spec.kind()).size());
         countLabel.setText(ctx.m(spec.countKey(), total));
         ((CardLayout) editorCards.getLayout()).show(editorCards, total == 0 ? "empty" : "editor");
+        search.refresh();
     }
 
     /** Opens the first selected item, else the first item, else nothing. */
@@ -206,10 +301,13 @@ final class ItemPanel {
         Store.Item it = ctx.read(() -> ctx.rawStore().find(spec.kind(), id));
         autosave.activate(it == null ? null : it.id, it == null ? null : it.content);
         active = it;
+        editor.clearMarks();
         tree.setActive(it == null ? null : it.id);
         title.setText(it == null ? ctx.m(spec.selectKey()) : it.name);
         editor.setText(it == null ? "" : it.content);
         editor.setEditable(it != null);
+        findBar.itemChanged();
+        btnFind.setEnabled(it != null);
         btnDelete.setEnabled(it != null);
         btnDownload.setEnabled(it != null);
         metaUpdated.setText(it == null ? "—" : date(it.updatedAt));

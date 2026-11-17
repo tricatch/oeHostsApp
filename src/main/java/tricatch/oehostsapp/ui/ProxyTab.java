@@ -30,7 +30,7 @@ public final class ProxyTab extends JPanel {
         this.ctx = ctx;
         items = new ItemPanel(ctx, new ItemPanel.Spec(Store.Kind.VHOSTS, SyntaxConstants.SYNTAX_STYLE_YAML,
                 ItemFiles.VHOST_EXT, "proxy.sidebar.header", "tooltip.new.vhost", "app.tooltip.import.vhost",
-                "tooltip.delete.vhost", "confirm.delete.vhost", "editor.select.vhost", "proxy.empty", "proxy.sidebar.count"),
+                "tooltip.delete.vhost", "confirm.delete.vhost", "editor.select.vhost", "proxy.empty", "proxy.sidebar.count", "proxy.search.placeholder"),
                 new ItemPanel.Hooks() {
                     @Override
                     public ItemPanel.Invalid invalid(String content) {

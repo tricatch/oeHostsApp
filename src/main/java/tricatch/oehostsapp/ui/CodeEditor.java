@@ -2,15 +2,19 @@ package tricatch.oehostsapp.ui;
 
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
+import org.fife.ui.rtextarea.DocumentRange;
 import org.fife.ui.rtextarea.Gutter;
 import org.fife.ui.rtextarea.LineNumberFormatter;
 import org.fife.ui.rtextarea.LineNumberList;
 import org.fife.ui.rtextarea.RTextScrollPane;
+import tricatch.oehostsapp.store.ItemSearch;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import java.awt.*;
+import java.util.ArrayList;
+import java.util.List;
 
 /** Line-numbered editor that looks like the web pages' Ace editor (ace-init.js). */
 public final class CodeEditor {
@@ -22,6 +26,10 @@ public final class CodeEditor {
     private boolean loading;
     /** Autosave state outline drawn over the editor, or null. */
     private Color outline;
+    /** The find bar's current match (BC300 over the BC100 of the others), or null. */
+    private Object current;
+    private static final javax.swing.text.Highlighter.HighlightPainter CURRENT =
+            new javax.swing.text.DefaultHighlighter.DefaultHighlightPainter(Ui.BC300);
 
     public CodeEditor(String syntax) {
         area = new RSyntaxTextArea() {
@@ -56,6 +64,7 @@ public final class CodeEditor {
         // Lighter than the gutter (#ebebeb) so the current line does not read as part of it.
         area.setCurrentLineHighlightColor(new Color(0xf5f5f5));
         area.setFadeCurrentLineHighlight(false);
+        area.setMarkAllHighlightColor(Ui.BC100);
         area.setMarginLineEnabled(false);
         area.setBackground(Color.WHITE);
         area.setSelectionColor(new Color(0xb5d5ff));
@@ -168,6 +177,75 @@ public final class CodeEditor {
 
     public String getText() {
         return area.getText();
+    }
+
+    /**
+     * Highlights every occurrence of {@code text} (plain text, ignoring case, as
+     * {@link ItemSearch#occurrences} finds them) until {@link #clearMarks}; returns their start offsets.
+     */
+    public int[] markAll(String text) {
+        clearMarks();
+        int[] at = ItemSearch.occurrences(area.getText(), text);
+        List<DocumentRange> ranges = new ArrayList<>(at.length);
+        for (int s : at) ranges.add(new DocumentRange(s, s + text.length()));
+        if (!ranges.isEmpty()) area.markAll(ranges);
+        return at;
+    }
+
+    /** Highlights {@code [start, end)} as the current match, over the {@link #markAll} ones. */
+    public void markCurrent(int start, int end) {
+        clearCurrent();
+        try {
+            current = area.getHighlighter().addHighlight(start, end, CURRENT);
+        } catch (javax.swing.text.BadLocationException ignored) {
+            // the text changed in between
+        }
+    }
+
+    public void clearMarks() {
+        area.clearMarkAllHighlights();
+        clearCurrent();
+    }
+
+    private void clearCurrent() {
+        if (current != null) area.getHighlighter().removeHighlight(current);
+        current = null;
+    }
+
+    /** Puts the caret at {@code offset} and scrolls it to the middle unless it is already in view. */
+    public void reveal(int offset) {
+        area.setCaretPosition(Math.max(0, Math.min(offset, area.getDocument().getLength())));
+        try {
+            Rectangle r = area.modelToView2D(area.getCaretPosition()).getBounds();
+            Rectangle vis = area.getVisibleRect();
+            if (vis.contains(r)) return;
+            area.scrollRectToVisible(new Rectangle(0, r.y - (vis.height - r.height) / 2, 1, vis.height));
+        } catch (javax.swing.text.BadLocationException ignored) {
+            // the caret is clamped to the document
+        }
+    }
+
+    /** Puts the caret at {@code column} of {@code line} (both 0-based, clamped) and scrolls that line to the middle. */
+    public void goTo(int line, int column) {
+        try {
+            int l = Math.max(0, Math.min(line, area.getLineCount() - 1));
+            int start = area.getLineStartOffset(l);
+            int end = area.getLineEndOffset(l);
+            int offset = Math.max(start, Math.min(start + column, end));
+            area.setCaretPosition(offset);
+            // After the layout of a text set just now, so the view knows the line's position.
+            SwingUtilities.invokeLater(() -> {
+                try {
+                    Rectangle r = area.modelToView2D(offset).getBounds();
+                    Rectangle vis = area.getVisibleRect();
+                    area.scrollRectToVisible(new Rectangle(0, r.y - (vis.height - r.height) / 2, 1, vis.height));
+                } catch (javax.swing.text.BadLocationException ignored) {
+                    // the text changed in between
+                }
+            });
+        } catch (javax.swing.text.BadLocationException ignored) {
+            // the line is clamped to the document
+        }
     }
 
     public void setEditable(boolean editable) {
