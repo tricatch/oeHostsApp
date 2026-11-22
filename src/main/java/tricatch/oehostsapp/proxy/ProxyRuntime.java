@@ -67,6 +67,8 @@ public final class ProxyRuntime {
     private static volatile Store store;
     /** Whether startSslPassServer has succeeded once (later starts go through its own restart). */
     private static volatile boolean started;
+    /** "routes loaded: none" was logged: without a vhost the loader runs for every SSL proxy request. */
+    private static volatile boolean noRoutesLogged;
     /** The binding of the last (re)start: 127.0.0.1, one IPv4 address, or 0.0.0.0. */
     private static volatile String bind = Network.ALL;
 
@@ -138,6 +140,7 @@ public final class ProxyRuntime {
     /** Drops the cached routes; the next request reloads them from the store. */
     public static void reload() {
         log.info("routes changed; reloading on the next request");
+        noRoutesLogged = false;
         ReverseProxyServer.invalidateVirtualHosts(OWNER);
     }
 
@@ -200,8 +203,13 @@ public final class ProxyRuntime {
     /** The merged YAML of the selected vhosts, placeholders filled in; null when none is selected. */
     static String loadVirtualHosts(Store store) {
         String yaml = servedYaml(store);
-        if (yaml == null) log.info("routes loaded: none (no vhost is switched on in the oeProxy list)");
-        else log.info("routes loaded: {}", routeSummary(yaml));
+        if (yaml == null) {
+            if (!noRoutesLogged) log.info("routes loaded: none (no vhost is switched on in the oeProxy list)");
+            noRoutesLogged = true;
+        } else {
+            noRoutesLogged = false;
+            log.info("routes loaded: {}", routeSummary(yaml));
+        }
         return yaml;
     }
 

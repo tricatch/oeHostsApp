@@ -194,6 +194,20 @@ class StoreTest {
         assertEquals(1111, keep.data.settings.fwdproxy.port);
         assertFalse(keep.data.launcher.incognito, "add mode keeps the launcher options");
 
+        // The SSL proxy: overwriting brings the domains but never flips this PC's switch; adding changes neither.
+        s.data.settings.sslProxy.enabled = true;
+        s.data.settings.sslProxy.domains = "api.example.test";
+        Store target = Store.open(dir.resolve("ssl.json"));
+        target.restoreParts(s.exportParts(false, false, true), false, false, true);
+        assertFalse(target.data.settings.sslProxy.enabled, "a backup cannot switch decryption on");
+        assertEquals("api.example.test", target.data.settings.sslProxy.domains);
+        target.data.settings.sslProxy.enabled = true;
+        s.data.settings.sslProxy.enabled = false;
+        s.data.settings.sslProxy.domains = "*";
+        target.mergeParts(s.exportParts(false, false, true), false, false, true);
+        assertTrue(target.data.settings.sslProxy.enabled);
+        assertEquals("api.example.test", target.data.settings.sslProxy.domains);
+
         Files.writeString(dir.resolve("not.zip"), "plain text");
         assertThrows(java.io.IOException.class, () -> Backup.read(dir.resolve("not.zip")));
     }

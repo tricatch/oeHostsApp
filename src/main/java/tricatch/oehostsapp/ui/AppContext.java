@@ -7,6 +7,8 @@ import tricatch.oehostsapp.store.Store;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -106,6 +108,19 @@ public final class AppContext {
      */
     public void listen(Function<Runnable, Listeners.Subscription> source, Runnable onEdt) {
         subscriptions.add(source.apply(() -> SwingUtilities.invokeLater(onEdt)));
+    }
+
+    /** {@link #listen(Function, Runnable)} for a dialog: the subscription also ends when {@code until} closes. */
+    void listen(Window until, Function<Runnable, Listeners.Subscription> source, Runnable onEdt) {
+        Listeners.Subscription s = source.apply(() -> SwingUtilities.invokeLater(onEdt));
+        subscriptions.add(s);
+        until.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosed(WindowEvent e) {
+                s.close();
+                subscriptions.remove(s);
+            }
+        });
     }
 
     public void onSettingsChanged(Runnable r) {

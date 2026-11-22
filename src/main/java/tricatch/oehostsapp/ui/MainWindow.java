@@ -128,7 +128,7 @@ public final class MainWindow {
      * as {@code <prefix>-d<n>-window.png}, then exits. Lets the UI be checked without a person at the screen.
      */
     private void screenshots(String prefix) {
-        Runnable[] dialogs = {() -> hosts.showDirectCmd(true), hosts::showShare};
+        Runnable[] dialogs = {() -> hosts.showDirectCmd(true), hosts::showShare, monitor::showSslSettings};
         Timer t = new Timer(1500, null);
         int[] step = {0};
         t.addActionListener(e -> {
@@ -307,7 +307,7 @@ public final class MainWindow {
     }
 
     private void build() {
-        hosts = new HostsTab(ctx);
+        hosts = new HostsTab(ctx, () -> select(MONITOR));
         proxy = new ProxyTab(ctx);
         monitor = new MonitorTab(ctx);
         content.add(hosts, TABS[0]);
@@ -333,7 +333,10 @@ public final class MainWindow {
             }
         });
         content.add(settings, TABS[SETTINGS]);
-        monitor.onGotoProxy(() -> select(1));
+        monitor.onGotoCa(() -> {
+            select(SETTINGS);
+            settings.showPage("ca");
+        });
         ctx.listen(Update::onChange, this::updateChanged);
 
         JPanel root = new JPanel(new BorderLayout());
@@ -381,7 +384,7 @@ public final class MainWindow {
         navActions.setOpaque(false);
         navActions.add(new JPanel() {{ setOpaque(false); }}, TABS[0]);
         navActions.add(new JPanel() {{ setOpaque(false); }}, TABS[1]);
-        // Network: start/stop capture and clear.
+        // Network: start/stop capture, clear, SSL proxy.
         navActions.add(wrapMiddle(monitor.navActions()), TABS[MONITOR]);
         navActions.add(new JPanel() {{ setOpaque(false); }}, TABS[SETTINGS]);
         bar.add(left);

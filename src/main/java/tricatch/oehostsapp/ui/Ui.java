@@ -305,8 +305,21 @@ public final class Ui {
     }
 
     /**
-     * Icon button for the middle of the green navbar (Network start/stop capture, clear): a rounded square
-     * frame so it reads against BC300.
+     * {@code s} as text that Swing shows literally. Labels, buttons, menu items, table cells and
+     * tooltips render any text starting with {@code <html>} as markup, which loads images from any
+     * URL and can create objects. So everything that comes from outside (a request's host, a
+     * User-Agent, a name from an imported file) goes through here. A leading space switches it off.
+     */
+    static String plain(String s) {
+        return s != null && javax.swing.plaf.basic.BasicHTML.isHTMLString(s) ? " " + s : s;
+    }
+
+    /** Client property of a {@link #navIconButton} or {@link #navPair} that is a switch: true while it is on (a solid white fill). */
+    static final String NAV_ON = "oe.nav.on";
+
+    /**
+     * Icon button for the middle of the green navbar (Network start/stop capture, clear, SSL proxy): a
+     * rounded square frame so it reads against BC300.
      */
     public static JButton navIconButton(String icon, String tooltip, Runnable action) {
         JButton b = new JButton() {
@@ -319,6 +332,9 @@ public final class Ui {
                 if (!isEnabled()) {
                     fill = new Color(255, 255, 255, 40);
                     line = new Color(0, 0, 0, 30);
+                } else if (Boolean.TRUE.equals(getClientProperty(NAV_ON))) {
+                    fill = getModel().isRollover() ? ICON_HOVER_BG : Color.WHITE;
+                    line = new Color(0, 0, 0, 64);
                 } else {
                     fill = new Color(255, 255, 255, getModel().isRollover() ? 140 : 64);
                     line = new Color(0, 0, 0, 64);
@@ -345,6 +361,66 @@ public final class Ui {
         b.setPreferredSize(new Dimension(px(30), px(28)));
         b.setMargin(new Insets(0, 0, 0, 0));
         if (action != null) b.addActionListener(e -> action.run());
+        return b;
+    }
+
+    /**
+     * Two actions of one thing in the middle of the navbar ({@code [left | right]}): the same rounded
+     * frame as {@link #navIconButton}, once around both with a line between. Each half highlights and
+     * clicks on its own; {@link #NAV_ON} on the returned panel fills the whole frame. The buttons come
+     * from {@link #navPairButton}.
+     */
+    static JPanel navPair(JButton left, JButton right) {
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0)) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                boolean on = Boolean.TRUE.equals(getClientProperty(NAV_ON));
+                int w = getWidth() - 1, h = getHeight() - 1, middle = right.getX();
+                g2.setColor(on ? Color.WHITE : new Color(255, 255, 255, 64));
+                g2.fillRoundRect(0, 0, w, h, px(12), px(12));
+                for (JButton half : new JButton[]{left, right}) {
+                    if (!half.isEnabled() || !half.getModel().isRollover()) continue;
+                    Graphics2D lit = (Graphics2D) g2.create();
+                    // The frame's shape, cut at the line: round outside, straight in the middle.
+                    if (half == left) lit.clipRect(0, 0, middle, h + 1);
+                    else lit.clipRect(middle, 0, w + 1 - middle, h + 1);
+                    lit.setColor(on ? BC100 : new Color(255, 255, 255, 110));
+                    lit.fillRoundRect(0, 0, w, h, px(12), px(12));
+                    lit.dispose();
+                }
+                g2.setColor(new Color(0, 0, 0, 50));
+                g2.fillRect(middle - 1, px(6), 1, h + 1 - 2 * px(6));
+                g2.setColor(new Color(0, 0, 0, 64));
+                g2.drawRoundRect(0, 0, w, h, px(12), px(12));
+                g2.dispose();
+            }
+        };
+        p.setOpaque(false);
+        p.add(left);
+        p.add(Box.createRigidArea(new Dimension(1, px(28)))); // the line
+        p.add(right);
+        // A half's highlight is the panel's painting, not the button's.
+        left.getModel().addChangeListener(e -> p.repaint());
+        right.getModel().addChangeListener(e -> p.repaint());
+        return p;
+    }
+
+    /** One half of a {@link #navPair}: only an icon, which the caller sets. */
+    static JButton navPairButton(String tooltip, Runnable action) {
+        JButton b = new JButton();
+        b.setToolTipText(tooltip);
+        b.setContentAreaFilled(false);
+        b.setBorderPainted(false);
+        b.setFocusPainted(false);
+        b.setFocusable(false);
+        b.setOpaque(false);
+        b.setRolloverEnabled(true);
+        b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        b.setPreferredSize(new Dimension(px(32), px(28)));
+        b.setMargin(new Insets(0, 0, 0, 0));
+        b.addActionListener(e -> action.run());
         return b;
     }
 

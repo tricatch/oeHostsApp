@@ -106,7 +106,7 @@ public final class ProxyTab extends JPanel {
             case FAILED -> {
                 proxyStatus.setText(ctx.m("app.proxy.status.failed"));
                 proxyStatus.setForeground(Ui.DANGER);
-                proxyStatus.setToolTipText(ProxyRuntime.error());
+                proxyStatus.setToolTipText(Ui.plain(ProxyRuntime.error()));
             }
         }
     }

@@ -124,11 +124,16 @@ public final class CodeEditor {
         scroll.repaint();
     }
 
-    /**
-     * Preset text colouring ({@link PresetTokenMaker}): comment lines gray, lines that are not a
-     * valid entry red.
-     */
+    /** Preset text colouring: see {@link #lineHighlighting}, with the "name | value" rule. */
     public void presetHighlighting() {
+        lineHighlighting(line -> PresetsPage.line(line) != null);
+    }
+
+    /**
+     * List text colouring ({@link PresetTokenMaker}): comment lines gray, lines that {@code valid}
+     * refuses red.
+     */
+    public void lineHighlighting(java.util.function.Predicate<String> valid) {
         org.fife.ui.rsyntaxtextarea.SyntaxScheme scheme =
                 (org.fife.ui.rsyntaxtextarea.SyntaxScheme) area.getSyntaxScheme().clone();
         org.fife.ui.rsyntaxtextarea.Style comment = scheme.getStyle(org.fife.ui.rsyntaxtextarea.Token.COMMENT_EOL);
@@ -140,7 +145,7 @@ public final class CodeEditor {
         error.underline = false;
         error.font = area.getFont();
         area.setSyntaxScheme(scheme);
-        ((org.fife.ui.rsyntaxtextarea.RSyntaxDocument) area.getDocument()).setSyntaxStyle(new PresetTokenMaker());
+        ((org.fife.ui.rsyntaxtextarea.RSyntaxDocument) area.getDocument()).setSyntaxStyle(new PresetTokenMaker(valid));
         area.repaint();
     }
 

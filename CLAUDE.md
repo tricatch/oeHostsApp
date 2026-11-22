@@ -12,7 +12,7 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
 
 ## Packages
 
-- Code under `tricatch.oehostsapp` is split by feature: `store` (data file and its model, backup), `proxy` (forward/reverse proxy runtime, root CA, vhost YAML, traffic monitor), `web` (the pages the proxy service answers itself: shared hosts, `/active-hosts`, phone setup page), `net` (this PC's addresses, binding values), `hosts` (hosts rules, oeHosts-Agent), `chrome` (Chrome launch), `update` (self-update), `ui` (Swing screens). The root package keeps only app-wide classes (entry point, data folder, build info, messages, single instance, `Listeners`).
+- Code under `tricatch.oehostsapp` is split by feature: `store` (data file and its model, backup), `proxy` (forward/reverse proxy runtime, SSL proxy, root CA, vhost YAML, traffic monitor), `web` (the pages the proxy service answers itself: shared hosts, `/active-hosts`, phone setup page), `net` (this PC's addresses, binding values), `hosts` (hosts rules, oeHosts-Agent), `chrome` (Chrome launch), `update` (self-update), `ui` (Swing screens). The root package keeps only app-wide classes (entry point, data folder, build info, messages, single instance, `Listeners`).
 - Put a new class in the package of its feature, not in the root. Make a member `public` only when another package needs it.
 - `UpdateHelper` stays in the root package: its fully qualified name is a contract between releases (an older version looks it up by name in the new jar). Never rename or move it, and never move `OeHostsApp` (the `Main-Class`).
 - Keep rules about data out of `ui`: parsing, merging and validation (hosts rules, vhost YAML, presets' storage) live in the feature package and get unit tests; a screen only formats their results. One merge per kind: every consumer of the selected hosts profiles goes through `HostsRules.merge`/`active`, every consumer of the selected vhosts through `Vhosts.merge`/`served`. Do not store data that can be derived from the store (the proxy reads the selected vhosts itself).
@@ -46,6 +46,21 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
 - Short-circuit responses come from `clientToProxyRequest` in the shared `HttpFiltersAdapter`. Do not answer 407 from there: LittleProxy 2.9.1 then throws a NullPointerException (it looks for an upstream connection) and strips the `Proxy-Authenticate` header as hop-by-hop. Re-check short-circuit responses when the `littleproxy` version changes. Netty must stay pure Java here: do not add `netty-transport-native-*` or `netty-tcnative` artifacts (native libraries).
 - The reverse proxy's binding (`settings.reverseProxy.bind`: 0.0.0.0 by default, 127.0.0.1, or one IPv4 address) is applied through `ReverseProxyServer.setBindAddresses` (oe-proxy 0.3.0 and later). A network card's address is always bound together with 127.0.0.1, because the hosts profiles' `127.0.0.1 domain` lines reach the proxy there. A release of this app that uses it needs oe-proxy 0.3.0 on Maven Central first (the `includeBuild` of `../oeProxy` only covers local builds).
 - The proxy service also answers requests addressed to itself (`ForwardProxy.target`): a path only (`GET /active-hosts`, how a hosts manager or oeHosts-Agent calls a URL), or an absolute URL naming this PC (loopback or an own address) and this port (`GET http://<PC IP>:<port>/ssl`, a phone opening the QR code through this same proxy). A CONNECT to itself is refused (403), never looped. `ShareServer.handle` builds those answers: the shared oeHosts profiles under `/hosts/`, the selected profiles merged for oeHosts-Agent at `ShareServer.ACTIVE_PATH` (`/active-hosts`: `IP host` lines in tree order, first profile wins, through `HostsRules.active` like the proxy and the Chrome launcher, not limited to shared profiles; the Java agent page's option always points here), and the phone setup page with the CA's public certificate (`PhoneSetup`, `PhoneSetup.PAGE_PATH` (`/ssl`) and `PhoneSetup.CA_PATH`). Every URL the app shows uses the proxy service port. Shared profiles are served only when `Item.shared` is on, only under a token signed with `Data.shareKey` (`Store.shareToken`: the id and a 40-bit HMAC, both in Crockford base32, then a `/name` slug the server ignores; every failure is the same 404, and the key stays out of backups). A Host header that is neither a loopback name nor one of this PC's own IP addresses is refused (DNS rebinding). It is read-only (GET/HEAD). Never serve the private key (`ca.pfx`) or other data files there.
+- The SSL proxy (`SslProxy`, rules in `SslRules`) decrypts only the domains selected in `settings.sslProxy`, and is off with an empty list by default. `ForwardProxy` only changes where a CONNECT on port 443 ends (127.0.0.1:443, the embedded reverse proxy); oe-proxy ends the TLS and, without a vhost, asks `DefaultRouteResolver`. Both sides must decide with `SslProxy.effective()`: never add a second copy of the list or a second matcher. Keep these properties:
+  - The resolver is registered only while a domain is selected, so with the switch off the library behaves as without it (503 without a vhost, no default route).
+  - A vhost wins over the hosts profiles; upstream certificates are verified (the library enforces it: do not work around it with an "ignore certificate" option).
+  - A change restarts the proxy service to close the open tunnels, and only a change does (`SslProxy.apply(before)`). Every path that changes `settings.sslProxy` calls it (the navbar switch, the dialog's Apply, a settings import). This is why the dialog has an Apply button and no autosave.
+  - A backup never turns the switch on (`Store.restoreParts` keeps it).
+  - Its UI is on the Network tab only: one two-part button `[switch | settings]` in the navbar (`SslProxyControls`; both halves use lock icons and change color and shackle together, so it never looks like the app's settings gear) and the settings as a dialog (`SslProxyDialog`). There is no settings page for it and no second switch in the dialog.
+  - The recent-domain list holds domain names in memory only: never save it, and never record paths, headers or bodies there.
+  - LittleProxy's idle timeout stays longer than oe-proxy's WebSocket and SSL proxy read timeouts (5 minutes): its timer runs on tunnels too.
+  - It needs oe-proxy 0.3.1, which needs gotpache-keytool 0.1.1: publish in that order before an app release.
+- The Network tab shows both proxies: oe-proxy's events (`ProxyMonitor`) and what passes the proxy service (`ForwardMonitor`, hooked into `ForwardProxy`'s filters). Keep these properties:
+  - It only observes: never change, delay or aggregate traffic for it, copy bytes without moving a buffer's indexes, and let no exception of it reach the proxy.
+  - What the service answers itself and what `ClientAccess` refuses is never recorded. Nothing recorded is saved to disk.
+  - A tunnel into the reverse proxy gets no row (its requests are the rows), unless it ended without a request seen (`DecryptedRequests`): that row is the only trace of a client that refuses the CA, do not drop it.
+  - Stopping the capture stops recording and body collection in both monitors.
+  - Events reach the event thread only through `MonitorTab`'s queue and timer; never `invokeLater` per event.
 - Do not put `127.0.0.1` or `localhost` in the QR URL: phone browsers send loopback addresses to the phone itself, never to the proxy.
 - The phone section at the bottom of Settings → oeProxy → CA 인증서 (모바일 기기 인증서 설치, `CaPage.mobileSection`) only downloads the CA; it configures nothing. It needs the proxy service running; the phone is asked about (`ClientAccess`) on its first request.
 - No network port is used for single-instance detection; it is a file lock in the data folder (`SingleInstance`). Keep it that way.
@@ -63,13 +78,17 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
   - `ui.Ui`, `ui.OeDialog` ↔ `static/css/app.css`, `oe-panel.css`, `hosts.css`
 - Settings → Data exports the checked parts (oeHosts, oeProxy, settings, CA) to one ZIP (`Backup`, `Store.exportParts`); a part is present in `data.json` only when it was exported, and an import touches only the parts that are both checked and present, either adding to the current data (`Store.mergeParts`, the default) or overwriting it (`Store.restoreParts`); the CA is always overwritten.
 - Brand colors are oeHub's (`Ui.BC100`…`Ui.BC700`); do not introduce other greens. Buttons have a 6px radius.
-- Navbar: tabs on the left (`MainWindow.TABS`, shown uppercase), gear on the right, and the current tab's actions in the middle of the whole bar (a `CardLayout`, one card per tab). Middle-bar buttons use `Ui.navIconButton` (rounded frame); panel-header buttons use `Ui.iconButton`.
+- Navbar: tabs on the left (`MainWindow.TABS`, shown uppercase), gear on the right, and the current tab's actions in the middle of the whole bar (a `CardLayout`, one card per tab). Middle-bar buttons use `Ui.navIconButton` (rounded frame), or `Ui.navPair` for two actions of one thing in one frame; panel-header buttons use `Ui.iconButton`.
 
 ## Settings Page Layout
 
 - A settings page that both changes something and shows something is split into two equal halves (`SettingsKit.fullPage(halves(...))`): the left half holds what saves or changes (description, then the inputs, then the action buttons, the three parts set apart by `line()`; buttons right-aligned), the right half holds what only shows or looks up (state, addresses, file locations). When the right half has buttons too, it is laid out the same way: description, `line()`, the information, `line()`, buttons right-aligned (`rightAligned`). The vertical divider runs down to the page's bottom padding.
 - Inside a form, labels share one width (`sameWidth`) and notes or warnings that belong to a field start where the field starts, not under the label.
 - A status table shows its error row only while there is an error (`errorRow`).
+
+## Text from Outside
+
+- Swing renders text that starts with `<html>` as markup in labels, buttons, menu items, table cells and tooltips, which text from outside must never become. Any string that a request, another device, an imported file or an error message supplies (host, path, User-Agent, profile/folder/preset names) is shown through `Ui.plain`, or in a component with the `html.disable` client property (the Network table). Build markup only from our own messages and `Ui.esc`aped values.
 
 ## i18n — UI Messages
 
@@ -82,7 +101,7 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
 
 ## Icons
 
-- Lucide SVGs live in `src/main/resources/icon/lucide/` (copied from oeHub) and are referenced by file name through `Ui.icon(name, size, color)`, which recolors them. To add one, copy the SVG from oeHub (or lucide.dev) into that folder.
+- Lucide SVGs live in `src/main/resources/icon/lucide/` (copied from oeHub) and are referenced by file name through `Ui.icon(name, size, color)`, which recolors them. To add one, copy the SVG from oeHub (or lucide.dev) into that folder. `lock-cog` and `lock-open-cog` are our own drawings in Lucide's style (24 grid, 2px round strokes), not upstream icons: keep the pair in step.
 - Full-color images (Chrome, logo) are in `icon/` and loaded with `Ui.image`.
 
 ## Files and Data
@@ -91,7 +110,7 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
 - An invalid vhost (fails `Vhosts.problems`) is never stored: not on edit, not on import.
 - Item and folder ids are 14 Crockford base32 digits (`Store.newId`), used as they are in share URLs. Ids are never converted; data made with the older hex ids is not migrated.
 - `${PROXY_SVR}` / `${LOCAL_SVR}` always resolve to `127.0.0.1` in this app.
-- The data model is `Store.Data` with `store.Settings` (grouped: `fwdproxy`, `reverseProxy`, `userAgentPresets`/`openUrlPresets`, `window`) and `store.LauncherOptions`. A part missing from the file is filled in by `fillDefaults` on open, so code never checks for null parts.
+- The data model is `Store.Data` with `store.Settings` (grouped: `fwdproxy`, `reverseProxy`, `sslProxy`, `userAgentPresets`/`openUrlPresets`, `window`) and `store.LauncherOptions`. A part missing from the file is filled in by `fillDefaults` on open, so code never checks for null parts.
 - The data format carries no compatibility code with older versions (no migration of older files or old field names, no fields kept only for older versions); this was the owner's decision while the app has a single user. Ask before adding any.
 
 ## Dependencies — License Listing

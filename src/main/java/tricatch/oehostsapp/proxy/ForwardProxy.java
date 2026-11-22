@@ -34,6 +34,7 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -45,13 +46,17 @@ import java.util.Map;
  * <ul>
  *   <li>proxies: Chrome (the launcher's {@code --proxy-server}) and phones whose Wi-Fi proxy is
  *   this PC. A host listed in the selected oeHosts profiles is connected to the IP recorded there
- *   ({@link HostsRules#active}); every other host resolves through normal DNS.</li>
+ *   ({@link HostsRules#active}); every other host resolves through normal DNS. A CONNECT to a
+ *   domain selected for the SSL proxy ends at the embedded reverse proxy instead ({@link SslProxy}).</li>
  *   <li>answers requests addressed to itself with {@link ShareServer}'s pages: the shared profiles,
  *   {@code /active-hosts} and the phone setup page. A request is addressed to itself when it names
  *   a path only ({@code GET /active-hosts}, a hosts manager or oeHosts-Agent calling the URL), or
  *   when it names this PC's own address and this port ({@code GET http://<PC IP>:<port>/ssl}, a phone
  *   opening the QR code through this very proxy).</li>
  * </ul>
+ *
+ * <p>While the Network tab captures, {@link ForwardMonitor} observes what is proxied (not what the
+ * service answers itself or refuses).
  *
  * <p>Who may use it is decided per device, not by a binding or a password: a client on this PC is
  * always let in, any other device is asked about on screen first ({@link ClientAccess}), and its
@@ -70,6 +75,11 @@ public final class ForwardProxy {
 
     private static final Logger log = LoggerFactory.getLogger(ForwardProxy.class);
     private static final Listeners listeners = new Listeners();
+    /**
+     * Longer than the 5 minutes oe-proxy lets a WebSocket or a selected domain's stream stay
+     * silent: LittleProxy's idle timer (70s by default) runs on tunnels too.
+     */
+    private static final Duration IDLE_TIMEOUT = Duration.ofMinutes(6);
 
     private static HttpProxyServer server;
     private static volatile Store store;
@@ -106,6 +116,7 @@ public final class ForwardProxy {
         store = s;
         ShareServer.init(s);
         ClientAccess.attach(s);
+        SslProxy.attach(s);
         int p;
         synchronized (s) {
             p = s.data.settings.fwdproxy.port;
@@ -116,6 +127,7 @@ public final class ForwardProxy {
                     .withName("oehostsapp-fwdproxy")
                     .withAddress(new InetSocketAddress(p))
                     .withAllowLocalOnly(false)
+                    .withIdleConnectionTimeout(IDLE_TIMEOUT)
                     .withFiltersSource(FILTERS)
                     .start();
             log.info("proxy service listening on {}:{}", Network.ALL, p);
@@ -155,28 +167,74 @@ public final class ForwardProxy {
             SocketAddress remote = ctx == null ? null : ctx.channel().remoteAddress();
             InetAddress client = remote instanceof InetSocketAddress a ? a.getAddress() : null;
             return new HttpFiltersAdapter(originalRequest, ctx) {
+                /** Null unless it is proxied traffic and the Network tab captures. */
+                private volatile ForwardMonitor.Observation seen;
+
                 @Override
                 public HttpResponse clientToProxyRequest(HttpObject httpObject) {
-                    if (!(httpObject instanceof HttpRequest req)) return null;
+                    if (!(httpObject instanceof HttpRequest req)) {
+                        if (seen != null) seen.requestPart(httpObject);
+                        return null;
+                    }
                     ClientAccess.Decision d = ClientAccess.check(client, req.headers().get(HttpHeaderNames.USER_AGENT));
                     if (d != ClientAccess.Decision.ALLOWED) {
                         log.info("proxy service: {} refused ({})", client == null ? "?" : client.getHostAddress(), d);
                         return refused(req, d);
                     }
                     Target t = target(req);
-                    if (t == null) return null;
+                    if (t == null) {
+                        seen = ForwardMonitor.observe(req, ctx);
+                        if (seen != null) seen.requestPart(req); // a request that came in one piece
+                        return null;
+                    }
                     if (req.method() == HttpMethod.CONNECT) return plain(req, 403, "forbidden\n");
                     return serve(req, t.path());
                 }
 
                 @Override
                 public InetSocketAddress proxyToServerResolutionStarted(String hostAndPort) {
+                    if (originalRequest.method() == HttpMethod.CONNECT) {
+                        InetSocketAddress decrypting = SslProxy.connect(hostAndPort);
+                        if (decrypting != null) return decrypting;
+                    }
                     return override(hostAndPort);
                 }
 
                 @Override
+                public void proxyToServerResolutionSucceeded(String hostAndPort, InetSocketAddress address) {
+                    if (seen != null) seen.resolved(address);
+                }
+
+                @Override
+                public void proxyToServerResolutionFailed(String hostAndPort) {
+                    if (seen != null) seen.failed(ForwardMonitor.Failure.DNS);
+                }
+
+                @Override
+                public void proxyToServerConnectionFailed() {
+                    if (seen != null) seen.failed(ForwardMonitor.Failure.CONNECT);
+                }
+
+                @Override
+                public void proxyToServerConnectionSucceeded(ChannelHandlerContext serverCtx) {
+                    if (seen != null) seen.connected();
+                }
+
+                @Override
+                public void serverToProxyResponseTimedOut() {
+                    if (seen != null) seen.failed(ForwardMonitor.Failure.TIMEOUT);
+                }
+
+                @Override
                 public HttpObject serverToProxyResponse(HttpObject httpObject) {
+                    if (seen != null) seen.responsePart(httpObject); // as received: before ensureDate
                     if (httpObject instanceof HttpResponse res) ensureDate(res);
+                    return httpObject;
+                }
+
+                @Override
+                public HttpObject proxyToClientResponse(HttpObject httpObject) {
+                    if (seen != null) seen.proxyAnswered(httpObject);
                     return httpObject;
                 }
             };

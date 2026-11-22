@@ -199,7 +199,7 @@ public final class SidebarTree extends JPanel {
         Row row = new Row();
         row.active = it.id.equals(activeId);
         JLabel icon = new JLabel(Ui.icon("file", 15, new Color(0x8a8d83)));
-        JLabel name = new JLabel(it.name);
+        JLabel name = new JLabel(Ui.plain(it.name));
         name.setFont(Ui.font(row.active ? Font.BOLD : Font.PLAIN, 13f));
         name.setForeground(row.active ? Ui.TEXT_STRONG : Ui.TEXT);
         Switch sw = new Switch(it.selected, Ui.BC300);
@@ -279,7 +279,7 @@ public final class SidebarTree extends JPanel {
                 move.add(root);
                 if (!folders.isEmpty()) move.addSeparator();
                 for (Store.Folder f : folders) {
-                    JMenuItem fi = new JMenuItem(f.name, Ui.icon("folder", 14, Ui.MUTED));
+                    JMenuItem fi = new JMenuItem(Ui.plain(f.name), Ui.icon("folder", 14, Ui.MUTED));
                     fi.setEnabled(!f.id.equals(it.folderId));
                     fi.addActionListener(a -> moveTo(it, f.id));
                     move.add(fi);
@@ -559,7 +559,7 @@ public final class SidebarTree extends JPanel {
         Row row = new Row();
         long on = kids.stream().filter(i -> i.selected).count();
         JLabel icon = new JLabel(Ui.icon(f.collapsed ? "folder" : "folder-open", 16, on > 0 ? Ui.BC500 : new Color(0x5e6158)));
-        JLabel name = new JLabel(f.name);
+        JLabel name = new JLabel(Ui.plain(f.name));
         name.setFont(Ui.font(Font.PLAIN, 13f));
         name.setForeground(Ui.TEXT);
         JLabel badge = new JLabel(on + "/" + kids.size()) {

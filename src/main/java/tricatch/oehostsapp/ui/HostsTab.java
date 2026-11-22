@@ -33,6 +33,7 @@ public final class HostsTab extends JPanel {
     private static final int MERGED_H = 200;
 
     private final AppContext ctx;
+    private final Runnable openNetworkTab;
     private final ItemPanel items;
     private final JButton btnShare;
     private JButton launchBtn;
@@ -61,13 +62,17 @@ public final class HostsTab extends JPanel {
     private final JButton urlPreset;
     private final Switch swHrr = new Switch(true, Ui.BC500);
     private final Switch swProxy = new Switch(false, Ui.BC500);
+    private final Switch swNetwork = new Switch(false, Ui.BC500);
+    private final JLabel networkLabel = new JLabel();
     private final JTextPane argsPreview = Ui.previewPane();
     private final JTextPane rulesPreview = Ui.previewPane();
     private final JLabel hostsCount = Ui.metaText("Hosts: 0");
 
-    public HostsTab(AppContext ctx) {
+    /** @param openNetworkTab shows the Network tab (for the launcher's option of that name) */
+    public HostsTab(AppContext ctx, Runnable openNetworkTab) {
         super(new BorderLayout());
         this.ctx = ctx;
+        this.openNetworkTab = openNetworkTab;
         setBackground(Color.WHITE);
 
         items = new ItemPanel(ctx, new ItemPanel.Spec(Store.Kind.HOSTS, null, ItemFiles.HOSTS_EXT,
@@ -187,7 +192,7 @@ public final class HostsTab extends JPanel {
         // Routing switches and launch buttons
         JPanel routing = column(new CompoundBorder(Ui.topLine(), Ui.pad(4, 0, 10, 0)));
         routing.add(option(swHrr, "--host-resolver-rules"));
-        routing.add(option(swProxy, "--proxy-server"));
+        routing.add(option(swProxy, "--proxy-server", networkOption()));
         JPanel btnRow = new JPanel(new GridBagLayout());
         btnRow.setOpaque(false);
         btnRow.setBorder(Ui.pad(6, 12, 0, 12));
@@ -283,6 +288,26 @@ public final class HostsTab extends JPanel {
         return row;
     }
 
+    /** Beside {@code --proxy-server}, and usable only while that is on: the Network tab sees only that traffic. */
+    private JComponent networkOption() {
+        JPanel p = new JPanel();
+        p.setLayout(new BoxLayout(p, BoxLayout.X_AXIS));
+        p.setOpaque(false);
+        p.setBorder(Ui.pad(0, 12, 0, 0));
+        networkLabel.setText(ctx.m("app.chrome.network"));
+        networkLabel.setFont(Ui.font(Font.PLAIN, 13f));
+        networkLabel.setForeground(Ui.PREVIEW_TEXT);
+        String tip = ctx.m("app.chrome.options.network");
+        swNetwork.setToolTipText(tip);
+        networkLabel.setToolTipText(tip);
+        p.add(swNetwork);
+        p.add(Box.createHorizontalStrut(Ui.px(8)));
+        p.add(networkLabel);
+        // As wide as its content: the row's glue takes the rest.
+        p.setMaximumSize(p.getPreferredSize());
+        return p;
+    }
+
     private static void style(JTextField f, String placeholder) {
         f.setFont(Ui.font(Font.PLAIN, 12.5f));
         f.putClientProperty("JTextField.placeholderText", placeholder);
@@ -311,6 +336,7 @@ public final class HostsTab extends JPanel {
                 {"open", ctx.plain("app.chrome.options.open")},
                 {"--host-resolver-rules", ctx.plain("app.chrome.options.hrr")},
                 {"--proxy-server", ctx.plain("app.chrome.options.proxy", fwdPort())},
+                {ctx.m("app.chrome.network"), ctx.plain("app.chrome.options.network")},
         };
         JPanel list = new JPanel();
         list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
@@ -368,7 +394,7 @@ public final class HostsTab extends JPanel {
                 m.add(none);
             }
             for (Settings.Preset p : presets) {
-                JMenuItem it = new JMenuItem(p.name);
+                JMenuItem it = new JMenuItem(Ui.plain(p.name));
                 // .ua-preset-menu .dropdown-item: inset 6px each side, rounded BC100 hover.
                 it.putClientProperty("FlatLaf.style", "selectionInsets:0,6,0,6; selectionArc:6;"
                         + " selectionBackground:#dff2b8; selectionForeground:#3a6b10");
@@ -479,6 +505,7 @@ public final class HostsTab extends JPanel {
     private void loadOptions() {
         LauncherOptions o = ctx.read(() -> ctx.rawStore().data.launcher);
         swProxy.setOn(o.proxyServer);
+        swNetwork.setOn(o.openNetworkTab);
         urlField.setText(o.openUrl);
         swUdd.setOn(o.userDataDirEnabled);
         swUrl.setOn(o.openUrlEnabled);
@@ -499,6 +526,8 @@ public final class HostsTab extends JPanel {
         urlPreset.setEnabled(swUrl.isOn());
         uddDisplay.setForeground(swUdd.isOn() ? Ui.PREVIEW_TEXT : new Color(0xadb5bd));
         uddDisplay.setEnabled(swUdd.isOn());
+        swNetwork.setEnabled(swProxy.isOn());
+        networkLabel.setEnabled(swProxy.isOn());
         boolean ex = swExtra.isOn();
         extraLine.setVisible(!ex);
         extraWrap.setVisible(ex);
@@ -528,6 +557,7 @@ public final class HostsTab extends JPanel {
         onSwitch(swUa, (o, on) -> o.userAgentEnabled = on);
         onSwitch(swExtra, (o, on) -> o.extraArgsEnabled = on);
         onSwitch(swUrl, (o, on) -> o.openUrlEnabled = on);
+        onSwitch(swNetwork, (o, on) -> o.openNetworkTab = on);
         swUdd.onChange(on -> {
             // Turning it on asks first (wireConfirmToggle in util.js).
             if (on && !OeDialog.confirm(ctx, ctx.m("modal.udd.warn.title"), ctx.plain("hosts.udd.warn"), 600)) {
@@ -545,6 +575,7 @@ public final class HostsTab extends JPanel {
                 o.hostResolverRules = on;
                 if (on) o.proxyServer = false;
             });
+            applyEnabledStates();
             updatePreviews();
         });
         swProxy.onChange(on -> {
@@ -553,6 +584,7 @@ public final class HostsTab extends JPanel {
                 o.proxyServer = on;
                 if (on) o.hostResolverRules = false;
             });
+            applyEnabledStates();
             updatePreviews();
         });
         debounced(uaField, () -> putOption(o -> o.userAgent = uaField.getText()));
@@ -741,7 +773,7 @@ public final class HostsTab extends JPanel {
                     Math.max(Ui.px(80), mergedSplit.getHeight() - mergedHeight - mergedSplit.getDividerSize())));
         }
         if (showMerged) {
-            mergedLabel.setText(String.join(", ", sel.stream().map(i -> i.name).toList()));
+            mergedLabel.setText(Ui.plain(String.join(", ", sel.stream().map(i -> i.name).toList())));
             if (all.isEmpty()) plain(mergedBody, ctx.m("hosts.scheme.preview.empty"));
             else lines(mergedBody, all, false);
         }
@@ -890,20 +922,23 @@ public final class HostsTab extends JPanel {
         ChromeArgs.Options o = options(WIN);
         List<String> words = ChromeLauncher.words(ChromeArgs.parts(o), o.urlEnabled ? o.url : null);
         launchBtn.setEnabled(false);
-        runLaunch(words, false);
+        // As it was when the button was pressed, like the flags.
+        runLaunch(words, false, swProxy.isOn() && swNetwork.isOn());
     }
 
-    private void runLaunch(List<String> words, boolean closeRunning) {
+    private void runLaunch(List<String> words, boolean closeRunning, boolean showNetwork) {
         Thread.ofVirtual().name("chrome-launch").start(() -> {
             ChromeLauncher.Result r = ChromeLauncher.launch(words, closeRunning);
             SwingUtilities.invokeLater(() -> {
                 if (r == ChromeLauncher.Result.RUNNING) {
                     if (OeDialog.confirm(ctx, ctx.m("app.chrome.launch"), ctx.m("app.chrome.running.confirm"), 560)) {
                         ctx.toast(ctx.m("app.chrome.closing"));
-                        runLaunch(words, true);
+                        runLaunch(words, true, showNetwork);
                         return;
                     }
-                } else if (r != ChromeLauncher.Result.LAUNCHED) {
+                } else if (r == ChromeLauncher.Result.LAUNCHED) {
+                    if (showNetwork) openNetworkTab.run();
+                } else {
                     OeDialog.info(ctx, ctx.m("app.chrome.launch"), ctx.m(switch (r) {
                         case NOT_FOUND -> "app.chrome.not.found";
                         case REFUSED -> "app.chrome.refused";

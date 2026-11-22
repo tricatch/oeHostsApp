@@ -39,7 +39,7 @@ final class SettingsKit {
     // ── Page bodies ─────────────────────────────────────────────
 
     /** A panel that follows the viewport's width, so descriptions wrap and long paths are cut. */
-    private static class WidthTracking extends JPanel implements Scrollable {
+    static class WidthTracking extends JPanel implements Scrollable {
         public Dimension getPreferredScrollableViewportSize() {
             return getPreferredSize();
         }
@@ -371,7 +371,7 @@ final class SettingsKit {
         JTextField f = still(new JTextField() {
             @Override
             public String getToolTipText() {
-                return getText();
+                return Ui.plain(getText());
             }
         }, text);
         ToolTipManager.sharedInstance().registerComponent(f);

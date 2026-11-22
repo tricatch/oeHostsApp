@@ -34,7 +34,7 @@ public final class OeDialog extends JDialog {
         JPanel head = new JPanel(new BorderLayout());
         head.setBackground(Ui.BC100);
         head.setBorder(new CompoundBorder(new MatteBorder(0, 0, 1, 0, LINE), Ui.pad(12, 16, 12, 10)));
-        JLabel t = new JLabel(title);
+        JLabel t = new JLabel(Ui.plain(title));
         t.setFont(Ui.font(Font.BOLD, 15f));
         t.setForeground(new Color(0x1e4a0a));
         head.add(t, BorderLayout.CENTER);

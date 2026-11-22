@@ -89,7 +89,7 @@ final class ItemPanel {
             public void renamed(Store.Item item) {
                 if (isActive(item.id)) {
                     active = item;
-                    title.setText(item.name);
+                    title.setText(Ui.plain(item.name));
                 }
                 hooks.changed();
             }
@@ -303,7 +303,7 @@ final class ItemPanel {
         active = it;
         editor.clearMarks();
         tree.setActive(it == null ? null : it.id);
-        title.setText(it == null ? ctx.m(spec.selectKey()) : it.name);
+        title.setText(it == null ? ctx.m(spec.selectKey()) : Ui.plain(it.name));
         editor.setText(it == null ? "" : it.content);
         editor.setEditable(it != null);
         findBar.itemChanged();
@@ -319,7 +319,7 @@ final class ItemPanel {
     private void lint(String content) {
         editor.area.removeAllLineHighlights();
         Invalid p = hooks.invalid(content);
-        saveStatus.setToolTipText(p == null ? null : p.message());
+        saveStatus.setToolTipText(p == null ? null : Ui.plain(p.message()));
         if (p == null) return;
         try {
             editor.area.addLineHighlight(Math.min(p.line(), editor.area.getLineCount() - 1), new Color(255, 0, 0, 28));

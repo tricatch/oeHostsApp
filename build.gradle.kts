@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "tricatch.oehostsapp"
-version = "0.2.2"
+version = "0.3.0"
 
 repositories {
     mavenCentral()
@@ -23,8 +23,9 @@ tasks.withType<JavaCompile> {
 }
 
 dependencies {
+    // 0.3.1: setDefaultRouteResolver (the SSL proxy) and relay fixes;
     // 0.3.0: setBindAddresses (the reverse proxy on a network card plus 127.0.0.1).
-    implementation("io.github.tricatch:oe-proxy:0.3.0")
+    implementation("io.github.tricatch:oe-proxy:0.3.1")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.23.0")
     implementation("org.slf4j:slf4j-simple:2.0.20")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.23.0")

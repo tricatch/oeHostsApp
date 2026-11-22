@@ -1,5 +1,8 @@
 package tricatch.oehostsapp.ui;
 
+import tricatch.oehostsapp.Listeners;
+import tricatch.oehostsapp.proxy.DecryptedRequests;
+import tricatch.oehostsapp.proxy.ForwardMonitor;
 import tricatch.oehostsapp.proxy.ProxyMonitor;
 import tricatch.oehostsapp.store.Store;
 
@@ -19,25 +22,46 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
- * The Network screen (oeHub's monitor.html): request table on top, detail tabs below, fed by the
- * embedded proxy's live traffic events ({@link ProxyMonitor}). Recording subscribes to the proxy;
- * stopping it unsubscribes, so the proxy stops building events.
+ * The Network screen (request table on top, detail tabs below): everything that passes the two
+ * proxies while capturing.
+ * <ul>
+ *   <li>the reverse proxy's requests ({@link ProxyMonitor}): vhosts and what the SSL proxy decrypts;</li>
+ *   <li>the proxy service's traffic ({@link ForwardMonitor}): plain HTTP whole, tunnels as gray
+ *   CONNECT rows without content (right-click adds the domain to the SSL proxy).</li>
+ * </ul>
+ * Both report on their own threads into one queue, which the event thread works off in batches: a
+ * page opens dozens of tunnels and hundreds of requests at once. Stopping the capture unsubscribes
+ * from both, so neither builds events or collects bodies.
  */
 public final class MonitorTab extends JPanel {
 
     private static final String[] TABS = {"header", "cookie", "request", "response", "websocket", "event"};
-    /** Oldest rows are dropped beyond this. */
+    /** The oldest rows are dropped beyond this, counted apart for content and tunnels so tunnels never push content out. */
     private static final int MAX_ROWS = 2000;
+    /** The oldest rows' bodies are dropped beyond this many bytes in all. */
+    private static final long MAX_BODY_BYTES = 96L * 1024 * 1024;
+    private static final int FLUSH_MS = 120;
+    /** An open tunnel's counters are repainted this often. */
+    private static final int LIVE_MS = 1000;
+    /** The reverse proxy's events come from worker threads: a request may be reported just after its tunnel closed. */
+    private static final int DECRYPTED_GRACE_MS = 600;
+    private static final Color TUNNEL_TEXT = new Color(0x9aa0a6);
     private static final SimpleDateFormat TIME = new SimpleDateFormat("HH:mm:ss.SSS");
+    /** The filter "with content only"; static, so a rebuild of the window keeps it. Not saved. */
+    private static boolean contentOnly;
 
-    /** Everything seen for one request id. Only touched on the EDT. */
+    /** Everything seen for one request or tunnel. Only touched on the EDT. */
     private static final class Row {
         final String rid;
-        long reqTs, resTs;
+        long reqTs, resTs, endTs;
         String method = "-", host = "-", path = "-";
         List<String> reqHeaders = List.of(), resHeaders = List.of();
         byte[] reqBody, resBody;
@@ -45,29 +69,76 @@ public final class MonitorTab extends JPanel {
         final List<String> ws = new ArrayList<>();
         final List<String> events = new ArrayList<>();
 
+        // Of the proxy service's rows only.
+        boolean forward, tunnel, decryptedWithoutRequest, untracked;
+        boolean reqTooLarge, resTooLarge;
+        int port;
+        String url, client;
+        ForwardMonitor.Failure failure;
+        long sent, received;
+        /** While it is open, for the counters; dropped at the end, so the row alone holds the bodies. */
+        ForwardMonitor.Exchange live;
+
+        long bodyBytes;
+        boolean bodiesDropped;
+
         Row(String rid) {
             this.rid = rid;
         }
+
+        long sent() {
+            return live != null ? live.sent() : sent;
+        }
+
+        long received() {
+            return live != null ? live.received() : received;
+        }
     }
+
+    /** A decrypted tunnel that ended, until it is known whether a request of it was seen. */
+    private record Ended(ForwardMonitor.Exchange tunnel, long due) {}
 
     private final AppContext ctx;
     private final List<Row> rows = new ArrayList<>();
+    /** The rows the filter lets through, in the table's order. */
+    private final List<Row> visible = new ArrayList<>();
     private final Map<String, Row> byRid = new HashMap<>();
     private final Model model = new Model();
     private final JTable table;
     private final JPanel tableCards = new JPanel(new CardLayout());
+    private final JLabel emptyText = new JLabel();
     private final JTextArea[] panels = new JTextArea[TABS.length];
     private final JPanel panelCards = new JPanel(new CardLayout());
     private final List<JLabel> tabButtons = new ArrayList<>();
-    private final ProxyMonitor monitor = new ProxyMonitor(e -> SwingUtilities.invokeLater(() -> apply(e)));
+
+    private final Queue<Object> incoming = new ConcurrentLinkedQueue<>();
+    private final ProxyMonitor monitor = new ProxyMonitor(incoming::add);
+    private Listeners.Subscription forwardCapture;
+    private final DecryptedRequests decrypted = new DecryptedRequests();
+    private final List<Ended> endedDecrypted = new ArrayList<>();
+    private final Timer flushTimer = new Timer(FLUSH_MS, e -> flushEvents());
+    private final Timer liveTimer = new Timer(LIVE_MS, e -> repaintLive());
+    private long bodyBytes;
+    private long clearedAt;
+    private int contentRows, tunnelRows;
+
     private JButton recordBtn;
+    private JButton filterBtn;
     private boolean recording = true;
-    private Runnable gotoProxy = () -> {};
+    private Runnable gotoCa = () -> {};
+    private final SslProxyControls ssl;
 
     public MonitorTab(AppContext ctx) {
         super(new BorderLayout());
         this.ctx = ctx;
-        table = new JTable(model);
+        ssl = new SslProxyControls(ctx, () -> gotoCa.run());
+        table = new JTable(model) {
+            @Override
+            public String getToolTipText(java.awt.event.MouseEvent e) {
+                int r = rowAtPoint(e.getPoint());
+                return r < 0 || r >= visible.size() ? null : Ui.plain(url(visible.get(r)));
+            }
+        };
         setBackground(Color.WHITE);
         tableCards.setBackground(Color.WHITE);
         panelCards.setBackground(Color.WHITE);
@@ -94,15 +165,17 @@ public final class MonitorTab extends JPanel {
                 super.getTableCellRendererComponent(t, v, sel, false, r, c);
                 setBorder(Ui.pad(0, 10, 0, 10));
                 setFont(c == 2 || c == 6 ? Ui.mono(12f) : t.getFont());
-                setForeground(Ui.TEXT);
+                setForeground(r < visible.size() && visible.get(r).tunnel ? TUNNEL_TEXT : Ui.TEXT);
                 if (c == 5 && v instanceof Integer code) setForeground(code >= 500 ? Ui.DANGER : code >= 400 ? new Color(0xb8860b) : Ui.BC700);
                 setHorizontalAlignment(c >= 4 ? RIGHT : LEFT);
                 return this;
             }
         };
+        // Every cell comes from the network: it must stay text.
+        cell.putClientProperty("html.disable", Boolean.TRUE);
         table.setDefaultRenderer(Object.class, cell);
         table.setDefaultRenderer(Integer.class, cell);
-        int[] widths = {80, 220, 480, 110, 90, 70, 90};
+        int[] widths = {106, 220, 454, 110, 90, 70, 90}; // the method column fits CONNECT in the smallest window
         for (int i = 0; i < widths.length; i++) table.getColumnModel().getColumn(i).setPreferredWidth(Ui.px(widths[i]));
         table.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) populate(table.getSelectedRow());
@@ -111,7 +184,20 @@ public final class MonitorTab extends JPanel {
         JScrollPane ts = Ui.plainScroll(table);
         ts.getViewport().setBackground(Color.WHITE);
         tableCards.add(ts, "table");
-        tableCards.add(inactivePanel(), "inactive");
+        tableCards.add(emptyPanel(), "empty");
+        java.awt.event.MouseAdapter menu = new java.awt.event.MouseAdapter() {
+            // The menu's trigger is the press on macOS and Linux, the release on Windows.
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                if (e.isPopupTrigger()) tunnelMenu(e);
+            }
+
+            @Override
+            public void mouseReleased(java.awt.event.MouseEvent e) {
+                if (e.isPopupTrigger()) tunnelMenu(e);
+            }
+        };
+        table.addMouseListener(menu);
 
         JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, tableCards, buildDetail());
         split.setResizeWeight(0.55);
@@ -121,25 +207,35 @@ public final class MonitorTab extends JPanel {
         Ui.lineDivider(split);
         add(split, BorderLayout.CENTER);
         populate(-1);
-        monitor.start();
+        showCard();
+        startCapture();
+        flushTimer.start();
+        liveTimer.start();
     }
 
-    public void onGotoProxy(Runnable r) {
-        gotoProxy = r;
+    void onGotoCa(Runnable r) {
+        gotoCa = r;
     }
 
-    private JComponent inactivePanel() {
+    void showSslSettings() {
+        ssl.openSettings();
+    }
+
+    private JComponent emptyPanel() {
         JPanel p = new JPanel(new GridBagLayout());
         p.setBackground(Color.WHITE);
-        JLabel t = new JLabel(ctx.m("monitor.proxy.inactive.title"));
-        t.setFont(Ui.font(Font.BOLD, 15f));
-        t.setForeground(Ui.TEXT);
-        JLabel b = new JLabel(ctx.m("monitor.proxy.inactive.body"));
-        b.setForeground(Ui.MUTED);
-        JButton go = Ui.primary(ctx.m("monitor.proxy.goto.proxy"), null, () -> gotoProxy.run());
-        JPanel box = OeDialog.stack(10, t, b, go);
-        p.add(box);
+        emptyText.setFont(Ui.font(Font.PLAIN, 13.5f));
+        emptyText.setForeground(Ui.MUTED);
+        p.add(emptyText);
         return p;
+    }
+
+    private void tunnelMenu(java.awt.event.MouseEvent e) {
+        int r = table.rowAtPoint(e.getPoint());
+        if (r < 0 || r >= visible.size() || !visible.get(r).tunnel) return;
+        table.setRowSelectionInterval(r, r);
+        Row x = visible.get(r);
+        ssl.domainMenu(x.host, x.port).show(table, e.getX(), e.getY());
     }
 
     private JComponent buildDetail() {
@@ -213,7 +309,7 @@ public final class MonitorTab extends JPanel {
         ((CardLayout) panelCards.getLayout()).show(panelCards, TABS[index]);
     }
 
-    /** Navbar actions of the Network tab: start/stop capture and clear. */
+    /** Navbar actions of the Network tab: start/stop capture, clear, the filter, and the SSL proxy's switch and settings. */
     public JComponent navActions() {
         JPanel p = new JPanel(new FlowLayout(FlowLayout.CENTER, Ui.px(6), 0));
         p.setOpaque(false);
@@ -221,6 +317,11 @@ public final class MonitorTab extends JPanel {
         showRecording(recordBtn);
         p.add(recordBtn);
         p.add(Ui.navIconButton("brush-cleaning", ctx.m("tooltip.clear"), this::clear));
+        filterBtn = Ui.navIconButton("list-filter", null, this::toggleFilter);
+        showFilter();
+        p.add(filterBtn);
+        p.add(Box.createHorizontalStrut(Ui.px(8))); // sets the SSL proxy's group apart
+        p.add(ssl.panel);
         return p;
     }
 
@@ -232,41 +333,175 @@ public final class MonitorTab extends JPanel {
         b.setToolTipText(ctx.m(recording ? "app.monitor.stop" : "app.monitor.start"));
     }
 
+    private void startCapture() {
+        monitor.start();
+        forwardCapture = ForwardMonitor.start(incoming::add);
+    }
+
+    private void stopCapture() {
+        monitor.stop();
+        if (forwardCapture != null) forwardCapture.close();
+        forwardCapture = null;
+    }
+
     private void toggleRecording() {
-        recording = !recording;
+        if (recording) {
+            stopCapture();
+            flushEvents(); // what happened until now
+            recording = false;
+            incoming.clear();
+            endedDecrypted.clear();
+            // Their ends will not be seen: no "connected" that would stay for good.
+            for (Row r : rows) {
+                if (r.live == null) continue;
+                r.sent = r.live.sent();
+                r.received = r.live.received();
+                r.live = null;
+                r.untracked = true;
+            }
+            if (!visible.isEmpty()) model.fireTableRowsUpdated(0, visible.size() - 1);
+        } else {
+            recording = true;
+            startCapture();
+        }
         showRecording(recordBtn);
-        if (recording) monitor.start();
-        else monitor.stop();
+        showCard();
+    }
+
+    private void toggleFilter() {
+        contentOnly = !contentOnly;
+        showFilter();
+        int selected = table.getSelectedRow();
+        Row keep = selected >= 0 && selected < visible.size() ? visible.get(selected) : null;
+        visible.clear();
+        for (Row r : rows) if (shows(r)) visible.add(r);
+        model.fireTableDataChanged();
+        int again = keep == null ? -1 : visible.indexOf(keep);
+        if (again >= 0) table.setRowSelectionInterval(again, again);
+        else populate(-1);
+        showCard();
+    }
+
+    private void showFilter() {
+        Color c = contentOnly ? Ui.BC700 : Ui.NAV_ICON;
+        filterBtn.setIcon(Ui.icon("list-filter", 15, c));
+        filterBtn.setRolloverIcon(Ui.icon("list-filter", 15, contentOnly ? c : Ui.NAV_ICON_HOVER));
+        filterBtn.putClientProperty(Ui.NAV_ON, contentOnly);
+        filterBtn.setToolTipText(ctx.m(contentOnly ? "app.monitor.filter.content" : "app.monitor.filter.all"));
+        filterBtn.repaint();
+    }
+
+    private static boolean shows(Row r) {
+        return !contentOnly || !r.tunnel;
     }
 
     private void clear() {
+        clearedAt = System.currentTimeMillis();
+        incoming.clear();
+        endedDecrypted.clear();
         rows.clear();
+        visible.clear();
         byRid.clear();
+        bodyBytes = 0;
+        contentRows = tunnelRows = 0;
         model.fireTableDataChanged();
         populate(-1);
+        showCard();
     }
 
     /** Called when the monitor tab is shown or hidden. */
     void setVisibleTab(boolean v) {
-        if (v) ((CardLayout) tableCards.getLayout()).show(tableCards, ctx.read(() -> ctx.rawStore().hasSelected(Store.Kind.VHOSTS)) || !rows.isEmpty() ? "table" : "inactive");
+        if (v) ssl.refresh(); // the CA may have been registered since
+    }
+
+    private void showCard() {
+        emptyText.setText(ctx.m(!recording ? "app.monitor.empty.stopped"
+                : !rows.isEmpty() ? "app.monitor.empty.filtered" : "app.monitor.empty"));
+        ((CardLayout) tableCards.getLayout()).show(tableCards, visible.isEmpty() ? "empty" : "table");
     }
 
     void dispose() {
-        monitor.stop();
+        flushTimer.stop();
+        liveTimer.stop();
+        stopCapture();
+        incoming.clear();
     }
 
     // ── Events ──────────────────────────────────────────────────
 
-    private void apply(ProxyMonitor.Event e) {
-        if (!recording) return;
-        Row r = byRid.get(e.rid());
-        boolean added = r == null;
-        if (added) {
-            r = new Row(e.rid());
-            r.reqTs = e.timestamp();
-            byRid.put(e.rid(), r);
-            rows.add(r);
+    /** Works off what both monitors reported since the last time, as one change of the table. */
+    private void flushEvents() {
+        if (!recording || incoming.isEmpty() && endedDecrypted.isEmpty()) return;
+        Set<Row> changed = new HashSet<>();
+        List<Row> added = new ArrayList<>();
+        // Only what is there now: a busy proxy must not keep this loop, and the event thread, forever.
+        for (int n = incoming.size(); n > 0; n--) {
+            Object o = incoming.poll();
+            if (o instanceof ProxyMonitor.Event e) {
+                applyProxy(e, changed, added);
+            } else if (o instanceof ForwardMonitor.Exchange x) {
+                if (x.startedAt() < clearedAt) continue; // of a row that was cleared
+                if (x.endsAtReverseProxy()) {
+                    if (x.ended()) endedDecrypted.add(new Ended(x, System.currentTimeMillis() + DECRYPTED_GRACE_MS));
+                } else {
+                    applyForward(x, changed, added);
+                }
+            }
         }
+        long now = System.currentTimeMillis();
+        endedDecrypted.removeIf(d -> {
+            if (d.due() > now) return false;
+            ForwardMonitor.Exchange x = d.tunnel();
+            if (decrypted.leftNoRequest(x.host(), x.startedAt(), x.sent())) {
+                applyForward(x, changed, added).decryptedWithoutRequest = true;
+            }
+            return true;
+        });
+        if (changed.isEmpty()) return;
+
+        int firstNew = visible.size();
+        for (Row r : added) if (shows(r)) visible.add(r);
+        if (visible.size() > firstNew) model.fireTableRowsInserted(firstNew, visible.size() - 1);
+        trimRows();
+        trimBodies();
+        // Repaints what is on screen, whatever the size of the batch.
+        if (!visible.isEmpty()) model.fireTableRowsUpdated(0, visible.size() - 1);
+        showCard();
+        int selected = table.getSelectedRow();
+        if (selected < 0) {
+            if (!added.isEmpty() && !visible.isEmpty()) table.scrollRectToVisible(table.getCellRect(visible.size() - 1, 0, true));
+        } else if (selected < visible.size() && changed.contains(visible.get(selected))) {
+            populate(selected);
+        }
+    }
+
+    private void repaintLive() {
+        if (!isShowing()) return;
+        for (Row r : visible) {
+            if (r.live != null) {
+                table.repaint();
+                return;
+            }
+        }
+    }
+
+    private Row row(String rid, long at, boolean tunnel, List<Row> added) {
+        Row r = byRid.get(rid);
+        if (r != null) return r;
+        r = new Row(rid);
+        r.reqTs = at;
+        r.tunnel = tunnel;
+        if (tunnel) tunnelRows++;
+        else contentRows++;
+        byRid.put(rid, r);
+        rows.add(r);
+        added.add(r);
+        return r;
+    }
+
+    private void applyProxy(ProxyMonitor.Event e, Set<Row> changed, List<Row> added) {
+        Row r = row(e.rid(), e.timestamp(), false, added);
+        changed.add(r);
         r.events.add(TIME.format(new Date(e.timestamp())) + "  " + e.type()
                 + (e.stream() != null ? "  " + e.stream() : "")
                 + (e.body() != null ? "  " + e.body().length + " B" : ""));
@@ -275,6 +510,7 @@ public final class MonitorTab extends JPanel {
                 r.reqTs = e.timestamp();
                 r.reqHeaders = e.headers();
                 parseRequestLine(r);
+                decrypted.saw(ProxyMonitor.header(e.headers(), "Host"), e.timestamp());
             }
             case RES_HEADER -> {
                 r.resTs = e.timestamp();
@@ -286,8 +522,8 @@ public final class MonitorTab extends JPanel {
                     // leave the code empty
                 }
             }
-            case REQ_BODY -> r.reqBody = e.body();
-            case RES_BODY -> r.resBody = e.body();
+            case REQ_BODY -> setBodies(r, e.body(), r.resBody);
+            case RES_BODY -> setBodies(r, r.reqBody, e.body());
             case WS_FRAME -> {
                 String text = e.body() == null ? "" : new String(e.body(), StandardCharsets.UTF_8);
                 boolean binary = e.opcode() != null && e.opcode() == 2;
@@ -295,24 +531,78 @@ public final class MonitorTab extends JPanel {
                         + "  " + (binary ? ctx.m("app.monitor.binary.body", e.body() == null ? 0 : e.body().length) : text));
             }
         }
-        int index = rows.indexOf(r);
-        if (added) {
-            model.fireTableRowsInserted(index, index);
-            trim();
-            ((CardLayout) tableCards.getLayout()).show(tableCards, "table");
-            if (table.getSelectedRow() < 0) table.scrollRectToVisible(table.getCellRect(rows.size() - 1, 0, true));
-        } else {
-            model.fireTableRowsUpdated(index, index);
-        }
-        if (table.getSelectedRow() >= 0 && table.getSelectedRow() == rows.indexOf(r)) populate(table.getSelectedRow());
     }
 
-    private void trim() {
-        int extra = rows.size() - MAX_ROWS;
-        if (extra <= 0) return;
-        for (int i = 0; i < extra; i++) byRid.remove(rows.get(i).rid);
-        rows.subList(0, extra).clear();
-        model.fireTableRowsDeleted(0, extra - 1);
+    private Row applyForward(ForwardMonitor.Exchange x, Set<Row> changed, List<Row> added) {
+        Row r = row(x.id(), x.startedAt(), x.tunnel(), added);
+        changed.add(r);
+        boolean ended = x.ended();
+        r.forward = true;
+        r.method = x.method();
+        r.port = x.port();
+        String host = x.host().indexOf(':') >= 0 ? "[" + x.host() + "]" : x.host();
+        // Port 80 is implied; a tunnel's port is its path.
+        r.host = x.tunnel() ? x.host() : x.port() == 80 ? host : host + ":" + x.port();
+        r.path = x.path();
+        r.url = x.url();
+        r.client = x.client();
+        r.reqHeaders = x.requestHeaders();
+        r.resHeaders = x.responseHeaders();
+        r.resTs = x.answeredAt();
+        r.endTs = x.endedAt();
+        r.code = x.status();
+        r.failure = x.failure();
+        r.reqTooLarge = x.requestBodyTooLarge();
+        r.resTooLarge = x.responseBodyTooLarge();
+        r.sent = x.sent();
+        r.received = x.received();
+        r.live = ended ? null : x;
+        setBodies(r, x.requestBody(), x.responseBody());
+        r.events.clear();
+        r.events.add(TIME.format(new Date(r.reqTs)) + "  " + r.method + "  " + r.url);
+        if (r.resTs > 0) r.events.add(TIME.format(new Date(r.resTs)) + "  " + (r.code == null ? "-" : r.code));
+        if (r.failure != null) r.events.add("  " + failureText(r.failure));
+        if (ended) r.events.add(TIME.format(new Date(r.endTs)) + "  END  " + r.sent + " B / " + r.received + " B");
+        return r;
+    }
+
+    private void setBodies(Row r, byte[] req, byte[] res) {
+        if (r.bodiesDropped) return;
+        r.reqBody = req;
+        r.resBody = res;
+        long n = (req == null ? 0 : req.length) + (long) (res == null ? 0 : res.length);
+        bodyBytes += n - r.bodyBytes;
+        r.bodyBytes = n;
+    }
+
+    private void trimRows() {
+        while (contentRows > MAX_ROWS || tunnelRows > MAX_ROWS) {
+            boolean tunnel = tunnelRows > MAX_ROWS;
+            int i = 0;
+            while (rows.get(i).tunnel != tunnel) i++;
+            Row r = rows.remove(i);
+            byRid.remove(r.rid);
+            bodyBytes -= r.bodyBytes;
+            if (tunnel) tunnelRows--;
+            else contentRows--;
+            int at = visible.indexOf(r);
+            if (at >= 0) {
+                visible.remove(at);
+                model.fireTableRowsDeleted(at, at);
+            }
+        }
+    }
+
+    private void trimBodies() {
+        if (bodyBytes <= MAX_BODY_BYTES) return;
+        for (Row r : rows) {
+            if (r.bodyBytes == 0) continue;
+            bodyBytes -= r.bodyBytes;
+            r.bodyBytes = 0;
+            r.reqBody = r.resBody = null;
+            r.bodiesDropped = true;
+            if (bodyBytes <= MAX_BODY_BYTES) return;
+        }
     }
 
     private static void parseRequestLine(Row r) {
@@ -331,18 +621,30 @@ public final class MonitorTab extends JPanel {
 
     private void populate(int index) {
         String empty = ctx.m("monitor.detail.empty");
-        if (index < 0 || index >= rows.size()) {
+        if (index < 0 || index >= visible.size()) {
             for (int i = 0; i < TABS.length; i++) setPanel(i, empty, true);
             return;
         }
-        Row x = rows.get(index);
+        Row x = visible.get(index);
+        String note = !x.tunnel ? null
+                : ctx.m(x.failure != null || x.code != null ? "app.monitor.tunnel.failed"
+                : x.decryptedWithoutRequest ? "app.monitor.tunnel.norequest" : "app.monitor.tunnel.note");
         StringBuilder h = new StringBuilder();
         h.append(ctx.m("monitor.detail.section.general")).append('\n')
                 .append("  ").append(ctx.m("monitor.detail.label.request.id")).append(": ").append(x.rid).append('\n')
-                .append("  ").append(ctx.m("monitor.detail.label.request.url")).append(": https://").append(x.host).append(x.path).append('\n')
+                .append("  ").append(ctx.m("monitor.detail.label.request.url")).append(": ").append(url(x)).append('\n')
                 .append("  ").append(ctx.m("monitor.detail.label.request.method")).append(": ").append(x.method).append('\n')
-                .append("  ").append(ctx.m("monitor.detail.label.status.code")).append(": ").append(x.code == null ? "-" : x.code).append("\n\n")
-                .append(ctx.m("monitor.detail.request.headers")).append('\n');
+                .append("  ").append(ctx.m("monitor.detail.label.status.code")).append(": ").append(x.code == null ? "-" : x.code).append('\n');
+        if (x.forward) {
+            field(h, "app.monitor.detail.client", x.client);
+            if (x.failure != null) field(h, "app.monitor.detail.failure", failureText(x.failure));
+            if (x.tunnel) {
+                field(h, "app.monitor.detail.sent", Ui.byteSize(x.sent()));
+                field(h, "app.monitor.detail.received", Ui.byteSize(x.received()));
+            }
+        }
+        if (note != null) h.append('\n').append(note).append('\n');
+        h.append('\n').append(ctx.m("monitor.detail.request.headers")).append('\n');
         for (int i = 1; i < x.reqHeaders.size(); i++) h.append("  ").append(x.reqHeaders.get(i)).append('\n');
         h.append('\n').append(ctx.m("monitor.detail.response.headers")).append('\n');
         for (int i = 1; i < x.resHeaders.size(); i++) h.append("  ").append(x.resHeaders.get(i)).append('\n');
@@ -368,11 +670,18 @@ public final class MonitorTab extends JPanel {
         }
         setPanel(1, c.length() > 0 ? c.toString() : ctx.m("monitor.detail.no.cookies"), c.length() == 0);
 
-        String req = body(x.reqBody, x.reqHeaders);
-        if (req == null) req = queryString(x.path);
-        setPanel(2, req != null ? req : ctx.m("monitor.detail.no.payload"), req == null);
-        String res = body(x.resBody, x.resHeaders);
-        setPanel(3, res != null ? res : ctx.m("monitor.detail.no.response"), res == null);
+        if (note != null) {
+            setPanel(2, note, true);
+            setPanel(3, note, true);
+        } else {
+            String req = body(x.reqBody, x.reqHeaders);
+            if (req == null) req = missingBody(x, x.reqTooLarge);
+            if (req == null) req = queryString(x.path);
+            setPanel(2, req != null ? req : ctx.m("monitor.detail.no.payload"), req == null);
+            String res = body(x.resBody, x.resHeaders);
+            if (res == null) res = missingBody(x, x.resTooLarge);
+            setPanel(3, res != null ? res : ctx.m("monitor.detail.no.response"), res == null);
+        }
         setPanel(4, x.ws.isEmpty() ? ctx.m("monitor.detail.ws.empty") : String.join("\n", x.ws), x.ws.isEmpty());
         setPanel(5, String.join("\n", x.events), false);
     }
@@ -384,7 +693,31 @@ public final class MonitorTab extends JPanel {
         return text == null ? ctx.m("app.monitor.binary.body", body.length) : pretty(text);
     }
 
+    private void field(StringBuilder to, String key, String value) {
+        to.append("  ").append(ctx.m(key)).append(": ").append(value).append('\n');
+    }
+
+    private String missingBody(Row x, boolean tooLarge) {
+        if (tooLarge) return ctx.m("app.monitor.body.toolarge", ForwardMonitor.BODY_LIMIT / 1024 / 1024);
+        return x.bodiesDropped ? ctx.m("app.monitor.body.dropped") : null;
+    }
+
+    private String failureText(ForwardMonitor.Failure f) {
+        return ctx.m(switch (f) {
+            case DNS -> "app.monitor.failure.dns";
+            case CONNECT -> "app.monitor.failure.connect";
+            case TIMEOUT -> "app.monitor.failure.timeout";
+        });
+    }
+
+    /** The request's URL: as the proxy service was given it, or https for the reverse proxy's. */
+    private static String url(Row x) {
+        return x.forward ? x.url : "https://" + x.host + x.path;
+    }
+
     private void setPanel(int i, String text, boolean empty) {
+        // A batch repopulates the selected row: the same text keeps its scroll position and selection.
+        if (text.equals(panels[i].getText())) return;
         panels[i].setFont(empty ? Ui.font(Font.PLAIN, 12.5f) : Ui.mono(12f));
         panels[i].setForeground(empty ? Ui.MUTED : Ui.TEXT);
         panels[i].setText(text);
@@ -430,7 +763,7 @@ public final class MonitorTab extends JPanel {
     private final class Model extends AbstractTableModel {
         @Override
         public int getRowCount() {
-            return rows.size();
+            return visible.size();
         }
 
         @Override
@@ -450,22 +783,37 @@ public final class MonitorTab extends JPanel {
 
         @Override
         public Object getValueAt(int r, int c) {
-            Row x = rows.get(r);
+            Row x = visible.get(r);
             return switch (c) {
                 case 0 -> x.method;
                 case 1 -> x.host;
                 case 2 -> x.path;
                 case 3 -> TIME.format(new Date(x.reqTs));
-                case 4 -> x.resTs == 0 ? "…" : Math.max(0, x.resTs - x.reqTs) + " ms";
-                case 5 -> x.code;
+                case 4 -> duration(x);
+                case 5 -> x.code == null && x.forward && (x.tunnel || x.endTs > 0) ? "-" : x.code;
                 default -> size(x);
             };
         }
     }
 
+    /** Until the response started; for a tunnel, how long it was open. */
+    private String duration(Row x) {
+        if (x.untracked && (x.tunnel || x.resTs == 0)) return "-";
+        if (x.tunnel) {
+            if (x.endTs == 0) return ctx.m("app.monitor.tunnel.open");
+            long ms = Math.max(0, x.endTs - x.reqTs);
+            return ms < 10_000 ? ms + " ms" : ms / 1000 + " s";
+        }
+        if (x.resTs > 0) return Math.max(0, x.resTs - x.reqTs) + " ms";
+        return x.endTs > 0 ? "-" : "…";
+    }
+
     private static String size(Row x) {
         long n;
-        if (x.resBody != null) n = x.resBody.length;
+        if (x.forward) {
+            if (x.tunnel && x.code != null) return "-"; // it never was a tunnel
+            n = x.tunnel ? x.sent() + x.received() : x.received();
+        } else if (x.resBody != null) n = x.resBody.length;
         else {
             String len = ProxyMonitor.header(x.resHeaders, "Content-Length");
             if (len == null) return "";
@@ -475,6 +823,6 @@ public final class MonitorTab extends JPanel {
                 return "";
             }
         }
-        return n < 1024 ? n + " B" : String.format("%.1f KB", n / 1024.0);
+        return Ui.byteSize(n);
     }
 }

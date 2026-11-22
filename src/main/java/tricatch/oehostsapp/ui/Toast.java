@@ -16,7 +16,7 @@ final class Toast {
     static void show(JFrame frame, String text) {
         JLayeredPane layers = frame.getLayeredPane();
         if (current != null) layers.remove(current);
-        JLabel l = new JLabel(text, Ui.icon("circle-dashed-check", 16, Ui.BC500), SwingConstants.LEFT) {
+        JLabel l = new JLabel(Ui.plain(text), Ui.icon("circle-dashed-check", 16, Ui.BC500), SwingConstants.LEFT) {
             @Override
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();

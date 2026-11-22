@@ -83,10 +83,11 @@ final class ForwardProxyPage {
                 JLabel state = new JLabel(ctx.m(e.allowed() ? "app.access.allowed" : "app.access.denied"));
                 state.setFont(Ui.font(Font.BOLD, 12f));
                 state.setForeground(e.allowed() ? Ui.BC700 : Ui.DANGER);
-                JLabel model = new JLabel(UaSummary.of(e.userAgent()));
+                // The User-Agent is whatever the device sent, also one that was refused.
+                JLabel model = new JLabel(Ui.plain(UaSummary.of(e.userAgent())));
                 model.setFont(Ui.font(Font.PLAIN, 12.5f));
                 model.setForeground(Ui.MUTED);
-                model.setToolTipText(e.userAgent());
+                model.setToolTipText(Ui.plain(e.userAgent()));
                 model.setMinimumSize(new Dimension(0, model.getPreferredSize().height));
                 JButton remove = Ui.iconButton("trash", ctx.m("app.access.devices.remove"), true, () -> ClientAccess.forget(e.ip()));
                 GridBagConstraints c = new GridBagConstraints();

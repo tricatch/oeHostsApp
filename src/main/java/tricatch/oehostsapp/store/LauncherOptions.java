@@ -22,6 +22,8 @@ public final class LauncherOptions {
     public String openUrl = "";
     public boolean hostResolverRules = true;
     public boolean proxyServer;
+    /** The app's own, not a Chrome switch: show the Network tab once Chrome started through the proxy service. */
+    public boolean openNetworkTab;
 
     /** Fills fields a data file left out. */
     void fillDefaults() {

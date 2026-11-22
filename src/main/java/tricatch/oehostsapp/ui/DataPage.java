@@ -2,6 +2,8 @@ package tricatch.oehostsapp.ui;
 
 import tricatch.oehostsapp.proxy.Ca;
 import tricatch.oehostsapp.proxy.ProxyRuntime;
+import tricatch.oehostsapp.proxy.SslProxy;
+import tricatch.oehostsapp.proxy.SslRules;
 import tricatch.oehostsapp.store.Backup;
 import tricatch.oehostsapp.store.Store;
 
@@ -177,6 +179,7 @@ final class DataPage {
         Boolean replace = askMode(title, p, missing);
         if (replace == null) return;
         if (p.ca() && !importCa(title, b)) return;
+        SslRules sslBefore = SslProxy.effective();
         if (p.data()) {
             boolean[] failed = {false};
             boolean saved = ctx.storeRun(s -> {
@@ -195,6 +198,8 @@ final class DataPage {
         }
         if (p.vhosts() || p.settings() || p.ca()) ProxyRuntime.restart();
         if (p.settings()) {
+            // An overwrite can bring another domain list: put it in force like the SSL proxy dialog does.
+            Thread.ofVirtual().name("ssl-proxy-apply").start(() -> SslProxy.apply(sslBefore));
             OeDialog.info(ctx, title, ctx.m("app.data.imported.reload"));
             tab.host().relaunch();
         } else {

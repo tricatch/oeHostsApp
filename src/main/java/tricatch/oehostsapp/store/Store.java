@@ -582,7 +582,11 @@ public final class Store {
         return from;
     }
 
-    /** Replaces the chosen parts (see {@link #exportParts}) with those of a backup's {@code data.json}, and saves. */
+    /**
+     * Replaces the chosen parts (see {@link #exportParts}) with those of a backup's {@code data.json},
+     * and saves. The SSL proxy's switch stays as it is here: decryption is turned on at this PC, not
+     * by a file.
+     */
     public void restoreParts(JsonNode json, boolean hosts, boolean vhosts, boolean settings) throws IOException {
         Data from = parse(json);
         if (hosts) {
@@ -594,7 +598,10 @@ public final class Store {
             data.vhosts = from.vhosts;
             data.vhostFolders = from.vhostFolders;
         }
-        if (settings) data.settings = from.settings;
+        if (settings) {
+            from.settings.sslProxy.enabled = data.settings.sslProxy.enabled;
+            data.settings = from.settings;
+        }
         save();
     }
 

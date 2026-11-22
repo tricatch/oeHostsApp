@@ -108,7 +108,7 @@ final class CaPage {
     }
 
     /** Whether the OS trusts the CA (Windows certificate store only); null when it cannot be told. */
-    private static Boolean trusted(X509Certificate x) {
+    static Boolean trusted(X509Certificate x) {
         if (!WIN) return null;
         try {
             KeyStore ks = KeyStore.getInstance("Windows-ROOT");

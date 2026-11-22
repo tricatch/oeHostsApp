@@ -42,6 +42,12 @@ public final class Settings {
         public String bind = Network.ALL;
     }
 
+    /** The SSL proxy: its switch and the domains it decrypts, as typed ({@code proxy.SslRules}' lines). */
+    public static class SslProxy {
+        public boolean enabled;
+        public String domains = "";
+    }
+
     /** One preset: a name and the value it puts into a launcher field. */
     public static class Preset {
         public String name;
@@ -102,6 +108,7 @@ public final class Settings {
 
     public ForwardProxy fwdproxy = new ForwardProxy();
     public ReverseProxy reverseProxy = new ReverseProxy();
+    public SslProxy sslProxy = new SslProxy();
     public PresetList userAgentPresets = new PresetList();
     public PresetList openUrlPresets = new PresetList();
     public Window window = new Window();
@@ -123,6 +130,8 @@ public final class Settings {
         if (fwdproxy.devices == null) fwdproxy.devices = new ArrayList<>();
         fwdproxy.devices.removeIf(d -> d == null || d.ip == null || d.ip.isBlank());
         if (reverseProxy == null) reverseProxy = new ReverseProxy();
+        if (sslProxy == null) sslProxy = new SslProxy();
+        if (sslProxy.domains == null) sslProxy.domains = "";
         if (userAgentPresets == null) userAgentPresets = new PresetList();
         if (openUrlPresets == null) openUrlPresets = new PresetList();
         if (userAgentPresets.items == null) userAgentPresets.items = new ArrayList<>();
