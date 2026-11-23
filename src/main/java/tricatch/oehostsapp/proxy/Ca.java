@@ -124,6 +124,7 @@ public final class Ca {
 
     /** A CA import that was refused; {@link #code} is the message key telling why. */
     public static final class ImportException extends Exception {
+        private static final long serialVersionUID = 1L;
         public final String code;
 
         ImportException(String code, Throwable cause) {

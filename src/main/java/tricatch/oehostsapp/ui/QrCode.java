@@ -12,6 +12,7 @@ import java.awt.*;
 import java.util.Map;
 
 /** A square QR code of a short text (a URL), drawn module by module with a white quiet zone. */
+@SuppressWarnings("serial") // a Swing component, never serialized
 final class QrCode extends JComponent {
 
     private final int size;

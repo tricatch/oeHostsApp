@@ -24,6 +24,7 @@ import java.util.function.Consumer;
  * item to rename it (or use the right-click menu), right-click for move and
  * delete, drag a row to reorder it or to drop an item into a folder.
  */
+@SuppressWarnings("serial") // a Swing component, never serialized
 public final class SidebarTree extends JPanel {
 
     public interface Listener {

@@ -60,6 +60,7 @@ final class Backdrop {
         layers.repaint();
     }
 
+    @SuppressWarnings("serial") // a Swing component, never serialized
     private static final class Overlay extends JComponent {
         int count = 1;
         ComponentAdapter resize;

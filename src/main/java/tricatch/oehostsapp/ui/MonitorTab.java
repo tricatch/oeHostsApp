@@ -41,6 +41,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * page opens dozens of tunnels and hundreds of requests at once. Stopping the capture unsubscribes
  * from both, so neither builds events or collects bodies.
  */
+@SuppressWarnings("serial") // a Swing component, never serialized
 public final class MonitorTab extends JPanel {
 
     private static final String[] TABS = {"header", "cookie", "request", "response", "websocket", "event"};

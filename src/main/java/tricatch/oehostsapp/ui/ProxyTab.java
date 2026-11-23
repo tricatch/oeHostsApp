@@ -15,6 +15,7 @@ import java.util.List;
  * of the web page ({@link Vhosts#problems}), and the routes the embedded proxy serves: the merged
  * YAML of the selected vhosts with oeHub's placeholders filled in ({@link Vhosts#served}).
  */
+@SuppressWarnings("serial") // a Swing component, never serialized
 public final class ProxyTab extends JPanel {
 
     private final AppContext ctx;

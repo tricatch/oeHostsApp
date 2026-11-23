@@ -18,6 +18,7 @@ import java.util.List;
  * text field and the matching items with their matching lines. A press anywhere else, Esc or the
  * button closes it and clears the text.
  */
+@SuppressWarnings("serial") // a Swing component, never serialized
 final class SearchPanel extends JPanel {
 
     /** What the panel searches and what a click on a result does. */

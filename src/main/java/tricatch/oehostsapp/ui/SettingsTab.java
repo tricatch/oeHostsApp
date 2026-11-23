@@ -20,6 +20,7 @@ import java.util.function.Supplier;
  * (General, oeHosts, oeProxy) with one entry per settings page, and the selected page on the right.
  * Each page is its own class ({@code *Page}); a page is built the first time it is shown.
  */
+@SuppressWarnings("serial") // a Swing component, never serialized
 public final class SettingsTab extends JPanel {
 
     /** What the settings pages ask of the window. */

@@ -118,6 +118,7 @@ public final class Store {
 
     /** A refused change; {@link #code} tells why ({@code not_found}, {@code name_taken}, {@code io}...). */
     public static class StoreException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
         public final String code;
 
         StoreException(String code, String detail) {

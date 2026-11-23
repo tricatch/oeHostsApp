@@ -537,10 +537,6 @@ public final class MainWindow {
     }
 
     /**
-     * Rebuilds the screens (language change, import) in the same window, on the same tab and
-     * settings page: the window itself never closes, so it does not blink or move.
-     */
-    /**
      * Ctrl (Cmd on macOS) with + / - / 0: one font size step up or down, or back to the default.
      * Bound on the root pane, which outlives the rebuilds, for whichever window is shown.
      */
@@ -603,6 +599,10 @@ public final class MainWindow {
         });
     }
 
+    /**
+     * Rebuilds the screens (language change, import) in the same window, on the same tab and
+     * settings page: the window itself never closes, so it does not blink or move.
+     */
     private void relaunch() {
         flush();
         monitor.dispose();

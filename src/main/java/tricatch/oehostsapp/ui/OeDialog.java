@@ -17,6 +17,7 @@ import java.util.function.Consumer;
  * {@code .oe-modal-btn} buttons. Undecorated so it looks the same as on the web pages; the header
  * drags the dialog and Esc closes it.
  */
+@SuppressWarnings("serial") // a Swing component, never serialized
 public final class OeDialog extends JDialog {
 
     private static final Color LINE = new Color(0xc4e89a);

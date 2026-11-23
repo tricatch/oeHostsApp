@@ -18,6 +18,7 @@ import java.awt.event.KeyEvent;
  * editor, say) closes it too and leaves the caret where it went. Plain text, ignoring case, like
  * the list search.
  */
+@SuppressWarnings("serial") // a Swing component, never serialized
 final class FindBar extends JPanel {
 
     private final AppContext ctx;

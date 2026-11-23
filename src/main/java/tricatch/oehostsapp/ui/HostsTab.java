@@ -27,6 +27,7 @@ import java.util.function.Consumer;
  * The oeHosts screen, laid out like oeHub's hosts page: profile sidebar, editor with the
  * merged preview, and the Chrome launcher panel ({@link LauncherOptions}).
  */
+@SuppressWarnings("serial") // a Swing component, never serialized
 public final class HostsTab extends JPanel {
 
     private static final boolean WIN = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");

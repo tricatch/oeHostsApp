@@ -13,6 +13,7 @@ import java.util.function.Consumer;
  * Bootstrap-style {@code form-switch} toggle. {@code onColor} is BC300 for the sidebar list
  * switches and BC500 for the launcher options, as in the web CSS.
  */
+@SuppressWarnings("serial") // a Swing component, never serialized
 public final class Switch extends JComponent {
 
     private boolean on;

@@ -39,6 +39,7 @@ final class SettingsKit {
     // ── Page bodies ─────────────────────────────────────────────
 
     /** A panel that follows the viewport's width, so descriptions wrap and long paths are cut. */
+    @SuppressWarnings("serial") // a Swing component, never serialized
     static class WidthTracking extends JPanel implements Scrollable {
         public Dimension getPreferredScrollableViewportSize() {
             return getPreferredSize();
@@ -362,7 +363,6 @@ final class SettingsKit {
 
     // ── Tables and forms ────────────────────────────────────────
 
-    /** Label / value rows (the CA details, the proxy status); the value fields are put into {@code values}. */
     /**
      * A monospace value (a path, the SHA-256), selectable so it can be copied. A long one scrolls
      * inside its row when the page is narrow; the tooltip has it all.
@@ -389,6 +389,7 @@ final class SettingsKit {
         return l;
     }
 
+    /** Label / value rows (the CA details, the proxy status); the value fields are put into {@code values}. */
     static JPanel table(String[][] rows, JTextField[] values) {
         JPanel p = new JPanel(new GridBagLayout());
         p.setOpaque(false);

@@ -212,7 +212,8 @@ class SslProxyTest {
 
     private static void awaitListening(InetAddress at, int port) throws Exception {
         for (int i = 0; ; i++) {
-            try (Socket s = new Socket(at, port)) {
+            try {
+                new Socket(at, port).close();
                 return;
             } catch (IOException e) {
                 if (i >= 50) throw e;
