@@ -124,6 +124,8 @@ val thirdPartyLicenses = tasks.register<Sync>("thirdPartyLicenses") {
     into(layout.buildDirectory.dir("third-party-licenses"))
     includeEmptyDirs = false
     duplicatesStrategy = DuplicatesStrategy.FAIL
+    // The included builds' jars (oe-proxy, keytool) must exist before zipTree reads them.
+    dependsOn(configurations.runtimeClasspath)
     configurations.runtimeClasspath.get().incoming.artifacts.artifacts.forEach { a ->
         val lib = when (val id = a.id.componentIdentifier) {
             is ModuleComponentIdentifier -> id.module
