@@ -26,7 +26,7 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
 ## Launch Options
 
 - App-specific JVM system properties are named `-Doehostsapp.<name>` and read with `System.getProperty("oehostsapp.<name>")`. Existing: `oehostsapp.log` (log level), `oehostsapp.shot` and `oehostsapp.settings.page` (screenshot aid, below), `oehostsapp.update.repo` and `oehostsapp.agent.repo` (base URLs the app update and the oeHosts-Agent update use instead of the GitHub repositories; for testing against a local server).
-- The only command-line argument is `--data DIR`. Document any new user-facing option in `README.md`.
+- The app's only command-line option is `--data DIR`. A first argument that is not an option (or `--help`/`-h`) starts the command line (`mcp.McpCli`, below) instead of the window, and every argument after it belongs to that command. Document any new user-facing option or command in `README.md`.
 
 ## Verifying UI Changes
 
@@ -72,6 +72,12 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
   - Everything traffic-derived passes `mcp.Redactor` before it leaves: every cookie value, `Authorization` credentials, secret-named headers, query parameters, form fields and JSON members, and JWTs become `hmac:<hex>` tags under a per-process random key (never a plain hash: short values would be found by trying candidates). Add new places secrets travel there, not in the tools. Bodies are capped (`McpTools.MAX_BODY_CHARS`) and marked as untrusted network data.
   - Adding a tool that changes data needs more than a new entry: the screens do not watch the store for outside changes, and an open editor's autosave would overwrite such a change. Ask the owner first.
   - The Settings → General → MCP page builds the `claude mcp add` command; keep it in step with Claude Code's CLI.
+- The command line (`mcp.McpCli`, `java -jar oehostsapp.jar [--data DIR] COMMAND [OPTIONS]`) is a client of the running app's MCP server, for AI tools that use a shell. Keep these properties:
+  - It has no logic of its own: its commands and options are built from `tools/list` (`list_traffic` → `list-traffic`, `contentOnly` → `--content-only`), and every result comes from `tools/call`. A new tool becomes a command without touching the CLI; checks, redaction and the read-only rule stay in the server. Never let it open the data file through `Store` or read traffic and proxy state any other way.
+  - It reads the port and the token from the data file (`settings.mcp.port`, `Data.mcpToken`) and never writes the file; this was the owner's decision (any process of this PC's user can read the file anyway). It never prints the token, not even in an error.
+  - `main` branches to it before the single-instance lock and before any Swing setup, so it runs next to the app and opens no window. stdout carries only the result JSON, in UTF-8 whatever the console's code page; messages go to stderr.
+  - The exit codes (`McpCli.OK`, `FAILED`, `USAGE`, `UNAVAILABLE`, `REFUSED`) and the command/option naming are a contract with scripts and AI tools: do not renumber or rename them.
+  - Documentation names the jar by its full installed path; there is no launcher script or wrapper (see Platform Constraints).
 - No network port is used for single-instance detection; it is a file lock in the data folder (`SingleInstance`). Keep it that way.
 
 ## Matching oeHub

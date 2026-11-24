@@ -90,6 +90,7 @@ java -jar oehostsapp.jar                          # 실행
 javaw -jar oehostsapp.jar                         # Windows에서 콘솔 창 없이
 java -jar oehostsapp.jar --data D:\oehub-data     # 데이터 폴더를 따로 지정
 java -Doehostsapp.log=debug -jar oehostsapp.jar     # 콘솔 로그를 더 자세히
+java -jar oehostsapp.jar help                     # 창 없이 명령줄로 읽기 (CLI)
 ```
 
 ### 업데이트
@@ -335,6 +336,32 @@ Claude Code가 쓸 수 있는 도구는 모두 **읽기 전용**입니다.
 - 등록 명령에는 접근 토큰이 들어 있으니 공유하지 마세요. 토큰이 새어 나갔다면 **새 토큰**을 누르고 새 명령으로 다시 등록하세요. 이전 토큰은 바로 거부됩니다.
 - 포트를 바꾸거나 새 토큰을 만들면 Claude Code에 다시 등록해야 합니다. 이전 등록은 `claude mcp remove oehostsapp -s user`로 지웁니다.
 - 백업에는 접근 토큰이 들어가지 않고, 설정을 가져와도 MCP와 트래픽 제공이 켜지지 않습니다.
+
+### CLI — 명령줄로 읽기
+
+MCP 도구는 명령줄로도 쓸 수 있습니다. Claude Code뿐 아니라 셸을 쓰는 다른 AI 도구나 스크립트에서도 같은 정보를 읽을 수 있고, 등록 절차는 필요 없습니다. jar 경로는 전체 경로로 적습니다.
+
+```sh
+# Windows (install.ps1로 설치한 경우)
+java -jar "%LOCALAPPDATA%\Programs\oeHostsApp\oehostsapp.jar" help
+# macOS · Linux (install.sh로 설치한 경우)
+java -jar ~/.oehostsapp/oehostsapp.jar help
+```
+
+```sh
+java -jar <jar 경로> help                               # 사용법과 명령 목록
+java -jar <jar 경로> get-active-hosts --host api.example.test
+java -jar <jar 경로> list-traffic --status 5xx --limit 20
+java -jar <jar 경로> get-traffic 12                     # 필수 값 하나는 옵션 이름 없이
+java -jar <jar 경로> list-traffic --help                # 명령 하나의 옵션
+java -jar <jar 경로> tools                              # 모든 명령과 옵션을 JSON으로
+```
+
+- 명령은 위 표의 도구 이름에서 `_`를 `-`로 바꾼 것입니다(`list_traffic` → `list-traffic`). 인자는 `--content-only`처럼 옵션으로 줍니다.
+- 결과는 stdout에 JSON(UTF-8)으로 나오고, 오류 메시지는 stderr로 나옵니다.
+- 종료 코드: `0` 성공, `1` 명령 실패(없는 id, 트래픽 제공 꺼짐 등), `2` 사용법 오류, `3` 앱이 실행 중이 아니거나 MCP가 꺼짐, `4` 접근 토큰 거부.
+- **실행 중인 앱**의 MCP 서버를 거쳐서 읽습니다. 앱이 켜져 있고 MCP가 **실행 중**이어야 하며, 읽기 전용, 트래픽 제공 스위치, 비밀 값 해시 처리도 MCP와 똑같이 적용됩니다. CLI가 창을 띄우거나 앱을 실행하지는 않습니다.
+- 포트와 접근 토큰은 데이터 폴더의 `oehostsapp.json`에서 직접 읽으므로 따로 설정할 것이 없습니다. 토큰을 화면에 출력하지는 않습니다. 앱을 `--data`로 다른 폴더에서 실행했다면 CLI에도 같은 `--data DIR`을 명령 앞에 줍니다(`java -jar <jar 경로> --data D:\oehub-data help`).
 
 ## 인증서 (CA)
 

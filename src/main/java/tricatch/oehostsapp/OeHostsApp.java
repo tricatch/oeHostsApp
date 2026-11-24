@@ -1,6 +1,7 @@
 package tricatch.oehostsapp;
 
 import tricatch.oehostsapp.hosts.HostsAgent;
+import tricatch.oehostsapp.mcp.McpCli;
 import tricatch.oehostsapp.mcp.McpServer;
 import tricatch.oehostsapp.proxy.ForwardProxy;
 import tricatch.oehostsapp.proxy.ProxyRuntime;
@@ -15,13 +16,20 @@ import com.formdev.flatlaf.FlatLightLaf;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.io.FileDescriptor;
+import java.io.FileOutputStream;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
  * oeHostsApp desktop app: oeHosts / oeProxy / Network as tabs of one Swing window, no browser or
- * local web server needed. Run: {@code java -jar oehostsapp.jar [--data DIR]}.
+ * local web server needed. Run: {@code java -jar oehostsapp.jar [--data DIR]}. With a command
+ * ({@code java -jar oehostsapp.jar [--data DIR] COMMAND [OPTIONS]}) it is the command line of the
+ * running app instead ({@link McpCli}) and opens no window.
  */
 public final class OeHostsApp {
 
@@ -41,13 +49,26 @@ public final class OeHostsApp {
         // macOS menu bar name instead of the main class; read when AWT starts, so set it first.
         System.setProperty("apple.awt.application.name", "oeHostsApp");
         Path dataDir = AppData.defaultDir();
+        List<String> command = new ArrayList<>();
         for (int i = 0; i < args.length; i++) {
-            if ("--data".equals(args[i]) && i + 1 < args.length) {
+            if (!command.isEmpty()) {
+                // Everything after the command is the command's own.
+                command.add(args[i]);
+            } else if ("--data".equals(args[i]) && i + 1 < args.length) {
                 dataDir = Path.of(args[++i]);
+            } else if (!args[i].startsWith("-") || "--help".equals(args[i]) || "-h".equals(args[i])) {
+                command.add(args[i]);
             } else {
-                System.err.println("usage: java -jar oehostsapp.jar [--data DIR]");
+                System.err.println("usage: java -jar oehostsapp.jar [--data DIR] [COMMAND [OPTIONS]]");
                 System.exit(2);
             }
+        }
+        if (!command.isEmpty()) {
+            // The command line (McpCli): before the single-instance lock and any window, so it runs
+            // next to the app; UTF-8 whatever the console's code page, as AI tools read it.
+            PrintStream out = new PrintStream(new FileOutputStream(FileDescriptor.out), true, StandardCharsets.UTF_8);
+            PrintStream err = new PrintStream(new FileOutputStream(FileDescriptor.err), true, StandardCharsets.UTF_8);
+            System.exit(McpCli.run(dataDir, command, out, err));
         }
         org.slf4j.LoggerFactory.getLogger(OeHostsApp.class).info("oeHostsApp {} on Java {} ({} {}), data {}", version(),
                 System.getProperty("java.version"), System.getProperty("os.name"), System.getProperty("os.arch"),
