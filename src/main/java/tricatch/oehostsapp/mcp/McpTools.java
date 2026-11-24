@@ -256,7 +256,7 @@ final class McpTools {
         }
         if (!on) {
             throw new ToolError("Network traffic is not offered. The user can turn on \"Offer Network traffic\" "
-                    + "in oeHostsApp under Settings > General > MCP.");
+                    + "in oeHostsApp under Settings > General > AI tools.");
         }
         return Traffic.snapshot();
     }

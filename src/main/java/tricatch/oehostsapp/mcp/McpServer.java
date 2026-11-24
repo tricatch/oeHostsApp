@@ -18,6 +18,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
@@ -27,6 +28,7 @@ import java.util.concurrent.Executors;
  * The MCP server for AI coding tools (Claude Code): MCP's Streamable HTTP transport at
  * {@code http://127.0.0.1:<settings.mcp.port>/mcp}, answering each POSTed JSON-RPC message with one
  * JSON reply ({@link McpProtocol}); no event stream, no sessions. Read-only ({@link McpTools}).
+ * It also serves the CLI's Claude Code skill at {@link CliSkill#PATH}, the only path without the token.
  *
  * <p>Runs while {@code settings.mcp.enabled} (on by default). It listens on 127.0.0.1 only, never on a network card,
  * and every request must carry {@code Authorization: Bearer <Store.mcpToken()>}. A Host header that
@@ -146,13 +148,18 @@ public final class McpServer {
 
     private static void handle(HttpExchange ex, Store s, McpProtocol protocol) throws IOException {
         try (ex) {
-            if (!PATH.equals(ex.getRequestURI().getPath())) {
+            String path = ex.getRequestURI().getPath();
+            if (!PATH.equals(path) && !CliSkill.PATH.equals(path)) {
                 text(ex, 404, "Not found");
                 return;
             }
             if (!loopbackHost(ex.getRequestHeaders().getFirst("Host"))
                     || !allowedOrigin(ex.getRequestHeaders().getFirst("Origin"))) {
                 text(ex, 403, "Forbidden");
+                return;
+            }
+            if (CliSkill.PATH.equals(path)) {
+                skill(ex, s);
                 return;
             }
             String token;
@@ -203,6 +210,35 @@ public final class McpServer {
         } catch (IOException e) {
             log.debug("MCP request: {}", e.getMessage());
         }
+    }
+
+    /**
+     * The CLI skill ({@link CliSkill}): the one answer without the token, since it holds no secret
+     * (paths of this PC only); the Host and Origin checks above still keep web pages out.
+     */
+    private static void skill(HttpExchange ex, Store s) throws IOException {
+        String method = ex.getRequestMethod();
+        if (!"GET".equals(method) && !"HEAD".equals(method)) {
+            ex.getResponseHeaders().set("Allow", "GET, HEAD");
+            text(ex, 405, "Method not allowed");
+            return;
+        }
+        Path dataDir = s.path().toAbsolutePath().getParent();
+        String md = CliSkill.markdown(dataDir, port);
+        if (md == null) {
+            text(ex, 404, "No CLI skill: oeHostsApp is not running from its jar");
+            return;
+        }
+        byte[] body = md.getBytes(StandardCharsets.UTF_8);
+        ex.getResponseHeaders().set("Content-Type", "text/markdown; charset=utf-8");
+        ex.getResponseHeaders().set("Content-Disposition", "inline; filename=\"SKILL.md\"");
+        ex.getResponseHeaders().set("Cache-Control", "no-store");
+        if ("HEAD".equals(method)) {
+            ex.sendResponseHeaders(200, -1);
+            return;
+        }
+        ex.sendResponseHeaders(200, body.length);
+        ex.getResponseBody().write(body);
     }
 
     /** The body, or null when it is larger than {@link #MAX_BODY}. */

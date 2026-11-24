@@ -129,7 +129,7 @@ public final class McpCli {
     private int help() {
         StringBuilder b = new StringBuilder();
         b.append(USAGE_LINE).append("\n\n");
-        b.append("Reads oeHostsApp through the MCP server of the running app (Settings > General > MCP);\n");
+        b.append("Reads oeHostsApp through the MCP server of the running app (Settings > General > AI tools);\n");
         b.append("read-only. Prints the result as JSON on stdout (UTF-8), messages on stderr.\n");
         b.append("Tool names in the descriptions are the commands below with '-' for '_'.\n\n");
         b.append(McpProtocol.INSTRUCTIONS).append("\n\n");
@@ -348,7 +348,7 @@ public final class McpCli {
         }
         JsonNode mcp = root == null ? JSON.missingNode() : root.path("settings").path("mcp");
         if (!mcp.path("enabled").asBoolean(true)) {
-            throw new Failure(UNAVAILABLE, "The MCP server of oeHostsApp is switched off: turn it on in Settings > General > MCP");
+            throw new Failure(UNAVAILABLE, "The MCP server of oeHostsApp is switched off: turn it on in Settings > General > AI tools");
         }
         String token = root == null ? null : root.path("mcpToken").asText(null);
         if (token == null || token.isBlank()) {
@@ -381,7 +381,7 @@ public final class McpCli {
             throw new IllegalStateException(e);
         } catch (IOException e) {
             throw new Failure(UNAVAILABLE, "oeHostsApp is not answering at " + url
-                    + ": start oeHostsApp (Settings > General > MCP shows the server state)");
+                    + ": start oeHostsApp (Settings > General > AI tools shows the server state)");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new Failure(UNAVAILABLE, "Interrupted");
