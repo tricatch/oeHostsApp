@@ -61,7 +61,7 @@ tasks.test {
 // (/oehostsapp-build.properties), so the About page shows the versions actually bundled - the
 // merged shadow jar keeps no per-library manifests, and an IDE run has no manifest at all.
 val buildInfoDir = layout.buildDirectory.dir("generated/buildinfo")
-val buildInfo by tasks.registering {
+val buildInfo = tasks.register("buildInfo") {
     val appVersion = project.version.toString()
     val deps = configurations.runtimeClasspath.flatMap { it.incoming.resolutionResult.rootComponent }.map { root ->
         val seen = sortedSetOf<String>()
@@ -94,7 +94,7 @@ sourceSets.main { resources.srcDir(buildInfo) }
 // updating the app installs or updates the agent too. Its jar is built from the sibling
 // ../oeHostsAgent checkout (an included build); without the checkout the app has no agent to offer.
 val agentBuild = gradle.includedBuilds.find { it.name == "oeHostsAgent" }
-val bundleAgent by tasks.registering(Sync::class) {
+val bundleAgent = tasks.register<Sync>("bundleAgent") {
     into(layout.buildDirectory.dir("generated/agent"))
     if (agentBuild != null) {
         val script = agentBuild.projectDir.resolve("build.gradle.kts").readText()
@@ -161,7 +161,7 @@ tasks.register<JavaExec>("run") {
 }
 
 // Development tools that use the app's classes but do not ship in the jar (src/tools).
-val tools by sourceSets.creating {
+val tools = sourceSets.create("tools") {
     compileClasspath += sourceSets.main.get().output + configurations.runtimeClasspath.get()
     runtimeClasspath += output + compileClasspath
 }
