@@ -1,6 +1,7 @@
 package tricatch.oehostsapp.ui;
 
 import tricatch.oehostsapp.Listeners;
+import tricatch.oehostsapp.mcp.Traffic;
 import tricatch.oehostsapp.proxy.DecryptedRequests;
 import tricatch.oehostsapp.proxy.ForwardMonitor;
 import tricatch.oehostsapp.proxy.ProxyMonitor;
@@ -114,6 +115,8 @@ public final class MonitorTab extends JPanel {
 
     private final Queue<Object> incoming = new ConcurrentLinkedQueue<>();
     private final ProxyMonitor monitor = new ProxyMonitor(incoming::add);
+    /** What the MCP traffic tools read ({@link Traffic}); registered while this screen exists. */
+    private final java.util.function.Supplier<Traffic.Snapshot> trafficSource = this::trafficSnapshot;
     private Listeners.Subscription forwardCapture;
     private final DecryptedRequests decrypted = new DecryptedRequests();
     private final List<Ended> endedDecrypted = new ArrayList<>();
@@ -212,6 +215,7 @@ public final class MonitorTab extends JPanel {
         startCapture();
         flushTimer.start();
         liveTimer.start();
+        Traffic.setSource(trafficSource);
     }
 
     void onGotoCa(Runnable r) {
@@ -422,10 +426,29 @@ public final class MonitorTab extends JPanel {
     }
 
     void dispose() {
+        Traffic.clearSource(trafficSource);
         flushTimer.stop();
         liveTimer.stop();
         stopCapture();
         incoming.clear();
+    }
+
+    /**
+     * A copy of every row for the MCP traffic tools, oldest first, after working off what is queued.
+     * Runs on the event thread ({@link Traffic#snapshot}); the bodies are shared, never copied (a row
+     * replaces its arrays, it never writes into them).
+     */
+    private Traffic.Snapshot trafficSnapshot() {
+        flushEvents();
+        List<Traffic.Entry> out = new ArrayList<>(rows.size());
+        for (Row r : rows) {
+            out.add(new Traffic.Entry(r.rid, !r.forward, r.tunnel, r.decryptedWithoutRequest,
+                    r.reqTs, r.resTs, r.endTs, r.method, r.host, r.path, url(r), r.client, r.code,
+                    r.failure == null ? null : r.failure.name().toLowerCase(java.util.Locale.ROOT),
+                    List.copyOf(r.reqHeaders), List.copyOf(r.resHeaders), r.reqBody, r.resBody,
+                    r.reqTooLarge, r.resTooLarge, r.bodiesDropped, r.sent(), r.received(), List.copyOf(r.ws)));
+        }
+        return new Traffic.Snapshot(recording, out);
     }
 
     // ── Events ──────────────────────────────────────────────────

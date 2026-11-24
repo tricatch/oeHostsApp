@@ -622,6 +622,7 @@ public final class Store {
         if (settings) {
             from.settings.sslProxy.enabled = data.settings.sslProxy.enabled;
             from.settings.mcp.enabled = data.settings.mcp.enabled;
+            from.settings.mcp.traffic = data.settings.mcp.traffic;
             data.settings = from.settings;
         }
         save();

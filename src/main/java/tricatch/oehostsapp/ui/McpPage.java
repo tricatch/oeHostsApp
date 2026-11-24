@@ -9,9 +9,10 @@ import javax.swing.*;
 import static tricatch.oehostsapp.ui.SettingsKit.*;
 
 /**
- * Settings → General → MCP: the switch and port of the MCP server for AI coding tools on the left
- * (applying saves them and restarts it); its state and the command that registers it with Claude
- * Code on the right, with a button that replaces the access token.
+ * Settings → General → MCP: the switch and port of the MCP server for AI coding tools, and whether
+ * it offers the Network tab's traffic, on the left (applying saves them and restarts it); its state
+ * and the command that registers it with Claude Code on the right, with a button that replaces the
+ * access token.
  */
 final class McpPage {
 
@@ -27,9 +28,12 @@ final class McpPage {
         Switch on = new Switch(ctx.settings(st -> st.mcp.enabled), Ui.BC500);
         JPanel onField = buttons(on);
         JTextField port = portField(ctx.settings(st -> st.mcp.port));
+        Switch traffic = new Switch(ctx.settings(st -> st.mcp.traffic), Ui.BC500);
         JLabel onLabel = label(ctx.m("app.settings.mcp.enabled"));
         JLabel portLabel = label(ctx.m("app.settings.fwdproxy.port"));
-        sameWidth(onLabel, portLabel);
+        JLabel trafficLabel = label(ctx.m("app.settings.mcp.traffic"));
+        sameWidth(onLabel, portLabel, trafficLabel);
+        JComponent trafficNote = desc(ctx.m("app.settings.mcp.traffic.desc"));
 
         JLabel st = tab.status("mcp");
         ServerStatus status = new ServerStatus(ctx, McpServer::onChange, () -> new ServerStatus.Snapshot(
@@ -44,7 +48,7 @@ final class McpPage {
         };
 
         JButton[] self = {null};
-        // Saves the switch and the port, then restarts the server with them; the state rows show the outcome.
+        // Saves the switches and the port, then restarts the server with them; the state rows show the outcome.
         JButton apply = self[0] = primary(ctx.m("app.settings.mcp.apply"), "refresh-cw", () -> {
             int p = port(port);
             if (p < 0) {
@@ -52,9 +56,11 @@ final class McpPage {
                 return;
             }
             boolean enable = on.isOn();
+            boolean offerTraffic = traffic.isOn();
             if (!ctx.saveSettings(s -> {
                 s.mcp.enabled = enable;
                 s.mcp.port = p;
+                s.mcp.traffic = offerTraffic;
             })) return;
             showCommand.run();
             status.restart(self[0], st, McpServer::restart);
@@ -74,7 +80,8 @@ final class McpPage {
 
         return fullPage(halves(
                 column(desc(ctx.m("app.settings.mcp.desc")), line(),
-                        OeDialog.stack(10, formRow(onLabel, onField), formRow(portLabel, buttons(port))),
+                        OeDialog.stack(10, formRow(onLabel, onField), formRow(portLabel, buttons(port)),
+                                formRow(trafficLabel, buttons(traffic)), underField(trafficNote, trafficLabel)),
                         line(), rightAligned(apply)),
                 column(heading(ctx.m("app.settings.server.status.title")), line(), status.panel,
                         (JComponent) Box.createVerticalStrut(Ui.px(18)),

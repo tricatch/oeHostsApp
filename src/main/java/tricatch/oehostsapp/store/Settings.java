@@ -57,6 +57,8 @@ public final class Settings {
     public static class Mcp {
         public boolean enabled;
         public int port = DEFAULT_MCP_PORT;
+        /** Whether the tools also offer what the Network tab captured (secrets replaced by tags). */
+        public boolean traffic;
     }
 
     /** One preset: a name and the value it puts into a launcher field. */
