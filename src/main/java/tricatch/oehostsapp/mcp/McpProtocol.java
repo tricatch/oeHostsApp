@@ -36,7 +36,8 @@ final class McpProtocol {
     static final int INVALID_PARAMS = -32602;
     static final int INTERNAL_ERROR = -32603;
 
-    private static final String INSTRUCTIONS = """
+    /** Also printed by {@link McpCli}'s help. */
+    static final String INSTRUCTIONS = """
             oeHostsApp is a desktop app that maps host names to IP addresses for development (oeHosts profiles, \
             applied through its proxy service, its Chrome launcher and oeHosts-Agent, never the system hosts file), \
             runs an HTTPS reverse proxy with YAML routes (oeProxy virtual hosts) and shows the traffic of both \

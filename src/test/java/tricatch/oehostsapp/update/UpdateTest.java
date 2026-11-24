@@ -105,6 +105,27 @@ class UpdateTest {
     }
 
     @Test
+    void installsTheNewestReleaseAtTheTimeOfTheUpdate() {
+        // 9.9.8 was the latest at the check, 9.9.9 came out since: straight to 9.9.9.
+        assertEquals("9.9.9", Update.installTarget("9.9.8"));
+        assertEquals("9.9.9", Update.installTarget("9.9.9"));
+        // Never back to an older release.
+        assertEquals("10.0.0", Update.installTarget("10.0.0"));
+        // The re-check fails: the update goes on with what was found.
+        Update.repo = "http://127.0.0.1:" + server.getAddress().getPort() + "/no/such";
+        assertEquals("9.9.8", Update.installTarget("9.9.8"));
+    }
+
+    @Test
+    void tellsAStartAfterAnUpdate() {
+        assertTrue(Update.justUpdated("0.4.1", "0.4.3"));
+        assertFalse(Update.justUpdated(null, "0.4.3"), "first start");
+        assertFalse(Update.justUpdated("0.4.3", "0.4.3"), "same version");
+        assertFalse(Update.justUpdated("0.4.3", "0.4.1"), "downgrade");
+        assertFalse(Update.justUpdated("0.4.1", "dev"), "IDE run");
+    }
+
+    @Test
     void downloadsAndVerifiesJar() throws Exception {
         List<Integer> progress = new ArrayList<>();
         Path out = Update.download("9.9.9", dir, progress::add);

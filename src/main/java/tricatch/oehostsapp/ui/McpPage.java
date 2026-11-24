@@ -1,5 +1,6 @@
 package tricatch.oehostsapp.ui;
 
+import tricatch.oehostsapp.mcp.CliSkill;
 import tricatch.oehostsapp.mcp.McpServer;
 import tricatch.oehostsapp.net.Network;
 import tricatch.oehostsapp.store.Store;
@@ -9,10 +10,10 @@ import javax.swing.*;
 import static tricatch.oehostsapp.ui.SettingsKit.*;
 
 /**
- * Settings → General → MCP: the switch and port of the MCP server for AI coding tools, and whether
- * it offers the Network tab's traffic, on the left (applying saves them and restarts it); its state
- * and the command that registers it with Claude Code on the right, with a button that replaces the
- * access token.
+ * Settings → General → AI tools: the switch and port of the MCP server for AI coding tools, and whether
+ * it offers the Network tab's traffic, on the left (applying saves them and restarts it); its state,
+ * the command that registers it with Claude Code (with a button that replaces the access token) and
+ * the URL of the command line's skill ({@link CliSkill}) on the right.
  */
 final class McpPage {
 
@@ -47,6 +48,18 @@ final class McpPage {
             command.setText(token == null ? "-" : registerCommand(p, token));
         };
 
+        // The CLI skill's URL: an AI tool asked to install it fetches it from the running server.
+        boolean hasJar = CliSkill.runningJar() != null;
+        JTextArea skillUrl = fieldScript("");
+        Runnable showSkillUrl = () -> skillUrl.setText(hasJar
+                ? CliSkill.url(ctx.settings(s -> s.mcp.port)) : ctx.m("app.settings.mcp.skill.nojar"));
+        JButton copySkill = primary(ctx.m("app.settings.mcp.skill.copy"), "copy", () -> {
+            OeDialog.copy(skillUrl.getText());
+            ok(st, ctx.m("app.settings.copied"));
+        });
+        copySkill.setEnabled(hasJar);
+        showSkillUrl.run();
+
         JButton[] self = {null};
         // Saves the switches and the port, then restarts the server with them; the state rows show the outcome.
         JButton apply = self[0] = primary(ctx.m("app.settings.mcp.apply"), "refresh-cw", () -> {
@@ -63,6 +76,7 @@ final class McpPage {
                 s.mcp.traffic = offerTraffic;
             })) return;
             showCommand.run();
+            showSkillUrl.run();
             status.restart(self[0], st, McpServer::restart);
         });
 
@@ -86,7 +100,10 @@ final class McpPage {
                 column(heading(ctx.m("app.settings.server.status.title")), line(), status.panel,
                         (JComponent) Box.createVerticalStrut(Ui.px(18)),
                         heading(ctx.m("app.settings.mcp.register.title")), desc(ctx.m("app.settings.mcp.register.desc")),
-                        line(), command, line(), rightAligned(newToken, copy))));
+                        line(), command, line(), rightAligned(newToken, copy),
+                        (JComponent) Box.createVerticalStrut(Ui.px(18)),
+                        heading(ctx.m("app.settings.mcp.skill.title")), desc(ctx.m("app.settings.mcp.skill.desc")),
+                        line(), skillUrl, line(), rightAligned(copySkill))));
     }
 
     /** The Claude Code command that adds this server for every project of the user. */
