@@ -82,7 +82,7 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
   - `ui.HostsTab` ↔ `templates/oehub/hosts.pebble` (the options of `store.LauncherOptions`)
   - `proxy.Vhosts` ↔ `templates/oehub/proxy.pebble` (`validateSchema`, `buildMergedVirtualYaml`); `ui.ProxyTab` ↔ the rest of that page. Deliberate difference: `Vhosts.problems` is stricter than `validateSchema` (it also checks what oe-proxy would ignore or reject when loading routes: unknown or repeated keys, domain, host, path and header formats) and reports each problem's own line. When oe-proxy's `VirtualHostUtil` or its header rules change, update it.
   - Both editors mark the first problem's line through `ItemPanel.Hooks.invalid`; a profile or vhost with a problem is never stored or imported.
-  - `ui.MonitorTab` ↔ `templates/oehub/proxy-monitor.pebble`
+  - `ui.MonitorTab` ↔ `templates/oehub/proxy-monitor.pebble`. Deliberate difference: no Events tab (a raw event log that served oeHub's SSE feed; the start time and duration columns cover what it showed).
   - `ui.SidebarTree` ↔ `static/js/list-folders.js`
   - `ui.Ui`, `ui.OeDialog` ↔ `static/css/app.css`, `oe-panel.css`, `hosts.css`
 - Settings → Data exports the checked parts (oeHosts, oeProxy, settings, CA) to one ZIP (`Backup`, `Store.exportParts`); a part is present in `data.json` only when it was exported, and an import touches only the parts that are both checked and present, either adding to the current data (`Store.mergeParts`, the default) or overwriting it (`Store.restoreParts`); the CA is always overwritten.
@@ -119,7 +119,7 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
 - An invalid vhost (fails `Vhosts.problems`) is never stored: not on edit, not on import.
 - Item and folder ids are 14 Crockford base32 digits (`Store.newId`), used as they are in share URLs. Ids are never converted; data made with the older hex ids is not migrated.
 - `${PROXY_SVR}` / `${LOCAL_SVR}` always resolve to `127.0.0.1` in this app.
-- The data model is `Store.Data` with `store.Settings` (grouped: `fwdproxy`, `reverseProxy`, `sslProxy`, `userAgentPresets`/`openUrlPresets`, `window`) and `store.LauncherOptions`. A part missing from the file is filled in by `fillDefaults` on open, so code never checks for null parts.
+- The data model is `Store.Data` with `store.Settings` (grouped: `fwdproxy`, `reverseProxy`, `sslProxy`, `mcp`, `userAgentPresets`/`openUrlPresets`, `window`, `monitor`) and `store.LauncherOptions`. A part missing from the file is filled in by `fillDefaults` on open, so code never checks for null parts.
 - The data format carries no compatibility code with older versions (no migration of older files or old field names, no fields kept only for older versions); this was the owner's decision while the app has a single user. Ask before adding any.
 
 ## Dependencies — License Listing

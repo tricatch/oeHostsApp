@@ -119,6 +119,14 @@ public final class Settings {
         public Integer searchHeight;
     }
 
+    /** The Network tab's detail switches, kept across starts. */
+    public static class Monitor {
+        /** Headers, cookies and form/JSON members by name instead of as sent. */
+        public boolean sortByName;
+        /** Values of those lines start in one column. */
+        public boolean alignValues;
+    }
+
     public ForwardProxy fwdproxy = new ForwardProxy();
     public ReverseProxy reverseProxy = new ReverseProxy();
     public SslProxy sslProxy = new SslProxy();
@@ -126,6 +134,7 @@ public final class Settings {
     public PresetList userAgentPresets = new PresetList();
     public PresetList openUrlPresets = new PresetList();
     public Window window = new Window();
+    public Monitor monitor = new Monitor();
     /** UI language ("en"/"ko"); null follows the OS locale. */
     public String lang;
     /**
@@ -152,6 +161,7 @@ public final class Settings {
         if (userAgentPresets.items == null) userAgentPresets.items = new ArrayList<>();
         if (openUrlPresets.items == null) openUrlPresets.items = new ArrayList<>();
         if (window == null) window = new Window();
+        if (monitor == null) monitor = new Monitor();
         if (reverseProxy.bind == null || reverseProxy.bind.isBlank()) reverseProxy.bind = Network.ALL;
         reverseProxy.bind = reverseProxy.bind.strip();
     }
