@@ -1,6 +1,7 @@
 package tricatch.oehostsapp;
 
 import tricatch.oehostsapp.hosts.HostsAgent;
+import tricatch.oehostsapp.mcp.McpServer;
 import tricatch.oehostsapp.proxy.ForwardProxy;
 import tricatch.oehostsapp.proxy.ProxyRuntime;
 import tricatch.oehostsapp.store.Store;
@@ -77,6 +78,7 @@ public final class OeHostsApp {
         HostsAgent.start(dataDir);
         ProxyRuntime.start(dataDir, store);
         Thread.ofVirtual().name("fwdproxy-start").start(() -> ForwardProxy.start(store));
+        Thread.ofVirtual().name("mcp-start").start(() -> McpServer.start(store));
         Integer fontSize;
         synchronized (store) {
             fontSize = store.data.settings.fontSize;

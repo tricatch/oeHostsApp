@@ -12,7 +12,7 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
 
 ## Packages
 
-- Code under `tricatch.oehostsapp` is split by feature: `store` (data file and its model, backup), `proxy` (forward/reverse proxy runtime, SSL proxy, root CA, vhost YAML, traffic monitor), `web` (the pages the proxy service answers itself: shared hosts, `/active-hosts`, phone setup page), `net` (this PC's addresses, binding values), `hosts` (hosts rules, oeHosts-Agent), `chrome` (Chrome launch), `update` (self-update), `ui` (Swing screens). The root package keeps only app-wide classes (entry point, data folder, build info, messages, single instance, `Listeners`).
+- Code under `tricatch.oehostsapp` is split by feature: `store` (data file and its model, backup), `proxy` (forward/reverse proxy runtime, SSL proxy, root CA, vhost YAML, traffic monitor), `web` (the pages the proxy service answers itself: shared hosts, `/active-hosts`, phone setup page), `net` (this PC's addresses, binding values), `hosts` (hosts rules, oeHosts-Agent), `chrome` (Chrome launch), `update` (self-update), `mcp` (MCP server for AI coding tools), `ui` (Swing screens). The root package keeps only app-wide classes (entry point, data folder, build info, messages, single instance, `Listeners`).
 - Put a new class in the package of its feature, not in the root. Make a member `public` only when another package needs it.
 - `UpdateHelper` stays in the root package: its fully qualified name is a contract between releases (an older version looks it up by name in the new jar). Never rename or move it, and never move `OeHostsApp` (the `Main-Class`).
 - Keep rules about data out of `ui`: parsing, merging and validation (hosts rules, vhost YAML, presets' storage) live in the feature package and get unit tests; a screen only formats their results. One merge per kind: every consumer of the selected hosts profiles goes through `HostsRules.merge`/`active`, every consumer of the selected vhosts through `Vhosts.merge`/`served`. Do not store data that can be derived from the store (the proxy reads the selected vhosts itself).
@@ -63,6 +63,13 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
   - Events reach the event thread only through `MonitorTab`'s queue and timer; never `invokeLater` per event.
 - Do not put `127.0.0.1` or `localhost` in the QR URL: phone browsers send loopback addresses to the phone itself, never to the proxy.
 - The phone section at the bottom of Settings → oeProxy → CA 인증서 (모바일 기기 인증서 설치, `CaPage.mobileSection`) only downloads the CA; it configures nothing. It needs the proxy service running; the phone is asked about (`ClientAccess`) on its first request.
+- The MCP server (`mcp.McpServer`, tools in `McpTools`, JSON-RPC in `McpProtocol`) serves Claude Code over MCP's Streamable HTTP transport, hand-written on the JDK's `com.sun.net.httpserver` and Jackson (no MCP SDK dependency). Keep these properties:
+  - Off by default (`settings.mcp.enabled`); bound to 127.0.0.1 only, never to a network card or 0.0.0.0, and never moved onto the proxy service port.
+  - Every request needs `Authorization: Bearer <Store.mcpToken()>`. The token lives in `Data.mcpToken`, outside `settings`, so backups never carry it; a restore never turns the switch on (`Store.restoreParts`).
+  - A Host header that is not a loopback name, or an Origin that is not a loopback page, is refused before the token is checked (DNS rebinding, browser pages).
+  - Tools only read. Hosts and vhosts in force go through `HostsRules.merge` and `Vhosts.served` like every other consumer. Never offer what the Network tab captured (headers, cookies, bodies, the SSL proxy's recent domains) or any secret (`ca.pfx`, `shareKey`, the MCP token).
+  - Adding a tool that changes data needs more than a new entry: the screens do not watch the store for outside changes, and an open editor's autosave would overwrite such a change. Ask the owner first.
+  - The Settings → General → MCP page builds the `claude mcp add` command; keep it in step with Claude Code's CLI.
 - No network port is used for single-instance detection; it is a file lock in the data folder (`SingleInstance`). Keep it that way.
 
 ## Matching oeHub

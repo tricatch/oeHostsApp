@@ -9,6 +9,7 @@ import java.util.List;
 public final class Settings {
 
     public static final int DEFAULT_FWDPROXY_PORT = 36980;
+    public static final int DEFAULT_MCP_PORT = 36981;
 
     /**
      * The proxy service (proxy for Chrome and phones, and the shared hosts / phone setup pages): its
@@ -46,6 +47,16 @@ public final class Settings {
     public static class SslProxy {
         public boolean enabled;
         public String domains = "";
+    }
+
+    /**
+     * The MCP server for AI coding tools ({@code mcp.McpServer}): off by default, read-only, and only
+     * on 127.0.0.1. Its access token is {@code Store.Data.mcpToken}, kept out of the settings so a
+     * backup never carries it.
+     */
+    public static class Mcp {
+        public boolean enabled;
+        public int port = DEFAULT_MCP_PORT;
     }
 
     /** One preset: a name and the value it puts into a launcher field. */
@@ -109,6 +120,7 @@ public final class Settings {
     public ForwardProxy fwdproxy = new ForwardProxy();
     public ReverseProxy reverseProxy = new ReverseProxy();
     public SslProxy sslProxy = new SslProxy();
+    public Mcp mcp = new Mcp();
     public PresetList userAgentPresets = new PresetList();
     public PresetList openUrlPresets = new PresetList();
     public Window window = new Window();
@@ -132,6 +144,7 @@ public final class Settings {
         if (reverseProxy == null) reverseProxy = new ReverseProxy();
         if (sslProxy == null) sslProxy = new SslProxy();
         if (sslProxy.domains == null) sslProxy.domains = "";
+        if (mcp == null) mcp = new Mcp();
         if (userAgentPresets == null) userAgentPresets = new PresetList();
         if (openUrlPresets == null) openUrlPresets = new PresetList();
         if (userAgentPresets.items == null) userAgentPresets.items = new ArrayList<>();
