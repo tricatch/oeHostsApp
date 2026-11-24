@@ -54,8 +54,11 @@ class McpServerTest {
     }
 
     @Test
-    void offUnlessSwitchedOn() throws Exception {
+    void onByDefaultAndOffWhenSwitchedOff() throws Exception {
         Store s = Store.open(dir.resolve("data.json"));
+        assertTrue(s.data.settings.mcp.enabled);
+        assertTrue(s.data.settings.mcp.traffic);
+        s.data.settings.mcp.enabled = false;
         McpServer.start(s);
         assertEquals(McpServer.State.OFF, McpServer.state());
     }

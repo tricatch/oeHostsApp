@@ -216,6 +216,8 @@ class StoreTest {
         com.fasterxml.jackson.databind.JsonNode backup = s.exportParts(true, true, true);
         assertFalse(backup.toString().contains(token), "the MCP token stays out of backups");
         Store mcp = Store.open(dir.resolve("mcp.json"));
+        mcp.data.settings.mcp.enabled = false;
+        mcp.data.settings.mcp.traffic = false;
         mcp.restoreParts(backup, true, true, true);
         assertFalse(mcp.data.settings.mcp.enabled, "a backup cannot switch the MCP server on");
         assertFalse(mcp.data.settings.mcp.traffic, "nor turn on offering the traffic");

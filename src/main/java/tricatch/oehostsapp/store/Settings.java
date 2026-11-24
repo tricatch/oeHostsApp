@@ -50,15 +50,15 @@ public final class Settings {
     }
 
     /**
-     * The MCP server for AI coding tools ({@code mcp.McpServer}): off by default, read-only, and only
-     * on 127.0.0.1. Its access token is {@code Store.Data.mcpToken}, kept out of the settings so a
-     * backup never carries it.
+     * The MCP server for AI coding tools ({@code mcp.McpServer}): on by default, read-only, and only
+     * on 127.0.0.1; a client needs the access token ({@code Store.Data.mcpToken}, kept out of the
+     * settings so a backup never carries it), which only this PC's settings screen shows.
      */
     public static class Mcp {
-        public boolean enabled;
+        public boolean enabled = true;
         public int port = DEFAULT_MCP_PORT;
-        /** Whether the tools also offer what the Network tab captured (secrets replaced by tags). */
-        public boolean traffic;
+        /** Whether the tools also offer what the Network tab captured (secrets replaced by tags); on by default. */
+        public boolean traffic = true;
     }
 
     /** One preset: a name and the value it puts into a launcher field. */

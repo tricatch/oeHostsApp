@@ -606,7 +606,7 @@ public final class Store {
     /**
      * Replaces the chosen parts (see {@link #exportParts}) with those of a backup's {@code data.json},
      * and saves. The SSL proxy's and the MCP server's switches stay as they are here: decryption and
-     * access for AI tools are turned on at this PC, not by a file.
+     * access for AI tools are decided at this PC, not by a file.
      */
     public void restoreParts(JsonNode json, boolean hosts, boolean vhosts, boolean settings) throws IOException {
         Data from = parse(json);

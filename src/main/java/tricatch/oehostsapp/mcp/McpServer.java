@@ -28,7 +28,7 @@ import java.util.concurrent.Executors;
  * {@code http://127.0.0.1:<settings.mcp.port>/mcp}, answering each POSTed JSON-RPC message with one
  * JSON reply ({@link McpProtocol}); no event stream, no sessions. Read-only ({@link McpTools}).
  *
- * <p>Off unless {@code settings.mcp.enabled}. It listens on 127.0.0.1 only, never on a network card,
+ * <p>Runs while {@code settings.mcp.enabled} (on by default). It listens on 127.0.0.1 only, never on a network card,
  * and every request must carry {@code Authorization: Bearer <Store.mcpToken()>}. A Host header that
  * is not a loopback name, or an Origin that is not a loopback page, is refused before the token is
  * looked at: a web page in a browser on this PC must not reach it (DNS rebinding).
