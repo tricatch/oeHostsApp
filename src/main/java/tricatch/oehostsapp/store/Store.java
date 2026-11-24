@@ -107,6 +107,12 @@ public final class Store {
          * backups like {@link #shareKey}: a restored file never lets a client in.
          */
         public String mcpToken;
+        /**
+         * The app version that last opened this file ({@link #swapLastRunVersion}), to tell an update
+         * at the next start. Kept out of backups like {@link #shareKey}: a restored file never claims
+         * an update that did not happen on this PC.
+         */
+        public String lastRunVersion;
 
         /** Fills parts a data file left out, so callers never see null. */
         void fillDefaults() {
@@ -418,6 +424,16 @@ public final class Store {
             if (b.length() >= 60) break;
         }
         return b.isEmpty() ? "_" : b.toString();
+    }
+
+    /** Records {@code current} as the version that last opened this file (saving only on a change); returns the one before, or null. */
+    public String swapLastRunVersion(String current) {
+        String before = data.lastRunVersion;
+        if (!Objects.equals(before, current)) {
+            data.lastRunVersion = current;
+            save();
+        }
+        return before;
     }
 
     /** The MCP server's bearer token; created (and saved) on first use. */

@@ -225,7 +225,22 @@ class StoreTest {
         assertNull(mcp.data.mcpToken);
         assertNotEquals(token, mcp.mcpToken());
 
+        // The last-run version stays on this PC: a restored backup never claims an update.
+        s.swapLastRunVersion("0.1.0");
+        assertFalse(s.exportParts(true, true, true).has("lastRunVersion"));
+        mcp.restoreParts(s.exportParts(true, true, true), true, true, true);
+        assertNull(mcp.data.lastRunVersion);
+
         Files.writeString(dir.resolve("not.zip"), "plain text");
         assertThrows(java.io.IOException.class, () -> Backup.read(dir.resolve("not.zip")));
+    }
+
+    @Test
+    void remembersTheLastRunVersion() throws Exception {
+        Store s = Store.open(dir.resolve("versions.json"));
+        assertNull(s.swapLastRunVersion("0.4.1"));
+        assertEquals("0.4.1", s.swapLastRunVersion("0.4.2"));
+        // Saved: a new start reads it back.
+        assertEquals("0.4.2", Store.open(dir.resolve("versions.json")).swapLastRunVersion("0.4.2"));
     }
 }

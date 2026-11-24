@@ -117,6 +117,15 @@ class UpdateTest {
     }
 
     @Test
+    void tellsAStartAfterAnUpdate() {
+        assertTrue(Update.justUpdated("0.4.1", "0.4.3"));
+        assertFalse(Update.justUpdated(null, "0.4.3"), "first start");
+        assertFalse(Update.justUpdated("0.4.3", "0.4.3"), "same version");
+        assertFalse(Update.justUpdated("0.4.3", "0.4.1"), "downgrade");
+        assertFalse(Update.justUpdated("0.4.1", "dev"), "IDE run");
+    }
+
+    @Test
     void downloadsAndVerifiesJar() throws Exception {
         List<Integer> progress = new ArrayList<>();
         Path out = Update.download("9.9.9", dir, progress::add);

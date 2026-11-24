@@ -189,6 +189,16 @@ public final class Update {
         return found;
     }
 
+    /**
+     * True when this start follows an update: {@code previous} (the version that last ran on this
+     * data) is a release older than {@code current}. Not on a first start, a downgrade, or a
+     * development run ({@code dev}).
+     */
+    public static boolean justUpdated(String previous, String current) {
+        if (previous == null || current == null || current.isEmpty() || !Character.isDigit(current.charAt(0))) return false;
+        return isNewer(current, previous);
+    }
+
     /** The release page of {@code version}. */
     public static String releaseUrl(String version) {
         return repo + "/releases/tag/" + version;

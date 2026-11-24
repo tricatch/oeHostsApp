@@ -68,7 +68,33 @@ public final class MainWindow {
         // Another device's first request to the proxy service asks here (on the proxy's thread).
         tricatch.oehostsapp.proxy.ClientAccess.setAsker(r -> SwingUtilities.invokeLater(() -> askAccess(r)));
         String shot = System.getProperty("oehostsapp.shot");
+        showReleaseNotesAfterUpdate(store, shot == null);
         if (shot != null) w.screenshots(shot);
+    }
+
+    /**
+     * The first start of a newer version on this data (an update, by the app or the installer) opens
+     * that release's notes in the browser, once. Not in screenshot mode ({@code browse} false),
+     * which only logs it.
+     */
+    private static void showReleaseNotesAfterUpdate(Store store, boolean browse) {
+        String current = tricatch.oehostsapp.OeHostsApp.version();
+        String previous;
+        synchronized (store) {
+            previous = store.swapLastRunVersion(current);
+        }
+        if (!Update.justUpdated(previous, current)) return;
+        String url = Update.releaseUrl(current);
+        org.slf4j.LoggerFactory.getLogger(MainWindow.class).info("updated from {} to {}: release notes {}", previous, current, url);
+        if (!browse || !Desktop.isDesktopSupported()) return;
+        // Off the event thread: the browser may take a moment to start.
+        Thread.ofVirtual().name("release-notes").start(() -> {
+            try {
+                Desktop.getDesktop().browse(java.net.URI.create(url));
+            } catch (Exception e) {
+                org.slf4j.LoggerFactory.getLogger(MainWindow.class).warn("cannot open the release notes: {}", e.getMessage());
+            }
+        });
     }
 
     /** Devices waiting for an answer, asked one after another (the question is a modal dialog). */
