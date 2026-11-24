@@ -12,7 +12,7 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
 
 ## Packages
 
-- Code under `tricatch.oehostsapp` is split by feature: `store` (data file and its model, backup), `proxy` (forward/reverse proxy runtime, SSL proxy, root CA, vhost YAML, traffic monitor), `web` (the pages the proxy service answers itself: shared hosts, `/active-hosts`, phone setup page), `net` (this PC's addresses, binding values), `hosts` (hosts rules, oeHosts-Agent), `chrome` (Chrome launch), `update` (self-update), `ui` (Swing screens). The root package keeps only app-wide classes (entry point, data folder, build info, messages, single instance, `Listeners`).
+- Code under `tricatch.oehostsapp` is split by feature: `store` (data file and its model, backup), `proxy` (forward/reverse proxy runtime, SSL proxy, root CA, vhost YAML, traffic monitor), `web` (the pages the proxy service answers itself: shared hosts, `/active-hosts`, phone setup page), `net` (this PC's addresses, binding values), `hosts` (hosts rules, oeHosts-Agent), `chrome` (Chrome launch), `update` (self-update), `mcp` (MCP server for AI coding tools), `ui` (Swing screens). The root package keeps only app-wide classes (entry point, data folder, build info, messages, single instance, `Listeners`).
 - Put a new class in the package of its feature, not in the root. Make a member `public` only when another package needs it.
 - `UpdateHelper` stays in the root package: its fully qualified name is a contract between releases (an older version looks it up by name in the new jar). Never rename or move it, and never move `OeHostsApp` (the `Main-Class`).
 - Keep rules about data out of `ui`: parsing, merging and validation (hosts rules, vhost YAML, presets' storage) live in the feature package and get unit tests; a screen only formats their results. One merge per kind: every consumer of the selected hosts profiles goes through `HostsRules.merge`/`active`, every consumer of the selected vhosts through `Vhosts.merge`/`served`. Do not store data that can be derived from the store (the proxy reads the selected vhosts itself).
@@ -63,6 +63,15 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
   - Events reach the event thread only through `MonitorTab`'s queue and timer; never `invokeLater` per event.
 - Do not put `127.0.0.1` or `localhost` in the QR URL: phone browsers send loopback addresses to the phone itself, never to the proxy.
 - The phone section at the bottom of Settings → oeProxy → CA 인증서 (모바일 기기 인증서 설치, `CaPage.mobileSection`) only downloads the CA; it configures nothing. It needs the proxy service running; the phone is asked about (`ClientAccess`) on its first request.
+- The MCP server (`mcp.McpServer`, tools in `McpTools`, JSON-RPC in `McpProtocol`) serves Claude Code over MCP's Streamable HTTP transport, hand-written on the JDK's `com.sun.net.httpserver` and Jackson (no MCP SDK dependency). Keep these properties:
+  - On by default (`settings.mcp.enabled`; the owner's decision: the token is what keeps clients out); bound to 127.0.0.1 only, never to a network card or 0.0.0.0, and never moved onto the proxy service port.
+  - Every request needs `Authorization: Bearer <Store.mcpToken()>`. The token lives in `Data.mcpToken`, outside `settings`, so backups never carry it, and only the settings screen shows it. A restore keeps this PC's switches (`settings.mcp.enabled`, `settings.mcp.traffic`; `Store.restoreParts`).
+  - A Host header that is not a loopback name, or an Origin that is not a loopback page, is refused before the token is checked (DNS rebinding, browser pages).
+  - Tools only read. Hosts and vhosts in force go through `HostsRules.merge` and `Vhosts.served` like every other consumer. Never offer a secret of the app (`ca.pfx`, `shareKey`, the MCP token).
+  - The Network tab's traffic (`list_traffic`, `get_traffic`) is offered while `settings.mcp.traffic` is on (on by default), from every device (the owner's decision: a local app, no limit on what is analyzed). The tools read a copy the tab builds on the event thread (`mcp.Traffic`, registered by `MonitorTab`); they never keep, save or aggregate it, and never touch the monitors themselves.
+  - Everything traffic-derived passes `mcp.Redactor` before it leaves: every cookie value, `Authorization` credentials, secret-named headers, query parameters, form fields and JSON members, and JWTs become `hmac:<hex>` tags under a per-process random key (never a plain hash: short values would be found by trying candidates). Add new places secrets travel there, not in the tools. Bodies are capped (`McpTools.MAX_BODY_CHARS`) and marked as untrusted network data.
+  - Adding a tool that changes data needs more than a new entry: the screens do not watch the store for outside changes, and an open editor's autosave would overwrite such a change. Ask the owner first.
+  - The Settings → General → MCP page builds the `claude mcp add` command; keep it in step with Claude Code's CLI.
 - No network port is used for single-instance detection; it is a file lock in the data folder (`SingleInstance`). Keep it that way.
 
 ## Matching oeHub
@@ -73,7 +82,7 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
   - `ui.HostsTab` ↔ `templates/oehub/hosts.pebble` (the options of `store.LauncherOptions`)
   - `proxy.Vhosts` ↔ `templates/oehub/proxy.pebble` (`validateSchema`, `buildMergedVirtualYaml`); `ui.ProxyTab` ↔ the rest of that page. Deliberate difference: `Vhosts.problems` is stricter than `validateSchema` (it also checks what oe-proxy would ignore or reject when loading routes: unknown or repeated keys, domain, host, path and header formats) and reports each problem's own line. When oe-proxy's `VirtualHostUtil` or its header rules change, update it.
   - Both editors mark the first problem's line through `ItemPanel.Hooks.invalid`; a profile or vhost with a problem is never stored or imported.
-  - `ui.MonitorTab` ↔ `templates/oehub/proxy-monitor.pebble`
+  - `ui.MonitorTab` ↔ `templates/oehub/proxy-monitor.pebble`. Deliberate difference: no Events tab (a raw event log that served oeHub's SSE feed; the start time and duration columns cover what it showed).
   - `ui.SidebarTree` ↔ `static/js/list-folders.js`
   - `ui.Ui`, `ui.OeDialog` ↔ `static/css/app.css`, `oe-panel.css`, `hosts.css`
 - Settings → Data exports the checked parts (oeHosts, oeProxy, settings, CA) to one ZIP (`Backup`, `Store.exportParts`); a part is present in `data.json` only when it was exported, and an import touches only the parts that are both checked and present, either adding to the current data (`Store.mergeParts`, the default) or overwriting it (`Store.restoreParts`); the CA is always overwritten.
@@ -110,7 +119,7 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
 - An invalid vhost (fails `Vhosts.problems`) is never stored: not on edit, not on import.
 - Item and folder ids are 14 Crockford base32 digits (`Store.newId`), used as they are in share URLs. Ids are never converted; data made with the older hex ids is not migrated.
 - `${PROXY_SVR}` / `${LOCAL_SVR}` always resolve to `127.0.0.1` in this app.
-- The data model is `Store.Data` with `store.Settings` (grouped: `fwdproxy`, `reverseProxy`, `sslProxy`, `userAgentPresets`/`openUrlPresets`, `window`) and `store.LauncherOptions`. A part missing from the file is filled in by `fillDefaults` on open, so code never checks for null parts.
+- The data model is `Store.Data` with `store.Settings` (grouped: `fwdproxy`, `reverseProxy`, `sslProxy`, `mcp`, `userAgentPresets`/`openUrlPresets`, `window`, `monitor`) and `store.LauncherOptions`. A part missing from the file is filled in by `fillDefaults` on open, so code never checks for null parts.
 - The data format carries no compatibility code with older versions (no migration of older files or old field names, no fields kept only for older versions); this was the owner's decision while the app has a single user. Ask before adding any.
 
 ## Dependencies — License Listing

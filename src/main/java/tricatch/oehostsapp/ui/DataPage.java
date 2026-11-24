@@ -1,5 +1,6 @@
 package tricatch.oehostsapp.ui;
 
+import tricatch.oehostsapp.mcp.McpServer;
 import tricatch.oehostsapp.proxy.Ca;
 import tricatch.oehostsapp.proxy.ProxyRuntime;
 import tricatch.oehostsapp.proxy.SslProxy;
@@ -200,6 +201,8 @@ final class DataPage {
         if (p.settings()) {
             // An overwrite can bring another domain list: put it in force like the SSL proxy dialog does.
             Thread.ofVirtual().name("ssl-proxy-apply").start(() -> SslProxy.apply(sslBefore));
+            // The switch stays as it was (Store.restoreParts), but the port may have changed.
+            Thread.ofVirtual().name("mcp-restart").start(McpServer::restart);
             OeDialog.info(ctx, title, ctx.m("app.data.imported.reload"));
             tab.host().relaunch();
         } else {

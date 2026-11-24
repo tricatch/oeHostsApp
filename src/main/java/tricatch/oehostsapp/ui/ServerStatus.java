@@ -14,10 +14,17 @@ import java.util.function.Supplier;
  */
 final class ServerStatus {
 
-    /** What the table shows: running, failed (with {@code error}) or neither (starting / stopped). */
-    record Snapshot(boolean running, boolean failed, String error, String bind, int port) {
+    /**
+     * What the table shows: running, failed (with {@code error}), switched off ({@code off}: a server
+     * that only runs when turned on) or none of these (starting).
+     */
+    record Snapshot(boolean running, boolean failed, String error, String bind, int port, boolean off) {
+        Snapshot(boolean running, boolean failed, String error, String bind, int port) {
+            this(running, failed, error, bind, port, false);
+        }
+
         boolean settled() {
-            return running || failed;
+            return running || failed || off;
         }
     }
 
@@ -56,10 +63,11 @@ final class ServerStatus {
     private void refresh() {
         Snapshot s = snapshot.get();
         String key = restarting ? "app.settings.server.restarting"
-                : s.running() ? "app.settings.server.running" : s.failed() ? "app.settings.server.failed" : "app.settings.server.starting";
+                : s.running() ? "app.settings.server.running" : s.failed() ? "app.settings.server.failed"
+                : s.off() ? "app.settings.server.off" : "app.settings.server.starting";
         v[0].setText(ctx.m(key));
         v[0].setForeground(restarting ? Ui.MUTED : s.running() ? Ui.BC700 : s.failed() ? Ui.DANGER : Ui.MUTED);
-        addresses.setText(s.port() > 0 ? String.join("\n", SettingsKit.reachableAt(ctx, s.bind(), s.port())) : "-");
+        addresses.setText(s.port() > 0 && !s.off() ? String.join("\n", SettingsKit.reachableAt(ctx, s.bind(), s.port())) : "-");
         SettingsKit.errorRow(panel, v[2], !restarting && s.failed() ? s.error() : null);
     }
 
@@ -88,6 +96,7 @@ final class ServerStatus {
             button.setEnabled(true);
             refresh();
             if (s.running()) SettingsKit.ok(status, ctx.m("app.settings.server.restarted"));
+            else if (s.off()) SettingsKit.ok(status, ctx.m("app.settings.server.stopped"));
             else if (s.failed()) SettingsKit.error(status, ctx.m("app.settings.server.restart.failed"));
             else SettingsKit.error(status, ctx.m("app.settings.server.restart.timeout"));
         };

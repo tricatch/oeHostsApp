@@ -102,6 +102,11 @@ public final class Store {
          * installation's data.
          */
         public String shareKey;
+        /**
+         * Bearer token of the MCP server ({@link #mcpToken}), created on first use. Kept out of
+         * backups like {@link #shareKey}: a restored file never lets a client in.
+         */
+        public String mcpToken;
 
         /** Fills parts a data file left out, so callers never see null. */
         void fillDefaults() {
@@ -415,6 +420,21 @@ public final class Store {
         return b.isEmpty() ? "_" : b.toString();
     }
 
+    /** The MCP server's bearer token; created (and saved) on first use. */
+    public String mcpToken() {
+        if (data.mcpToken == null) newMcpToken();
+        return data.mcpToken;
+    }
+
+    /** Replaces the MCP server's token (and saves): clients registered with the old one are refused. */
+    public String newMcpToken() {
+        byte[] k = new byte[32];
+        RANDOM.nextBytes(k);
+        data.mcpToken = Base64.getUrlEncoder().withoutPadding().encodeToString(k);
+        save();
+        return data.mcpToken;
+    }
+
     /** The content of the shared profile a {@link #shareToken} names, or null when the tag does not match. */
     public String sharedHostsContentByToken(String token) {
         int dash = token.lastIndexOf('-');
@@ -585,8 +605,8 @@ public final class Store {
 
     /**
      * Replaces the chosen parts (see {@link #exportParts}) with those of a backup's {@code data.json},
-     * and saves. The SSL proxy's switch stays as it is here: decryption is turned on at this PC, not
-     * by a file.
+     * and saves. The SSL proxy's and the MCP server's switches stay as they are here: decryption and
+     * access for AI tools are decided at this PC, not by a file.
      */
     public void restoreParts(JsonNode json, boolean hosts, boolean vhosts, boolean settings) throws IOException {
         Data from = parse(json);
@@ -601,6 +621,8 @@ public final class Store {
         }
         if (settings) {
             from.settings.sslProxy.enabled = data.settings.sslProxy.enabled;
+            from.settings.mcp.enabled = data.settings.mcp.enabled;
+            from.settings.mcp.traffic = data.settings.mcp.traffic;
             data.settings = from.settings;
         }
         save();

@@ -35,7 +35,7 @@ public final class ProxyMonitor implements HttpEventConsumer {
 
     /** One proxy event; {@code headers} are the raw lines (first line = request/status line). */
     public record Event(String rid, HttpEventType type, long timestamp, List<String> headers, byte[] body,
-                        String stream, Integer opcode, String wsDirection) {}
+                        Integer opcode, String wsDirection) {}
 
     private static final int MAX_DECODED_BYTES = 8 * 1024 * 1024;
 
@@ -74,7 +74,7 @@ public final class ProxyMonitor implements HttpEventConsumer {
         try {
             if (e.getType() == null || e.getRid() == null) return;
             sink.accept(new Event(e.getRid(), e.getType(), e.getTimestamp(), lines(e.getHeaders()), e.getBody(),
-                    e.getHttpStream() == null ? null : e.getHttpStream().name(), e.getOpcode(), e.getWsDirection()));
+                    e.getOpcode(), e.getWsDirection()));
         } catch (RuntimeException ignored) {
             // A monitor must never break event delivery (an exception would unsubscribe it).
         }

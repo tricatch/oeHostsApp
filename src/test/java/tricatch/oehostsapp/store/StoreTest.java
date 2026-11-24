@@ -208,6 +208,23 @@ class StoreTest {
         assertTrue(target.data.settings.sslProxy.enabled);
         assertEquals("api.example.test", target.data.settings.sslProxy.domains);
 
+        // The MCP server: a backup carries its port but neither its switch nor its token.
+        s.data.settings.mcp.enabled = true;
+        s.data.settings.mcp.port = 40123;
+        s.data.settings.mcp.traffic = true;
+        String token = s.mcpToken();
+        com.fasterxml.jackson.databind.JsonNode backup = s.exportParts(true, true, true);
+        assertFalse(backup.toString().contains(token), "the MCP token stays out of backups");
+        Store mcp = Store.open(dir.resolve("mcp.json"));
+        mcp.data.settings.mcp.enabled = false;
+        mcp.data.settings.mcp.traffic = false;
+        mcp.restoreParts(backup, true, true, true);
+        assertFalse(mcp.data.settings.mcp.enabled, "a backup cannot switch the MCP server on");
+        assertFalse(mcp.data.settings.mcp.traffic, "nor turn on offering the traffic");
+        assertEquals(40123, mcp.data.settings.mcp.port);
+        assertNull(mcp.data.mcpToken);
+        assertNotEquals(token, mcp.mcpToken());
+
         Files.writeString(dir.resolve("not.zip"), "plain text");
         assertThrows(java.io.IOException.class, () -> Backup.read(dir.resolve("not.zip")));
     }

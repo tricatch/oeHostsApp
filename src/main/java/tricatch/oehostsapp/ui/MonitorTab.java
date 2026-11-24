@@ -1,6 +1,7 @@
 package tricatch.oehostsapp.ui;
 
 import tricatch.oehostsapp.Listeners;
+import tricatch.oehostsapp.mcp.Traffic;
 import tricatch.oehostsapp.proxy.DecryptedRequests;
 import tricatch.oehostsapp.proxy.ForwardMonitor;
 import tricatch.oehostsapp.proxy.ProxyMonitor;
@@ -44,7 +45,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 @SuppressWarnings("serial") // a Swing component, never serialized
 public final class MonitorTab extends JPanel {
 
-    private static final String[] TABS = {"header", "cookie", "request", "response", "websocket", "event"};
+    private static final String[] TABS = {"header", "cookie", "request", "response", "websocket"};
     /** The oldest rows are dropped beyond this, counted apart for content and tunnels so tunnels never push content out. */
     private static final int MAX_ROWS = 2000;
     /** The oldest rows' bodies are dropped beyond this many bytes in all. */
@@ -58,6 +59,17 @@ public final class MonitorTab extends JPanel {
     private static final SimpleDateFormat TIME = new SimpleDateFormat("HH:mm:ss.SSS");
     /** The filter "with content only"; static, so a rebuild of the window keeps it. Not saved. */
     private static boolean contentOnly;
+    /**
+     * Headers, cookies and form/JSON members by name instead of as sent. Read from
+     * {@code settings.monitor} when the tab is built and saved there on every click.
+     */
+    static boolean sortByName;
+    /** Values of those lines start in one column (names padded to the longest); kept like {@link #sortByName}. */
+    static boolean alignValues;
+    /** The detail tabs the sort and align switches apply to (Headers, Cookies, Request, Response). */
+    private static final int SORTABLE_TABS = 4;
+    /** The detail tabs drawn with a rule under each line (Headers, Cookies); every tab has the taller lines. */
+    private static final int RULED_TABS = 2;
 
     /** Everything seen for one request or tunnel. Only touched on the EDT. */
     private static final class Row {
@@ -68,7 +80,6 @@ public final class MonitorTab extends JPanel {
         byte[] reqBody, resBody;
         Integer code;
         final List<String> ws = new ArrayList<>();
-        final List<String> events = new ArrayList<>();
 
         // Of the proxy service's rows only.
         boolean forward, tunnel, decryptedWithoutRequest, untracked;
@@ -111,9 +122,14 @@ public final class MonitorTab extends JPanel {
     private final JTextArea[] panels = new JTextArea[TABS.length];
     private final JPanel panelCards = new JPanel(new CardLayout());
     private final List<JLabel> tabButtons = new ArrayList<>();
+    private JButton sortBtn, alignBtn;
+    /** The row whose details are shown (index into {@link #visible}), or -1. */
+    private int shownIndex = -1;
 
     private final Queue<Object> incoming = new ConcurrentLinkedQueue<>();
     private final ProxyMonitor monitor = new ProxyMonitor(incoming::add);
+    /** What the MCP traffic tools read ({@link Traffic}); registered while this screen exists. */
+    private final java.util.function.Supplier<Traffic.Snapshot> trafficSource = this::trafficSnapshot;
     private Listeners.Subscription forwardCapture;
     private final DecryptedRequests decrypted = new DecryptedRequests();
     private final List<Ended> endedDecrypted = new ArrayList<>();
@@ -132,6 +148,8 @@ public final class MonitorTab extends JPanel {
     public MonitorTab(AppContext ctx) {
         super(new BorderLayout());
         this.ctx = ctx;
+        sortByName = ctx.settings(st -> st.monitor.sortByName);
+        alignValues = ctx.settings(st -> st.monitor.alignValues);
         ssl = new SslProxyControls(ctx, () -> gotoCa.run());
         table = new JTable(model) {
             @Override
@@ -212,6 +230,7 @@ public final class MonitorTab extends JPanel {
         startCapture();
         flushTimer.start();
         liveTimer.start();
+        Traffic.setSource(trafficSource);
     }
 
     void onGotoCa(Runnable r) {
@@ -247,10 +266,10 @@ public final class MonitorTab extends JPanel {
         JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         left.setOpaque(false);
         for (int i = 0; i < TABS.length; i++) {
-            JLabel b = tabButton(i);
-            if (i < TABS.length - 1) left.add(b);
-            else bar.add(b, BorderLayout.EAST);
-            JTextArea a = new JTextArea();
+            left.add(tabButton(i));
+            // Every panel has the same taller lines; headers and cookies, long lists of short lines,
+            // also get a faint rule under each to keep the rows apart.
+            JTextArea a = new RuledTextArea(i < RULED_TABS);
             a.setEditable(false);
             a.setBackground(Color.WHITE);
             a.setFont(Ui.mono(12f));
@@ -260,6 +279,14 @@ public final class MonitorTab extends JPanel {
             panelCards.add(Ui.plainScroll(a), TABS[i]);
         }
         bar.add(left, BorderLayout.WEST);
+        alignBtn = Ui.iconButton("list-indent-increase", null, false, this::toggleAlign);
+        sortBtn = Ui.iconButton("arrow-down-a-z", null, false, this::toggleSort);
+        showSwitches();
+        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        right.setOpaque(false);
+        right.add(alignBtn);
+        right.add(sortBtn);
+        bar.add(right, BorderLayout.EAST);
         JPanel tabsWrap = new JPanel(new BorderLayout());
         tabsWrap.setBackground(Color.WHITE);
         tabsWrap.setBorder(new CompoundBorder(new MatteBorder(0, 0, 1, 0, Ui.BORDER), Ui.pad(4, 8, 0, 8)));
@@ -299,6 +326,10 @@ public final class MonitorTab extends JPanel {
     }
 
     private void selectTab(int index) {
+        if (sortBtn != null) {
+            sortBtn.setVisible(index < SORTABLE_TABS);
+            alignBtn.setVisible(index < SORTABLE_TABS);
+        }
         for (int i = 0; i < tabButtons.size(); i++) {
             JLabel b = tabButtons.get(i);
             boolean a = i == index;
@@ -422,10 +453,29 @@ public final class MonitorTab extends JPanel {
     }
 
     void dispose() {
+        Traffic.clearSource(trafficSource);
         flushTimer.stop();
         liveTimer.stop();
         stopCapture();
         incoming.clear();
+    }
+
+    /**
+     * A copy of every row for the MCP traffic tools, oldest first, after working off what is queued.
+     * Runs on the event thread ({@link Traffic#snapshot}); the bodies are shared, never copied (a row
+     * replaces its arrays, it never writes into them).
+     */
+    private Traffic.Snapshot trafficSnapshot() {
+        flushEvents();
+        List<Traffic.Entry> out = new ArrayList<>(rows.size());
+        for (Row r : rows) {
+            out.add(new Traffic.Entry(r.rid, !r.forward, r.tunnel, r.decryptedWithoutRequest,
+                    r.reqTs, r.resTs, r.endTs, r.method, r.host, r.path, url(r), r.client, r.code,
+                    r.failure == null ? null : r.failure.name().toLowerCase(java.util.Locale.ROOT),
+                    List.copyOf(r.reqHeaders), List.copyOf(r.resHeaders), r.reqBody, r.resBody,
+                    r.reqTooLarge, r.resTooLarge, r.bodiesDropped, r.sent(), r.received(), List.copyOf(r.ws)));
+        }
+        return new Traffic.Snapshot(recording, out);
     }
 
     // ── Events ──────────────────────────────────────────────────
@@ -503,9 +553,6 @@ public final class MonitorTab extends JPanel {
     private void applyProxy(ProxyMonitor.Event e, Set<Row> changed, List<Row> added) {
         Row r = row(e.rid(), e.timestamp(), false, added);
         changed.add(r);
-        r.events.add(TIME.format(new Date(e.timestamp())) + "  " + e.type()
-                + (e.stream() != null ? "  " + e.stream() : "")
-                + (e.body() != null ? "  " + e.body().length + " B" : ""));
         switch (e.type()) {
             case REQ_HEADER -> {
                 r.reqTs = e.timestamp();
@@ -559,11 +606,6 @@ public final class MonitorTab extends JPanel {
         r.received = x.received();
         r.live = ended ? null : x;
         setBodies(r, x.requestBody(), x.responseBody());
-        r.events.clear();
-        r.events.add(TIME.format(new Date(r.reqTs)) + "  " + r.method + "  " + r.url);
-        if (r.resTs > 0) r.events.add(TIME.format(new Date(r.resTs)) + "  " + (r.code == null ? "-" : r.code));
-        if (r.failure != null) r.events.add("  " + failureText(r.failure));
-        if (ended) r.events.add(TIME.format(new Date(r.endTs)) + "  END  " + r.sent + " B / " + r.received + " B");
         return r;
     }
 
@@ -620,7 +662,87 @@ public final class MonitorTab extends JPanel {
 
     // ── Detail ──────────────────────────────────────────────────
 
+    private void toggleSort() {
+        sortByName = !sortByName;
+        switched();
+    }
+
+    private void toggleAlign() {
+        alignValues = !alignValues;
+        switched();
+    }
+
+    /** Shows and saves the switches' new state, and redraws the details with it. */
+    private void switched() {
+        boolean sort = sortByName, align = alignValues;
+        ctx.saveSettings(st -> {
+            st.monitor.sortByName = sort;
+            st.monitor.alignValues = align;
+        });
+        showSwitches();
+        populate(shownIndex);
+    }
+
+    private void showSwitches() {
+        showSwitch(sortBtn, "arrow-down-a-z", sortByName, "app.monitor.sort");
+        showSwitch(alignBtn, "list-indent-increase", alignValues, "app.monitor.align");
+    }
+
+    /** A detail switch: green while on, the usual gray while off; the tooltip says which and what a click does. */
+    private void showSwitch(JButton b, String icon, boolean on, String key) {
+        Color c = on ? Ui.BC700 : Ui.ICON;
+        b.setIcon(Ui.icon(icon, 15, c));
+        b.setRolloverIcon(Ui.icon(icon, 16, on ? c : new Color(0, 0, 0, 178)));
+        b.setToolTipText(ctx.m(key + (on ? ".on" : ".off")));
+        b.repaint();
+    }
+
+    /** {@code Name: value} lines as they are, or with the values in one column while {@link #alignValues} is on. */
+    private static List<String> laidOut(List<String> lines) {
+        return alignValues ? alignAfterName(lines) : lines;
+    }
+
+    /**
+     * {@code Name: value} lines as {@code Name<padding> : value}: every name padded to the longest, so
+     * the colons and the values each line up (as the cookies tab shows them). A line without a colon
+     * stays as it is.
+     */
+    static List<String> alignAfterName(List<String> lines) {
+        int width = 0;
+        for (String l : lines) width = Math.max(width, l.indexOf(':'));
+        List<String> out = new ArrayList<>(lines.size());
+        for (String l : lines) {
+            int c = l.indexOf(':');
+            out.add(c <= 0 ? l : l.substring(0, c) + " ".repeat(width - c) + " : " + l.substring(c + 1).strip());
+        }
+        return out;
+    }
+
+    /**
+     * {@code lines} as they are, or by name ({@code Name: value} headers, {@code name=value} cookies;
+     * case-insensitive, the same name keeping its order) while {@link #sortByName} is on.
+     */
+    private static List<String> ordered(List<String> lines) {
+        return sortByName ? byName(lines) : lines;
+    }
+
+    /** {@code lines} sorted by their name part (before the first {@code :} or {@code =}), case-insensitively and stably. */
+    static List<String> byName(List<String> lines) {
+        List<String> out = new ArrayList<>(lines);
+        out.sort(java.util.Comparator.comparing(MonitorTab::sortName, String.CASE_INSENSITIVE_ORDER));
+        return out;
+    }
+
+    private static String sortName(String line) {
+        int end = line.length();
+        int colon = line.indexOf(':'), eq = line.indexOf('=');
+        if (colon >= 0) end = colon;
+        if (eq >= 0 && eq < end) end = eq;
+        return line.substring(0, end).strip();
+    }
+
     private void populate(int index) {
+        shownIndex = index;
         String empty = ctx.m("monitor.detail.empty");
         if (index < 0 || index >= visible.size()) {
             for (int i = 0; i < TABS.length; i++) setPanel(i, empty, true);
@@ -646,28 +768,37 @@ public final class MonitorTab extends JPanel {
         }
         if (note != null) h.append('\n').append(note).append('\n');
         h.append('\n').append(ctx.m("monitor.detail.request.headers")).append('\n');
-        for (int i = 1; i < x.reqHeaders.size(); i++) h.append("  ").append(x.reqHeaders.get(i)).append('\n');
+        for (String l : laidOut(ordered(x.reqHeaders.subList(Math.min(1, x.reqHeaders.size()), x.reqHeaders.size())))) {
+            h.append("  ").append(l).append('\n');
+        }
         h.append('\n').append(ctx.m("monitor.detail.response.headers")).append('\n');
-        for (int i = 1; i < x.resHeaders.size(); i++) h.append("  ").append(x.resHeaders.get(i)).append('\n');
+        for (String l : laidOut(ordered(x.resHeaders.subList(Math.min(1, x.resHeaders.size()), x.resHeaders.size())))) {
+            h.append("  ").append(l).append('\n');
+        }
         setPanel(0, h.toString(), false);
 
         StringBuilder c = new StringBuilder();
         String cookie = ProxyMonitor.header(x.reqHeaders, "Cookie");
         if (cookie != null) {
             c.append(ctx.m("monitor.detail.request.cookies")).append('\n');
-            for (String kv : cookie.split(";")) {
-                String[] p = kv.strip().split("=", 2);
-                c.append("  ").append(p[0]).append(" : ").append(p.length > 1 ? p[1] : "").append('\n');
+            List<String> pairs = new ArrayList<>();
+            for (String kv : cookie.split(";")) pairs.add(kv.strip());
+            int width = 0;
+            if (alignValues) for (String kv : pairs) width = Math.max(width, kv.split("=", 2)[0].length());
+            for (String kv : ordered(pairs)) {
+                String[] p = kv.split("=", 2);
+                String name = alignValues ? p[0] + " ".repeat(width - p[0].length()) : p[0];
+                c.append("  ").append(name).append(" : ").append(p.length > 1 ? p[1] : "").append('\n');
             }
         }
+        List<String> setCookies = new ArrayList<>();
         for (int i = 1; i < x.resHeaders.size(); i++) {
             String l = x.resHeaders.get(i);
-            if (l.regionMatches(true, 0, "Set-Cookie:", 0, 11)) {
-                if (c.indexOf(ctx.m("monitor.detail.response.set.cookie")) < 0) {
-                    c.append(c.length() > 0 ? "\n" : "").append(ctx.m("monitor.detail.response.set.cookie")).append('\n');
-                }
-                c.append("  ").append(l.substring(11).strip()).append('\n');
-            }
+            if (l.regionMatches(true, 0, "Set-Cookie:", 0, 11)) setCookies.add(l.substring(11).strip());
+        }
+        if (!setCookies.isEmpty()) {
+            c.append(c.length() > 0 ? "\n" : "").append(ctx.m("monitor.detail.response.set.cookie")).append('\n');
+            for (String l : ordered(setCookies)) c.append("  ").append(l).append('\n');
         }
         setPanel(1, c.length() > 0 ? c.toString() : ctx.m("monitor.detail.no.cookies"), c.length() == 0);
 
@@ -684,10 +815,10 @@ public final class MonitorTab extends JPanel {
             setPanel(3, res != null ? res : ctx.m("monitor.detail.no.response"), res == null);
         }
         setPanel(4, x.ws.isEmpty() ? ctx.m("monitor.detail.ws.empty") : String.join("\n", x.ws), x.ws.isEmpty());
-        setPanel(5, String.join("\n", x.events), false);
     }
 
     /** Body for display: pretty text, a "N bytes (binary)" note, or null when there is none. */
+    /** A body for display; the sort and align switches apply where it has names (form, JSON). */
     private String body(byte[] body, List<String> headers) {
         if (body == null || body.length == 0) return null;
         String text = ProxyMonitor.bodyText(body, headers);
@@ -723,24 +854,39 @@ public final class MonitorTab extends JPanel {
         panels[i].setForeground(empty ? Ui.MUTED : Ui.TEXT);
         panels[i].setText(text);
         panels[i].setCaretPosition(0);
+        if (panels[i] instanceof RuledTextArea r) r.setRuled(!empty);
     }
 
+    /** The query parameters of the request tab (shown when there is no body). */
     private static String queryString(String path) {
         int q = path.indexOf('?');
         if (q < 0) return null;
         return form(path.substring(q + 1));
     }
 
-    private static String form(String s) {
-        StringBuilder b = new StringBuilder();
+    /**
+     * {@code a=1&b=2} as {@code name = value} lines, decoded; by name while {@link #sortByName} is on
+     * and with the {@code =} lined up while {@link #alignValues} is on.
+     */
+    static String form(String s) {
+        List<String[]> pairs = new ArrayList<>();
         for (String kv : s.split("&")) {
             String[] p = kv.split("=", 2);
             try {
-                b.append(URLDecoder.decode(p[0], StandardCharsets.UTF_8)).append(" = ")
-                        .append(p.length > 1 ? URLDecoder.decode(p[1], StandardCharsets.UTF_8) : "").append('\n');
+                pairs.add(new String[]{URLDecoder.decode(p[0], StandardCharsets.UTF_8),
+                        p.length > 1 ? URLDecoder.decode(p[1], StandardCharsets.UTF_8) : ""});
             } catch (IllegalArgumentException e) {
-                b.append(kv).append('\n');
+                pairs.add(new String[]{kv});
             }
+        }
+        if (sortByName) pairs.sort(java.util.Comparator.comparing(p -> p[0], String.CASE_INSENSITIVE_ORDER));
+        int width = 0;
+        if (alignValues) for (String[] p : pairs) if (p.length == 2) width = Math.max(width, p[0].length());
+        StringBuilder b = new StringBuilder();
+        for (String[] p : pairs) {
+            if (p.length == 1) b.append(p[0]);
+            else b.append(p[0]).append(" ".repeat(Math.max(0, width - p[0].length()))).append(" = ").append(p[1]);
+            b.append('\n');
         }
         return b.toString();
     }
@@ -750,13 +896,69 @@ public final class MonitorTab extends JPanel {
         if (t.startsWith("{") || t.startsWith("[")) {
             try {
                 JsonNode n = Store.MAPPER.readTree(t);
-                return Store.MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(n);
+                if (sortByName) sortKeys(n);
+                // The pretty printer ends lines with the platform's separator (CR LF on Windows).
+                String out = Store.MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(n).replace("\r\n", "\n");
+                return alignValues ? alignJsonKeys(out) : out;
             } catch (Exception ignored) {
                 return body;
             }
         }
         if (t.contains("=") && !t.contains(" ") && !t.contains("\n")) return form(t);
         return body;
+    }
+
+    /** Orders every object's members by name (case-insensitive), at every depth; arrays keep their order. */
+    static void sortKeys(JsonNode n) {
+        if (n instanceof com.fasterxml.jackson.databind.node.ObjectNode o) {
+            List<Map.Entry<String, JsonNode>> members = new ArrayList<>(o.properties());
+            members.sort(java.util.Comparator.comparing(Map.Entry::getKey, String.CASE_INSENSITIVE_ORDER));
+            o.removeAll();
+            for (Map.Entry<String, JsonNode> e : members) {
+                sortKeys(e.getValue());
+                o.set(e.getKey(), e.getValue());
+            }
+        } else if (n.isArray()) {
+            for (JsonNode c : n) sortKeys(c);
+        }
+    }
+
+    private static final java.util.regex.Pattern JSON_MEMBER =
+            java.util.regex.Pattern.compile("^( *)(\"(?:[^\"\\\\]|\\\\.)*\") : (.*)$");
+
+    /**
+     * Pretty-printed JSON ({@code "key" : value} lines) with the keys of each object padded to its
+     * longest, so the colons of one object line up; nested objects line up on their own.
+     */
+    static String alignJsonKeys(String json) {
+        String[] lines = json.split("\n", -1);
+        Map<Integer, List<Integer>> open = new HashMap<>();
+        for (int i = 0; i < lines.length; i++) {
+            int indent = 0;
+            while (indent < lines[i].length() && lines[i].charAt(indent) == ' ') indent++;
+            final int at = indent;
+            // A line less indented than an object's members ends that object.
+            open.keySet().removeIf(k -> {
+                if (k <= at) return false;
+                padKeys(lines, open.get(k));
+                return true;
+            });
+            if (JSON_MEMBER.matcher(lines[i]).matches()) open.computeIfAbsent(at, k -> new ArrayList<>()).add(i);
+        }
+        for (List<Integer> group : open.values()) padKeys(lines, group);
+        return String.join("\n", lines);
+    }
+
+    private static void padKeys(String[] lines, List<Integer> group) {
+        int width = 0;
+        for (int i : group) {
+            java.util.regex.Matcher m = JSON_MEMBER.matcher(lines[i]);
+            if (m.matches()) width = Math.max(width, m.group(2).length());
+        }
+        for (int i : group) {
+            java.util.regex.Matcher m = JSON_MEMBER.matcher(lines[i]);
+            if (m.matches()) lines[i] = m.group(1) + m.group(2) + " ".repeat(width - m.group(2).length()) + " : " + m.group(3);
+        }
     }
 
     // ── Table model ─────────────────────────────────────────────

@@ -64,6 +64,7 @@ public final class SettingsTab extends JPanel {
         folders.add(new Folder("app.settings.folder.general", List.of(
                 new Page("about", "app.settings.about.title", () -> new AboutPage(this).build()),
                 new Page("fwd", "app.settings.fwdproxy.title", () -> new ForwardProxyPage(this).build()),
+                new Page("mcp", "app.settings.mcp.title", () -> new McpPage(this).build()),
                 new Page("lang", "app.settings.lang.title", this::langPage),
                 new Page("data", "app.settings.data.title", () -> new DataPage(this).build()),
                 new Page("licenses", "licenses.section.opensource", () -> LicensesPage.build(ctx)))));
