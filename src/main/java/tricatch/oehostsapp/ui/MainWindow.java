@@ -44,12 +44,10 @@ public final class MainWindow {
     private MonitorTab monitor;
     private SettingsTab settings;
     private JButton gear;
+    /** Next to the gear while a newer release waits ({@link #updateChanged}). */
+    private JButton updateButton;
+    private JPanel navBar;
     private int current = -1;
-    /**
-     * The newer release already handled for the toast in this run, and the one for which the gear
-     * already led to Settings → About. Static: the window is rebuilt on a language change.
-     */
-    private static volatile String toastedUpdate, seenUpdate;
 
     private MainWindow(Store store, JFrame frame) {
         this.frame = frame;
@@ -361,6 +359,7 @@ public final class MainWindow {
                 mid.setBounds((getWidth() - mw) / 2, in.top, mw, h);
             }
         };
+        navBar = bar;
         bar.setBackground(Ui.BC300);
         bar.setBorder(new javax.swing.border.CompoundBorder(new MatteBorder(0, 0, 1, 0, Ui.NAV_BORDER), Ui.pad(0, 6, 0, 10)));
         bar.setPreferredSize(new Dimension(Ui.px(10), Ui.px(46)));
@@ -388,7 +387,7 @@ public final class MainWindow {
         navActions.add(wrapMiddle(monitor.navActions()), TABS[MONITOR]);
         navActions.add(new JPanel() {{ setOpaque(false); }}, TABS[SETTINGS]);
         bar.add(left);
-        bar.add(wrapMiddle(settingsButton()));
+        bar.add(eastButtons());
         bar.add(navActions);
         return bar;
     }
@@ -468,31 +467,60 @@ public final class MainWindow {
         if (gear != null) gear.repaint();
     }
 
-    /** The newer release while one is available (the gear keeps its dot until the app is updated); else null. */
+    /** The newer release while one is available (until the app is updated); else null. */
     private static String pendingUpdate() {
         Update.Status s = Update.status();
         return s.state() == Update.State.AVAILABLE && s.latest() != null ? s.latest() : null;
     }
 
-    /**
-     * A newer release was found: a dot on the gear, and a toast pointing at it once per release
-     * ever, not at every start (the release it was shown for is saved in {@code settings.updateToasted}).
-     */
+    /** Shows the update button next to the gear while a newer release waits, and hides it otherwise. */
     private void updateChanged() {
-        if (gear != null) gear.repaint();
+        if (updateButton == null) return;
         String v = pendingUpdate();
-        if (v == null || v.equals(toastedUpdate)) return;
-        toastedUpdate = v;
-        if (v.equals(ctx.settings(st -> st.updateToasted))) return;
-        ctx.saveSettings(st -> st.updateToasted = v);
-        ctx.toast(ctx.m("app.update.available.toast", v));
+        if (v != null) {
+            updateButton.setText(ctx.m("app.update.nav", v));
+            updateButton.setToolTipText(ctx.m("app.update.available", v));
+            // As tall as the other navbar buttons, as wide as its text.
+            updateButton.setPreferredSize(null);
+            updateButton.setPreferredSize(new Dimension(updateButton.getPreferredSize().width, Ui.px(28)));
+        }
+        if (updateButton.isVisible() != (v != null)) {
+            updateButton.setVisible(v != null);
+            // The bar places its east side by preferred width: lay it out again.
+            navBar.revalidate();
+            navBar.repaint();
+        }
     }
 
     /**
-     * The gear opens the settings tab; it is underlined like a nav tab while that tab is shown.
-     * While a newer release waits it carries a dot, and its first click for that release in this
-     * run opens Settings → About.
+     * The east side of the navbar: the update button (only while a newer release waits; it opens
+     * Settings → About, where the update is installed) and the gear.
      */
+    private JComponent eastButtons() {
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        p.setOpaque(false);
+        updateButton = Ui.navIconButton("download", null, () -> {
+            select(SETTINGS);
+            settings.showPage("about");
+        });
+        updateButton.setFont(Ui.font(Font.BOLD, 12f));
+        updateButton.setForeground(Ui.NAV_ICON_HOVER);
+        updateButton.setIconTextGap(Ui.px(5));
+        updateButton.setBorder(Ui.pad(0, 9, 0, 10));
+        updateButton.setPreferredSize(null);
+        updateButton.setVisible(false);
+        JPanel slot = new JPanel(new GridBagLayout());
+        slot.setOpaque(false);
+        slot.setBorder(Ui.pad(0, 0, 0, 4));
+        slot.add(updateButton);
+        p.add(slot);
+        p.add(settingsButton());
+        // After the window is up (the check may have finished already, e.g. on a rebuild).
+        SwingUtilities.invokeLater(this::updateChanged);
+        return p;
+    }
+
+    /** The gear opens the settings tab; it is underlined like a nav tab while that tab is shown. */
     private JComponent settingsButton() {
         gear = new JButton(Ui.icon("settings", 16, new Color(255, 255, 255, 217))) {
             @Override
@@ -501,18 +529,6 @@ public final class MainWindow {
                 if (current == SETTINGS) {
                     g.setColor(Color.WHITE);
                     g.fillRect(Ui.px(4), getHeight() - Ui.px(2), getWidth() - Ui.px(8), Ui.px(2));
-                }
-                if (pendingUpdate() != null) {
-                    // Top right of the 16px icon: a dark green dot in a white ring, readable on the green bar.
-                    Graphics2D d = (Graphics2D) g.create();
-                    d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                    int cx = getWidth() / 2 + Ui.px(7), cy = getHeight() / 2 - Ui.px(7);
-                    int r1 = Ui.px(5), r2 = Ui.px(3);
-                    d.setColor(Color.WHITE);
-                    d.fillOval(cx - r1, cy - r1, 2 * r1, 2 * r1);
-                    d.setColor(Ui.BC700);
-                    d.fillOval(cx - r2, cy - r2, 2 * r2, 2 * r2);
-                    d.dispose();
                 }
             }
         };
@@ -523,16 +539,7 @@ public final class MainWindow {
         gear.setToolTipText(ctx.m("nav.settings"));
         gear.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         gear.setPreferredSize(new Dimension(Ui.px(36), Ui.px(45)));
-        gear.addActionListener(e -> {
-            String v = pendingUpdate();
-            select(SETTINGS);
-            if (v != null && !v.equals(seenUpdate)) {
-                seenUpdate = v;
-                settings.showPage("about");
-            }
-        });
-        // After the window is up (the check may have finished already, e.g. on a rebuild).
-        SwingUtilities.invokeLater(this::updateChanged);
+        gear.addActionListener(e -> select(SETTINGS));
         return gear;
     }
 

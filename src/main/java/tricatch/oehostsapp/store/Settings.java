@@ -144,8 +144,6 @@ public final class Settings {
     public Integer fontSize;
     /** Folder the CA import dialog last picked a file from. */
     public String caImportDir;
-    /** The newer release the "new version" toast was last shown for, so it shows once per release. */
-    public String updateToasted;
 
     /** Fills parts a data file left out (an older or hand-edited file), so callers never see null. */
     void fillDefaults() {
