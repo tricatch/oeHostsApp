@@ -134,16 +134,19 @@ public final class Update {
 
     /**
      * Downloads the latest release in the background, then starts the helper and calls
-     * {@code quit} (which must end the process). On failure the status goes back to AVAILABLE
-     * with the error.
+     * {@code quit} (which must end the process). The latest release is asked for again first
+     * ({@link #installTarget}), so an app left running while more releases came out goes straight
+     * to the newest one. On failure the status goes back to AVAILABLE with the error.
      */
     public static synchronized void updateInBackground(Runnable quit) {
         Status s = status;
         Path jar = installedJar();
         if (s.state() != State.AVAILABLE || s.latest() == null || jar == null) return;
-        String tag = s.latest();
-        set(new Status(State.DOWNLOADING, tag, 0, null));
+        String found = s.latest();
+        set(new Status(State.DOWNLOADING, found, 0, null));
         Thread.ofVirtual().name("update-download").start(() -> {
+            String tag = installTarget(found);
+            if (!tag.equals(found)) set(new Status(State.DOWNLOADING, tag, 0, null));
             try {
                 int[] last = {-1};
                 Path fresh = download(tag, jar.getParent(), pct -> {
@@ -166,6 +169,24 @@ public final class Update {
                 set(new Status(State.AVAILABLE, tag, 0, reason(e)));
             }
         });
+    }
+
+    /**
+     * The release to install when {@code found} was the latest at the last check: the latest one
+     * now when it is newer, else {@code found} (also when the check fails: the update goes on).
+     */
+    static String installTarget(String found) {
+        try {
+            String latest = latestVersion();
+            if (isNewer(latest, found)) {
+                log.info("latest release is now {} (found {})", latest, found);
+                return latest;
+            }
+        } catch (Exception e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            log.warn("update re-check failed, installing {}: {}", found, reason(e));
+        }
+        return found;
     }
 
     /** The release page of {@code version}. */
