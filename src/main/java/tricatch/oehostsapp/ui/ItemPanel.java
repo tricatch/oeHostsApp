@@ -5,6 +5,7 @@ import tricatch.oehostsapp.store.Store;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -57,7 +58,18 @@ final class ItemPanel {
     private final Autosave autosave;
     private final SearchPanel search;
     private final FindBar findBar;
+    /** Other kinds of file the import button offers ({@link #addImportSource}). */
+    private final List<ImportSource> importSources = new ArrayList<>();
+    /** The menu label of the screen's own files while {@link #importSources} makes the import button a menu. */
+    private String ownImportKey;
     private Store.Item active;
+
+    /**
+     * An import of another kind of file: its menu label's key, what it does, and whether it can be
+     * used now (else the item is off, with {@code unavailableKey} as its tooltip).
+     */
+    private record ImportSource(String labelKey, Runnable action, java.util.function.BooleanSupplier available,
+                                String unavailableKey) {}
 
     ItemPanel(AppContext ctx, Spec spec, Hooks hooks) {
         this.ctx = ctx;
@@ -174,12 +186,34 @@ final class ItemPanel {
         JPanel p = new JPanel(new BorderLayout());
         p.setBackground(Color.WHITE);
         JButton add = Ui.iconButton("square-plus", ctx.m(spec.newKey()), false, this::add);
-        JButton importBtn = Ui.iconButton("circle-fading-plus", ctx.m(spec.importKey()), false, this::importFiles);
+        JButton[] importBtn = {null};
+        importBtn[0] = Ui.iconButton("circle-fading-plus",
+                ctx.m(importSources.isEmpty() ? spec.importKey() : "app.tooltip.import.menu"), false, () -> {
+                    if (importSources.isEmpty()) {
+                        importFiles();
+                        return;
+                    }
+                    JPopupMenu m = new JPopupMenu();
+                    JMenuItem own = new JMenuItem(ctx.m(ownImportKey != null ? ownImportKey : spec.importKey()));
+                    own.addActionListener(a -> importFiles());
+                    m.add(own);
+                    for (ImportSource s : importSources) {
+                        JMenuItem it = new JMenuItem(ctx.m(s.labelKey()));
+                        it.addActionListener(a -> s.action().run());
+                        // Checked each time the menu opens: the other app may be installed meanwhile.
+                        if (!s.available().getAsBoolean()) {
+                            it.setEnabled(false);
+                            it.setToolTipText(ctx.m(s.unavailableKey()));
+                        }
+                        m.add(it);
+                    }
+                    m.show(importBtn[0], 0, importBtn[0].getHeight());
+                });
         JButton addFolder = Ui.iconButton("folder-plus", ctx.m("tooltip.new.folder"), false, () -> {
             ctx.store(s -> s.createFolder(spec.kind()));
             tree.render();
         });
-        p.add(Ui.header(Ui.caps(ctx.m(spec.headerKey())), add, importBtn, search.toggleButton(), addFolder), BorderLayout.NORTH);
+        p.add(Ui.header(Ui.caps(ctx.m(spec.headerKey())), add, importBtn[0], search.toggleButton(), addFolder), BorderLayout.NORTH);
         p.add(searchSplit(), BorderLayout.CENTER);
         JPanel meta = Ui.meta();
         meta.add(countLabel, BorderLayout.WEST);
@@ -422,6 +456,31 @@ final class ItemPanel {
         }
         if (invalid != null) OeDialog.info(ctx, ctx.m(spec.importKey()), invalid);
         else if (imported > 0) ctx.toast(ctx.m("app.item.imported", imported));
+    }
+
+    /**
+     * Offers another kind of file in a menu on the import button, after the screen's own files.
+     * Call before {@link #sidebar}. The action stores the items itself, then calls {@link #imported}.
+     */
+    void addImportSource(String labelKey, Runnable action) {
+        importSources.add(new ImportSource(labelKey, action, () -> true, null));
+    }
+
+    /** {@link #addImportSource} for a source that is off (tooltip {@code unavailableKey}) while {@code available} is false. */
+    void addImportSource(String labelKey, Runnable action, java.util.function.BooleanSupplier available, String unavailableKey) {
+        importSources.add(new ImportSource(labelKey, action, available, unavailableKey));
+    }
+
+    /** The menu label of the screen's own files once other sources make the import button a menu. */
+    void ownImportLabel(String key) {
+        ownImportKey = key;
+    }
+
+    /** Shows items another import added to the store; the open item stays open. */
+    void imported() {
+        render();
+        if (active == null) openFirst();
+        hooks.changed();
     }
 
     /** Re-reads everything from the store (after an import). */

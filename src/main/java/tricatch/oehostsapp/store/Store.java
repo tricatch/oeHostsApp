@@ -680,6 +680,47 @@ public final class Store {
         }
     }
 
+    /** One entry for {@link #addItems}: a folder or an item. */
+    public sealed interface NewEntry permits NewFolder, NewItem {}
+
+    /** A folder for {@link #addItems}, also when no item goes into it. */
+    public record NewFolder(String name) implements NewEntry {}
+
+    /** An item for {@link #addItems}: the name of its folder (null: the root), its name and content. */
+    public record NewItem(String folder, String name, String content) implements NewEntry {}
+
+    /**
+     * Adds entries read from another app's file after what is stored, in their order, as
+     * {@link #mergeParts} adds a backup's items: into folders matched by name (created when first
+     * named), a taken name getting a " (n)" suffix, none of them selected. An empty name becomes the
+     * kind's default name. Saves once.
+     */
+    public void addItems(Kind kind, List<? extends NewEntry> add) {
+        for (NewEntry e : add) {
+            switch (e) {
+                case NewFolder f -> folderByName(kind, folderName(f.name()));
+                case NewItem n -> {
+                    String folderId = n.folder() == null ? null : folderByName(kind, folderName(n.folder()));
+                    String name = clip(n.name());
+                    if (name.isEmpty()) name = kind.defaultName;
+                    items(kind).add(newItem(kind, nextUniqueName(takenNames(kind, folderId, null), name),
+                            n.content() == null ? "" : n.content(), false, folderId));
+                }
+            }
+        }
+        save();
+    }
+
+    private static String clip(String name) {
+        String s = name == null ? "" : name.strip();
+        return s.length() > 190 ? s.substring(0, 190).strip() : s;
+    }
+
+    private static String folderName(String name) {
+        String s = clip(name);
+        return s.isEmpty() ? "new folder" : s;
+    }
+
     private String folderByName(Kind kind, String name) {
         for (Folder f : folders(kind)) if (f.name.equalsIgnoreCase(name)) return f.id;
         Folder f = newFolder(kind, name);
