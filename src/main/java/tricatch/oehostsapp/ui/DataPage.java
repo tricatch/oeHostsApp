@@ -24,9 +24,10 @@ import java.util.List;
 import static tricatch.oehostsapp.ui.SettingsKit.*;
 
 /**
- * Settings → General → data: exporting the checked parts (oeHosts, oeProxy, settings, CA) to one
- * backup ZIP ({@link Backup}) and importing them back, added to or overwriting what is stored
- * (left); where the data file is (right).
+ * Settings → General → import and export, two pages: importing the checked parts (oeHosts,
+ * oeProxy, settings, CA) from a backup ZIP ({@link Backup}), added to or overwriting what is
+ * stored, and exporting them to one; the import page also imports a SwitchHosts backup
+ * ({@link SwitchHostsImport}). Each page shows where the data file is (right).
  */
 final class DataPage {
 
@@ -57,19 +58,49 @@ final class DataPage {
         this.ctx = tab.ctx();
     }
 
-    JComponent build() {
+    /**
+     * The import page: the backup import section above the SwitchHosts one (left) and where the
+     * data file is (right).
+     */
+    JComponent buildImport() {
+        JCheckBox[] parts = new JCheckBox[PARTS.length];
+        JButton in = Ui.secondary(ctx.m("app.data.import"), "circle-fading-plus", () -> importData(chosen(parts)));
+        JButton[] sh = {null, null};
+        sh[0] = Ui.secondary(ctx.m("app.import.switchhosts.folder.btn"), "folder-open", () -> SwitchHostsImport.fromFolder(
+                ctx, sh[0], tab.host()::flushEdits, tab.host()::reloadAll));
+        sh[1] = Ui.secondary(ctx.m("app.import.switchhosts.file.btn"), "circle-fading-plus", () -> SwitchHostsImport.fromFile(
+                ctx, sh[1], tab.host()::flushEdits, tab.host()::reloadAll));
+        // "From this PC" is off while SwitchHosts' folder is not found, checked each time the page is shown.
+        Runnable detect = () -> {
+            boolean found = tricatch.oehostsapp.hosts.SwitchHostsFolder.defaultFolder() != null;
+            sh[0].setEnabled(found);
+            sh[0].setToolTipText(found ? null : ctx.m("app.import.switchhosts.folder.notfound"));
+        };
+        detect.run();
+        sh[0].addHierarchyListener(e -> {
+            if ((e.getChangeFlags() & java.awt.event.HierarchyEvent.SHOWING_CHANGED) != 0 && sh[0].isShowing()) detect.run();
+        });
+        return page(column(section("app.data.import", "app.data.import.desc", parts, in),
+                (JComponent) Box.createVerticalStrut(Ui.px(18)),
+                column(heading(ctx.m("app.import.switchhosts")), desc(ctx.m("app.import.switchhosts.desc")), line(),
+                        rightAligned(sh[0], sh[1]))));
+    }
+
+    /** The export page: the export section (left) and where the data file is (right). */
+    JComponent buildExport() {
+        JCheckBox[] parts = new JCheckBox[PARTS.length];
+        JButton ex = Ui.secondary(ctx.m("app.data.export"), "file-down", () -> export(chosen(parts)));
+        return page(section("app.data.export", "app.data.export.desc", parts, ex));
+    }
+
+    /**
+     * Left: {@code section} (heading, description | its choice of parts | its action, set apart by
+     * lines); right: where the data file is (looking only), the same on both pages.
+     */
+    private JComponent page(JComponent section) {
         Path file = ctx.rawStore().path().toAbsolutePath();
         JButton folder = Ui.secondary(ctx.m("app.settings.open.folder"), "folder-open", () -> openFolder(ctx, file.getParent()));
-        JCheckBox[] exParts = new JCheckBox[PARTS.length];
-        JButton ex = Ui.secondary(ctx.m("app.data.export"), "file-down", () -> export(chosen(exParts)));
-        JCheckBox[] inParts = new JCheckBox[PARTS.length];
-        JButton in = Ui.secondary(ctx.m("app.data.import"), "circle-fading-plus", () -> importData(chosen(inParts)));
-        // Left: export above import, each a section of its own (heading, description | its own
-        // choice of parts | its action, set apart by lines); right: where the data file is (looking only).
-        return fullPage(halves(
-                column(section("app.data.export", "app.data.export.desc", exParts, ex),
-                        (JComponent) Box.createVerticalStrut(Ui.px(18)),
-                        section("app.data.import", "app.data.import.desc", inParts, in)),
+        return fullPage(halves(section,
                 column(heading(ctx.m("app.settings.data.file")), line(), value(file.toString()), fileSize(file), line(),
                         rightAligned(folder))));
     }

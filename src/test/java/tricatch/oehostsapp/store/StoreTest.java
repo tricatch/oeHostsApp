@@ -26,6 +26,36 @@ class StoreTest {
     }
 
     @Test
+    void addItemsMatchesFoldersByNameAndKeepsNamesUnique() throws Exception {
+        Store s = open();
+        Store.Item mine = s.createFrom(Store.Kind.HOSTS, "Dev", "1.1.1.1 a.test");
+        s.toggleSelected(Store.Kind.HOSTS, mine.id);
+        Store.Folder team = s.createFolder(Store.Kind.HOSTS);
+        s.updateFolder(Store.Kind.HOSTS, team.id, "Team", null);
+
+        s.addItems(Store.Kind.HOSTS, List.of(
+                new Store.NewItem(null, "Dev", "2.2.2.2 b.test"),
+                new Store.NewFolder("team"),
+                new Store.NewItem("TEAM", " Shared ", "3.3.3.3 c.test"),
+                new Store.NewFolder("Empty"),
+                new Store.NewItem("Other", "", "")));
+
+        assertEquals(List.of("Team", "Empty", "Other"), s.data.hostsFolders.stream().map(f -> f.name).toList());
+        List<Store.Item> added = s.data.hosts.subList(1, 4);
+        assertEquals(List.of("Dev (2)", "Shared", "new hosts"), added.stream().map(i -> i.name).toList());
+        assertNull(added.get(0).folderId);
+        assertEquals(team.id, added.get(1).folderId);
+        assertEquals(s.data.hostsFolders.get(2).id, added.get(2).folderId);
+        assertTrue(added.stream().noneMatch(i -> i.selected), "nothing imported is selected");
+        assertEquals(List.of("1.1.1.1 a.test"), s.selectedContents(Store.Kind.HOSTS));
+        // The list shows the entries in their order, after what was there.
+        assertEquals(List.of("Dev", "Team", "Dev (2)", "Empty", "Other"), s.tree(Store.Kind.HOSTS).stream()
+                .map(n -> n.folder() != null ? n.folder().name : n.item().name).toList());
+        // Saved: a new store reads the same.
+        assertEquals(4, open().data.hosts.size());
+    }
+
+    @Test
     void createRenameUniqueNamesAndPersist() throws Exception {
         Store s = open();
         Store.Item a = s.create(Store.Kind.HOSTS, "en");

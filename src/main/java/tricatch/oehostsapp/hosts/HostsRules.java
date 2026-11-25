@@ -96,6 +96,11 @@ public final class HostsRules {
         return out;
     }
 
+    /** A host name as {@link #parse} and {@link #problems} accept it (letters, digits, {@code _ . * -}). */
+    static boolean isHost(String s) {
+        return HOST.matcher(s).matches();
+    }
+
     /** An IPv4 or IPv6 literal, or a placeholder; never a host name (no lookup is made). */
     static boolean isAddress(String s) {
         if (s.equals(PROXY_SVR_PLACEHOLDER) || s.equals(LOCAL_SVR_PLACEHOLDER)) return true;

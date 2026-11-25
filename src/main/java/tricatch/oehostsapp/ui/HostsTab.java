@@ -98,6 +98,12 @@ public final class HostsTab extends JPanel {
                         shareIcon(item != null && item.shared);
                     }
                 });
+        items.ownImportLabel("app.import.oehosts.menu");
+        items.addImportSource("app.import.switchhosts.folder.menu",
+                () -> SwitchHostsImport.fromFolder(ctx, this, items::flush, items::imported),
+                () -> tricatch.oehostsapp.hosts.SwitchHostsFolder.defaultFolder() != null, "app.import.switchhosts.folder.notfound");
+        items.addImportSource("app.import.switchhosts.menu",
+                () -> SwitchHostsImport.fromFile(ctx, this, items::flush, items::imported));
         items.bindSaveKey(this);
         btnShare = Ui.iconButton("share-2", ctx.m("app.share.tooltip"), false, this::share);
 
@@ -911,6 +917,7 @@ public final class HostsTab extends JPanel {
         for (HostsRules.Entry e : entries(sel)) if (e.active()) lines.add(e.ip() + " " + e.host());
         items.addMerged(String.join(" + ", sel.stream().map(i -> i.name).toList()), String.join("\n", lines));
     }
+
 
     // ── Launch ──────────────────────────────────────────────────
 

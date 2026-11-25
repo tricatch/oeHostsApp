@@ -52,6 +52,12 @@ final class ItemFiles {
         return out;
     }
 
+    /** Asks for one {@code .<ext>} file; null if cancelled. */
+    static Path choose(Component parent, String ext) {
+        JFileChooser fc = chooser(ext);
+        return fc.showOpenDialog(parent) == JFileChooser.APPROVE_OPTION ? fc.getSelectedFile().toPath() : null;
+    }
+
     private static JFileChooser chooser(String ext) {
         JFileChooser fc = new JFileChooser();
         FileNameExtensionFilter filter = new FileNameExtensionFilter("*." + ext, ext);
