@@ -111,7 +111,7 @@ irm https://raw.githubusercontent.com/tricatch/oeHostsApp/master/install.ps1 | i
 
 "api.example.test는 지금 어느 IP로 연결돼?", "왜 502가 나?" 같은 질문에 Claude Code가 앱의 상태를 직접 조회해서 답할 수 있습니다. 조회만 할 수 있고 설정을 바꾸지는 못합니다.
 
-- **MCP** — 설정 → 일반 → **AI 도구**에서 **명령 복사**를 누르고, 터미널에 붙여 넣어 한 번 실행하면 Claude Code에 등록됩니다.
+- **MCP** — 설정 → 일반 → **AI 도구**에서 **명령어 복사**를 누르고, 터미널에 붙여 넣어 한 번 실행하면 Claude Code에 등록됩니다.
 - **CLI** — `java -jar <jar 경로> help`로 같은 정보를 명령줄에서 조회할 수 있습니다(결과는 JSON). 같은 화면의 **CLI 스킬** URL을 Claude Code에 알려 주면 스킬로 설치됩니다.
 - 이 PC에서만 접속할 수 있고 접근 토큰이 필요합니다. 쿠키, 인증 헤더, 토큰처럼 보이는 값은 해시값으로 바꿔서 전달합니다.
 
