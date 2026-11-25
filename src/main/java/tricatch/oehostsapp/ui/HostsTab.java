@@ -967,11 +967,8 @@ public final class HostsTab extends JPanel {
      * profile is closed first once the user agrees. Only {@code button} is turned off meanwhile.
      */
     private void launchUddOnly(JButton button) {
-        ChromeArgs.Options o = new ChromeArgs.Options();
-        o.uddEnabled = true;
-        o.userDataDir = ChromeArgs.resolveUserDataDir(ChromeArgs.DEFAULT_USER_DATA_DIR, WIN);
         button.setEnabled(false);
-        runLaunchUdd(ChromeLauncher.words(ChromeArgs.parts(o), null), false, button);
+        runLaunchUdd(chromeWords(true), false, button);
     }
 
     private void runLaunchUdd(List<String> words, boolean closeRunning, JButton button) {
@@ -1058,6 +1055,34 @@ public final class HostsTab extends JPanel {
     void reloadAll() {
         loadOptions();
         items.reloadAll();
+    }
+
+    /** Shows profiles changed outside the screen (the AI tools); the open profile stays open. */
+    void reloadFromStore() {
+        items.reloadFromStore();
+    }
+
+    /** Shows launcher options changed outside the screen (the AI tools). */
+    void reloadOptions() {
+        loadOptions();
+        updatePreviews();
+    }
+
+    /**
+     * The words a launch would use now, for the AI tools: the panel's flags and start URL as
+     * {@link #launch} builds them, or only the launcher's {@code --user-data-dir} as its own button
+     * does. The open profile's pending edit is saved first.
+     */
+    List<String> chromeWords(boolean uddOnly) {
+        items.flush();
+        if (uddOnly) {
+            ChromeArgs.Options o = new ChromeArgs.Options();
+            o.uddEnabled = true;
+            o.userDataDir = ChromeArgs.resolveUserDataDir(ChromeArgs.DEFAULT_USER_DATA_DIR, WIN);
+            return ChromeLauncher.words(ChromeArgs.parts(o), null);
+        }
+        ChromeArgs.Options o = options(WIN);
+        return ChromeLauncher.words(ChromeArgs.parts(o), o.urlEnabled ? o.url : null);
     }
 
     /** Saves a pending edit (window closing). */

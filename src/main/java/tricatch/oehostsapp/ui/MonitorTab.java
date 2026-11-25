@@ -427,6 +427,16 @@ public final class MonitorTab extends JPanel {
         return !contentOnly || !r.tunnel;
     }
 
+    /** Starts or stops the capture as the navbar button does (the AI tools); nothing when already so. */
+    void setCapturing(boolean on) {
+        if (on != recording) toggleRecording();
+    }
+
+    /** Clears the rows as the navbar button does (the AI tools). */
+    void clearRows() {
+        clear();
+    }
+
     private void clear() {
         clearedAt = System.currentTimeMillis();
         incoming.clear();
