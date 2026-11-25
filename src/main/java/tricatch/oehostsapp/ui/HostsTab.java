@@ -170,7 +170,16 @@ public final class HostsTab extends JPanel {
         uddDisplay.setOpaque(true);
         uddDisplay.setBackground(new Color(0xf1f5ec));
         uddDisplay.setBorder(new CompoundBorder(new LineBorder(new Color(0xd4e8b8), 1, true), Ui.pad(4, 8, 4, 8)));
-        opts.add(option(swUdd, "--user-data-dir", uddDisplay));
+        // Opens Chrome on this profile with no other option, leaving the switches as they are.
+        JButton uddLaunch = new JButton(Ui.image("chrome.svg", 15, 15));
+        uddLaunch.setToolTipText(ctx.m("app.chrome.udd.launch.tooltip"));
+        uddLaunch.setFocusable(false);
+        uddLaunch.setBackground(Color.WHITE);
+        uddLaunch.putClientProperty("FlatLaf.style", "arc:6; borderColor:#dee2e6; hoverBackground:#f8f9fa");
+        uddLaunch.setPreferredSize(new Dimension(Ui.px(32), Ui.px(30)));
+        uddLaunch.setMaximumSize(new Dimension(Ui.px(32), Ui.px(30)));
+        uddLaunch.addActionListener(e -> launchUddOnly(uddLaunch));
+        opts.add(option(swUdd, "--user-data-dir", uddDisplay, uddLaunch));
         style(extraLine, "—");
         extraLine.setEditable(false);
         extraLine.setFont(Ui.mono(12f));
@@ -200,19 +209,37 @@ public final class HostsTab extends JPanel {
         GridBagConstraints c = new GridBagConstraints();
         c.fill = GridBagConstraints.BOTH;
         c.insets = new Insets(0, 0, 0, Ui.px(6));
-        // Launch | Win | Mac share the row 6:2:2: with no preferred width of their own, GridBagLayout
-        // hands out the whole width by weight.
+        // Launch | Default share the row's width 6:4 (with no preferred width of their own, GridBagLayout
+        // hands it out by weight); the icon-only command button keeps a square size at the end.
         launchBtn = Ui.primary(ctx.m("app.chrome.launch"), Ui.image("chrome.svg", 15, 15), this::launch);
         c.weightx = 6;
         btnRow.add(ratioWidth(launchBtn), c);
-        JButton cpWin = Ui.secondary("Win", "copy", () -> showDirectCmd(true));
-        cpWin.setToolTipText(ctx.m("tooltip.copy.win.chrome"));
-        c.weightx = 2;
-        btnRow.add(ratioWidth(cpWin), c);
+        JButton defaultBtn = Ui.secondary(ctx.m("app.chrome.default"), null, this::launchDefault);
+        defaultBtn.setIcon(Ui.image("chrome.svg", 15, 15));
+        defaultBtn.setToolTipText(ctx.m("app.chrome.default.tooltip"));
+        defaultBtn.putClientProperty(Ui.TIP_BELOW, true);
+        c.weightx = 4;
+        btnRow.add(ratioWidth(defaultBtn), c);
+        // One button that shows the Windows or macOS command line, chosen from a menu.
+        JButton[] cmdBtn = {null};
+        cmdBtn[0] = Ui.secondary(null, "ellipsis-vertical", () -> {
+            JPopupMenu m = new JPopupMenu();
+            JMenuItem win = new JMenuItem(ctx.m("app.chrome.cmd.win"));
+            win.addActionListener(a -> showDirectCmd(true));
+            JMenuItem mac = new JMenuItem(ctx.m("app.chrome.cmd.mac"));
+            mac.addActionListener(a -> showDirectCmd(false));
+            m.add(win);
+            m.add(mac);
+            m.show(cmdBtn[0], 0, cmdBtn[0].getHeight());
+        });
+        cmdBtn[0].setToolTipText(ctx.m("app.chrome.cmd.tooltip"));
+        cmdBtn[0].putClientProperty(Ui.TIP_BELOW, true);
+        Dimension square = new Dimension(Ui.px(38), Ui.px(34));
+        cmdBtn[0].setPreferredSize(square);
+        cmdBtn[0].setMinimumSize(square);
+        c.weightx = 0;
         c.insets = new Insets(0, 0, 0, 0);
-        JButton cpMac = Ui.secondary("Mac", "copy", () -> showDirectCmd(false));
-        cpMac.setToolTipText(ctx.m("tooltip.copy.mac.chrome"));
-        btnRow.add(ratioWidth(cpMac), c);
+        btnRow.add(cmdBtn[0], c);
         btnRow.setAlignmentX(LEFT_ALIGNMENT);
         btnRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, Ui.px(40)));
         routing.add(btnRow);
@@ -925,6 +952,65 @@ public final class HostsTab extends JPanel {
         launchBtn.setEnabled(false);
         // As it was when the button was pressed, like the flags.
         runLaunch(words, false, swProxy.isOn() && swNetwork.isOn());
+    }
+
+    /**
+     * Starts Chrome on the launcher's {@code --user-data-dir} with no other flag and no start URL,
+     * whatever the panel's switches say (they stay as they are). A Chrome already running on that
+     * profile is closed first once the user agrees. Only {@code button} is turned off meanwhile.
+     */
+    private void launchUddOnly(JButton button) {
+        ChromeArgs.Options o = new ChromeArgs.Options();
+        o.uddEnabled = true;
+        o.userDataDir = ChromeArgs.resolveUserDataDir(ChromeArgs.DEFAULT_USER_DATA_DIR, WIN);
+        button.setEnabled(false);
+        runLaunchUdd(ChromeLauncher.words(ChromeArgs.parts(o), null), false, button);
+    }
+
+    private void runLaunchUdd(List<String> words, boolean closeRunning, JButton button) {
+        Thread.ofVirtual().name("chrome-udd").start(() -> {
+            ChromeLauncher.Result r = ChromeLauncher.launch(words, closeRunning);
+            SwingUtilities.invokeLater(() -> {
+                String title = ctx.m("app.chrome.udd.launch");
+                if (r == ChromeLauncher.Result.RUNNING) {
+                    if (OeDialog.confirm(ctx, title, ctx.m("app.chrome.udd.running"))) {
+                        ctx.toast(ctx.m("app.chrome.closing"));
+                        runLaunchUdd(words, true, button);
+                        return;
+                    }
+                } else if (r != ChromeLauncher.Result.LAUNCHED) {
+                    OeDialog.info(ctx, title, ctx.m(r == ChromeLauncher.Result.NOT_FOUND ? "app.chrome.not.found" : "app.chrome.failed"));
+                }
+                button.setEnabled(true);
+            });
+        });
+    }
+
+    /**
+     * Starts Chrome on the default profile, with no flags ({@link ChromeLauncher#launchDefault}).
+     * When it is running, it is restarted once the user agrees; the launcher's Chrome (another
+     * {@code --user-data-dir}) is never touched.
+     */
+    private void launchDefault() {
+        runLaunchDefault(false);
+    }
+
+    private void runLaunchDefault(boolean restart) {
+        Thread.ofVirtual().name("chrome-default").start(() -> {
+            ChromeLauncher.Result r = ChromeLauncher.launchDefault(restart);
+            if (r == ChromeLauncher.Result.LAUNCHED) return;
+            SwingUtilities.invokeLater(() -> {
+                if (r == ChromeLauncher.Result.RUNNING) {
+                    if (OeDialog.confirm(ctx, ctx.m("app.chrome.default"), ctx.m("app.chrome.default.running"))) {
+                        ctx.toast(ctx.m("app.chrome.closing"));
+                        runLaunchDefault(true);
+                    }
+                    return;
+                }
+                OeDialog.info(ctx, ctx.m("app.chrome.default"),
+                        ctx.m(r == ChromeLauncher.Result.NOT_FOUND ? "app.chrome.not.found" : "app.chrome.failed"));
+            });
+        });
     }
 
     private void runLaunch(List<String> words, boolean closeRunning, boolean showNetwork) {

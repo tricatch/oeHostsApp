@@ -568,9 +568,20 @@ public final class Ui {
         return b;
     }
 
+    /**
+     * Client property of a {@link #secondary} button: when {@code Boolean.TRUE}, its tooltip shows
+     * just below the button instead of under the mouse pointer, so it never covers the button.
+     */
+    public static final String TIP_BELOW = "oe.tipBelow";
+
     /** Neutral bordered button with a small icon (the Win / Mac copy buttons). */
     public static JButton secondary(String text, String icon, Runnable action) {
-        JButton b = new JButton(text, icon == null ? null : Ui.icon(icon, 13, PREVIEW_TEXT));
+        JButton b = new JButton(text, icon == null ? null : Ui.icon(icon, 13, PREVIEW_TEXT)) {
+            @Override
+            public Point getToolTipLocation(java.awt.event.MouseEvent e) {
+                return Boolean.TRUE.equals(getClientProperty(TIP_BELOW)) ? new Point(0, getHeight() + px(4)) : null;
+            }
+        };
         b.setFont(font(Font.BOLD, 12f));
         b.setForeground(PREVIEW_TEXT);
         b.setBackground(Color.WHITE);
