@@ -68,31 +68,48 @@ public final class MainWindow {
         // Another device's first request to the proxy service asks here (on the proxy's thread).
         tricatch.oehostsapp.proxy.ClientAccess.setAsker(r -> SwingUtilities.invokeLater(() -> askAccess(r)));
         String shot = System.getProperty("oehostsapp.shot");
-        showReleaseNotesAfterUpdate(store, shot == null);
+        w.showReleaseNotesAfterUpdate(store, shot != null);
         if (shot != null) w.screenshots(shot);
     }
 
+    /** In screenshot mode, the version whose changes {@link #screenshots} shows as a dialog; null otherwise. */
+    private String notesShot;
+
     /**
-     * The first start of a newer version on this data (an update, by the app or the installer) opens
-     * that release's notes in the browser, once. Not in screenshot mode ({@code browse} false),
-     * which only logs it.
+     * The first start of a newer version on this data (an update, by the app or the installer) shows
+     * what changed in that release in a dialog, once ({@link ReleaseNotesDialog}). When the notes
+     * cannot be fetched, the release page opens in the browser instead. In screenshot mode the dialog
+     * is one of the pictures instead.
      */
-    private static void showReleaseNotesAfterUpdate(Store store, boolean browse) {
+    private void showReleaseNotesAfterUpdate(Store store, boolean shotMode) {
         String current = tricatch.oehostsapp.OeHostsApp.version();
         String previous;
         synchronized (store) {
             previous = store.swapLastRunVersion(current);
         }
         if (!Update.justUpdated(previous, current)) return;
-        String url = Update.releaseUrl(current);
-        org.slf4j.LoggerFactory.getLogger(MainWindow.class).info("updated from {} to {}: release notes {}", previous, current, url);
-        if (!browse || !Desktop.isDesktopSupported()) return;
-        // Off the event thread: the browser may take a moment to start.
+        org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MainWindow.class);
+        log.info("updated from {} to {}", previous, current);
+        if (shotMode) {
+            notesShot = current;
+            return;
+        }
+        // Off the event thread: fetching the notes may take a moment.
         Thread.ofVirtual().name("release-notes").start(() -> {
             try {
-                Desktop.getDesktop().browse(java.net.URI.create(url));
+                List<tricatch.oehostsapp.update.ReleaseNotes.Line> lines = tricatch.oehostsapp.update.ReleaseNotes.fetch(current);
+                SwingUtilities.invokeLater(() -> {
+                    if (shown == this) ReleaseNotesDialog.show(ctx, current, lines);
+                });
             } catch (Exception e) {
-                org.slf4j.LoggerFactory.getLogger(MainWindow.class).warn("cannot open the release notes: {}", e.getMessage());
+                if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+                String url = Update.releaseUrl(current);
+                log.warn("cannot fetch the release notes ({}), opening {}", Update.reason(e), url);
+                try {
+                    if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(java.net.URI.create(url));
+                } catch (Exception ex) {
+                    log.warn("cannot open the release notes: {}", ex.getMessage());
+                }
             }
         });
     }
@@ -152,7 +169,19 @@ public final class MainWindow {
      * as {@code <prefix>-d<n>-window.png}, then exits. Lets the UI be checked without a person at the screen.
      */
     private void screenshots(String prefix) {
-        Runnable[] dialogs = {() -> hosts.showDirectCmd(true), hosts::showShare, monitor::showSslSettings};
+        List<Runnable> list = new java.util.ArrayList<>(List.of(() -> hosts.showDirectCmd(true), hosts::showShare,
+                monitor::showSslSettings, () -> PresetsDialog.show(ctx, true)));
+        if (notesShot != null) {
+            // Only after an update (lastRunVersion older than this version); fetched on the event thread, a picture only.
+            list.add(() -> {
+                try {
+                    ReleaseNotesDialog.show(ctx, notesShot, tricatch.oehostsapp.update.ReleaseNotes.fetch(notesShot));
+                } catch (Exception e) {
+                    org.slf4j.LoggerFactory.getLogger(MainWindow.class).warn("release notes: {}", Update.reason(e));
+                }
+            });
+        }
+        Runnable[] dialogs = list.toArray(new Runnable[0]);
         Timer t = new Timer(1500, null);
         int[] step = {0};
         t.addActionListener(e -> {
@@ -361,7 +390,6 @@ public final class MainWindow {
     private void flush() {
         hosts.flush();
         proxy.flush();
-        settings.flush();
     }
 
     /** What the MCP tools that change something go through ({@link tricatch.oehostsapp.mcp.AppControl}). */

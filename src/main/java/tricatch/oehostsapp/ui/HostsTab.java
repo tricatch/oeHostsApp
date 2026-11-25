@@ -50,8 +50,9 @@ public final class HostsTab extends JPanel {
     private final Switch swIncognito = new Switch(false, Ui.BC500);
     private final Switch swUa = new Switch(false, Ui.BC500);
     private final JTextField uaField = new JTextField();
+    private final JButton uaArrow;
     private final JButton uaPreset;
-    private final Switch swUdd = new Switch(false, Ui.BC500);
+    private final Switch swUdd = new Switch(true, Ui.BC500);
     private final JLabel uddDisplay = new JLabel(ChromeArgs.DEFAULT_USER_DATA_DIR);
     private final Switch swExtra = new Switch(false, Ui.BC500);
     private final JTextField extraLine = new JTextField();
@@ -60,6 +61,7 @@ public final class HostsTab extends JPanel {
     private final JPanel extraWrap = new JPanel(new BorderLayout());
     private final Switch swUrl = new Switch(true, Ui.BC500);
     private final JTextField urlField = new JTextField();
+    private final JButton urlArrow;
     private final JButton urlPreset;
     private final Switch swHrr = new Switch(true, Ui.BC500);
     private final Switch swProxy = new Switch(false, Ui.BC500);
@@ -107,8 +109,10 @@ public final class HostsTab extends JPanel {
         items.bindSaveKey(this);
         btnShare = Ui.iconButton("share-2", ctx.m("app.share.tooltip"), false, this::share);
 
-        uaPreset = presetButton(ctx.m("hosts.ua.preset.btn"), true);
-        urlPreset = presetButton(ctx.m("hosts.url.preset.btn"), false);
+        uaArrow = presetArrow(uaField, true);
+        urlArrow = presetArrow(urlField, false);
+        uaPreset = presetEditButton(true);
+        urlPreset = presetEditButton(false);
         extraScroll = new JScrollPane(extraArea);
 
         JSplitPane split = Ui.rightSplit(ctx, buildEditor(), buildLauncher());
@@ -405,99 +409,73 @@ public final class HostsTab extends JPanel {
         return b;
     }
 
-    private JButton presetButton(String tooltip, boolean ua) {
-        JButton b = new JButton(Ui.icon("list", 15, Ui.PREVIEW_TEXT));
-        b.setToolTipText(tooltip);
+    /**
+     * The drop-down arrow inside a launcher field, which makes the field an editable select: typing
+     * stays free, and the arrow (or the Down key in the field) lists the presets under the field.
+     */
+    private JButton presetArrow(JTextField field, boolean ua) {
+        JButton b = new JButton(Ui.icon("chevron-down", 14, Ui.PREVIEW_TEXT));
+        b.setDisabledIcon(Ui.icon("chevron-down", 14, new Color(0xadb5bd)));
+        b.setFocusable(false);
+        b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        b.putClientProperty("JButton.buttonType", "toolBarButton");
+        b.putClientProperty("FlatLaf.style", "arc:4; hoverBackground:#f1f5ec; pressedBackground:#dff2b8; margin:2,4,2,4");
+        b.addActionListener(e -> showPresets(field, ua));
+        field.putClientProperty("JTextField.trailingComponent", b);
+        field.getInputMap().put(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_DOWN, 0), "oe.presets");
+        field.getActionMap().put("oe.presets", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (field.isEnabled()) showPresets(field, ua);
+            }
+        });
+        return b;
+    }
+
+    /** The button right of a launcher field that opens its preset editor ({@link PresetsDialog}). */
+    private JButton presetEditButton(boolean ua) {
+        JButton b = new JButton(Ui.icon("pencil-line", 15, Ui.PREVIEW_TEXT));
+        b.setToolTipText(ctx.m(ua ? "app.presets.ua.edit" : "app.presets.url.edit"));
         b.setFocusable(false);
         b.setBackground(Color.WHITE);
         b.putClientProperty("FlatLaf.style", "arc:6; borderColor:#dee2e6; hoverBackground:#f8f9fa");
         b.setPreferredSize(new Dimension(Ui.px(32), Ui.px(30)));
         b.setMaximumSize(new Dimension(Ui.px(32), Ui.px(30)));
-        b.addActionListener(e -> {
-            List<Settings.Preset> presets = ctx.settings(st -> List.copyOf((ua ? st.userAgentPresets : st.openUrlPresets).items));
-            JPopupMenu m = new JPopupMenu();
-            PresetPreview preview = new PresetPreview(m);
-            m.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
-                @Override public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent ev) {}
-                @Override public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent ev) { preview.hide(); }
-                @Override public void popupMenuCanceled(javax.swing.event.PopupMenuEvent ev) { preview.hide(); }
-            });
-            if (presets.isEmpty()) {
-                JMenuItem none = new JMenuItem(ctx.m(ua ? "hosts.ua.preset.empty" : "hosts.url.preset.empty"));
-                none.setEnabled(false);
-                m.add(none);
-            }
-            for (Settings.Preset p : presets) {
-                JMenuItem it = new JMenuItem(Ui.plain(p.name));
-                // .ua-preset-menu .dropdown-item: inset 6px each side, rounded BC100 hover.
-                it.putClientProperty("FlatLaf.style", "selectionInsets:0,6,0,6; selectionArc:6;"
-                        + " selectionBackground:#dff2b8; selectionForeground:#3a6b10");
-                // Full value in a box pinned above the menu instead of the dark tooltip.
-                it.getModel().addChangeListener(ev -> {
-                    if (it.isArmed()) preview.show(it, p.value);
-                    else preview.hideIf(p.value);
-                });
-                it.addActionListener(a -> {
-                    (ua ? uaField : urlField).setText(p.value);
-                    // Stored at once, not only after the field's debounce.
-                    putOption(o -> {
-                        if (ua) o.userAgent = p.value;
-                        else o.openUrl = p.value;
-                    });
-                });
-                m.add(it);
-            }
-            m.show(b, b.getWidth() - m.getPreferredSize().width, b.getHeight() + 2);
-        });
+        b.addActionListener(e -> PresetsDialog.show(ctx, ua));
         return b;
     }
 
-    /**
-     * The hovered preset's full value in a white box just left of the open preset menu, its top
-     * level with the hovered item, shown through a {@link Popup} so it does not take the menu's
-     * selection away.
-     */
-    private static final class PresetPreview {
-        private static final int MIN_WIDTH = 520;
-        private final JPopupMenu menu;
-        private Popup popup;
-        private String shown;
-
-        PresetPreview(JPopupMenu menu) {
-            this.menu = menu;
+    /** The presets under {@code field}, at least as wide as it; choosing one puts its value in the field. */
+    private void showPresets(JTextField field, boolean ua) {
+        List<Settings.Preset> presets = ctx.settings(st -> List.copyOf((ua ? st.userAgentPresets : st.openUrlPresets).items));
+        JPopupMenu m = new JPopupMenu();
+        if (presets.isEmpty()) {
+            JMenuItem none = new JMenuItem(ctx.m(ua ? "hosts.ua.preset.empty" : "hosts.url.preset.empty"));
+            none.setEnabled(false);
+            m.add(none);
         }
-
-        void show(JMenuItem item, String value) {
-            hide();
-            if (!menu.isShowing()) return;
-            JTextArea a = new JTextArea(value);
-            a.setLineWrap(true);
-            a.setWrapStyleWord(true);
-            a.setEditable(false);
-            a.setFocusable(false);
-            a.setFont(Ui.mono(12f));
-            a.setForeground(Ui.PREVIEW_TEXT);
-            a.setBackground(Color.WHITE);
-            a.setBorder(new CompoundBorder(new LineBorder(Ui.BC300, 1, true), Ui.pad(6, 10, 6, 10)));
-            int w = Ui.px(MIN_WIDTH);
-            a.setSize(new Dimension(w, Short.MAX_VALUE));
-            a.setPreferredSize(new Dimension(w, a.getPreferredSize().height));
-            int x = menu.getLocationOnScreen().x - w - Ui.px(4);
-            int y = item.getLocationOnScreen().y;
-            popup = PopupFactory.getSharedInstance().getPopup(menu, a, x, y);
-            popup.show();
-            shown = value;
+        String current = field.getText().strip();
+        for (Settings.Preset p : presets) {
+            JMenuItem it = new JMenuItem(Ui.plain(p.name));
+            // .ua-preset-menu .dropdown-item: inset 6px each side, rounded BC100 hover.
+            it.putClientProperty("FlatLaf.style", "selectionInsets:0,6,0,6; selectionArc:6;"
+                    + " selectionBackground:#dff2b8; selectionForeground:#3a6b10");
+            // The preset the field holds now is marked, like the chosen option of a select.
+            if (p.value.strip().equals(current)) it.setFont(it.getFont().deriveFont(Font.BOLD));
+            it.addActionListener(a -> {
+                field.setText(p.value);
+                field.setCaretPosition(0);
+                // Stored at once, not only after the field's debounce.
+                putOption(o -> {
+                    if (ua) o.userAgent = p.value;
+                    else o.openUrl = p.value;
+                });
+            });
+            m.add(it);
         }
-
-        void hideIf(String value) {
-            if (value.equals(shown)) hide();
-        }
-
-        void hide() {
-            if (popup != null) popup.hide();
-            popup = null;
-            shown = null;
-        }
+        Dimension pref = m.getPreferredSize();
+        m.setPopupSize(new Dimension(Math.max(pref.width, field.getWidth()), pref.height));
+        m.show(field, 0, field.getHeight() + 2);
     }
 
     private static JLabel sectionLabel(String text) {
@@ -555,8 +533,10 @@ public final class HostsTab extends JPanel {
 
     private void applyEnabledStates() {
         uaField.setEnabled(swUa.isOn());
+        uaArrow.setEnabled(swUa.isOn());
         uaPreset.setEnabled(swUa.isOn());
         urlField.setEnabled(swUrl.isOn());
+        urlArrow.setEnabled(swUrl.isOn());
         urlPreset.setEnabled(swUrl.isOn());
         uddDisplay.setForeground(swUdd.isOn() ? Ui.PREVIEW_TEXT : new Color(0xadb5bd));
         uddDisplay.setEnabled(swUdd.isOn());
