@@ -148,6 +148,11 @@ public final class ProxyTab extends JPanel {
         items.reloadAll();
     }
 
+    /** Shows vhosts changed outside the screen (the AI tools); the open vhost stays open. */
+    void reloadFromStore() {
+        items.reloadFromStore();
+    }
+
     public void flush() {
         items.flush();
     }

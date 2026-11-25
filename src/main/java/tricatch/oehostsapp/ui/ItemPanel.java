@@ -496,6 +496,29 @@ final class ItemPanel {
         autosave.flush();
     }
 
+    /**
+     * Shows a change made outside the screen (the AI tools): draws the list again and keeps the open
+     * item open while it exists, reloading the editor only when its stored text differs from what
+     * the editor shows (so the caret stays put otherwise). The pending edit is saved first.
+     */
+    void reloadFromStore() {
+        autosave.flush();
+        String id = active == null ? null : active.id;
+        render();
+        Store.Item it = id == null ? null : ctx.read(() -> ctx.rawStore().find(spec.kind(), id));
+        if (it == null) {
+            openFirst();
+        } else if (!it.content.equals(editor.getText())) {
+            activate(it.id);
+        } else {
+            active = it;
+            title.setText(Ui.plain(it.name));
+            metaUpdated.setText(date(it.updatedAt));
+            tree.setActive(it.id);
+        }
+        hooks.changed();
+    }
+
     /** {@code yyyy-MM-dd HH:mm} of a stored timestamp. */
     static String date(String ts) {
         return ts == null || ts.isEmpty() ? "—" : ts.substring(0, Math.min(16, ts.length())).replace('T', ' ');

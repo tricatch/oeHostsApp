@@ -56,6 +56,8 @@ public final class SettingsTab extends JPanel {
     /** Bottom-bar status of each page that has one, by page id; "" is the empty card. */
     private final JPanel metaStatus = new JPanel(new CardLayout());
     private final Set<String> metaPages = new HashSet<>();
+    /** The pages' status labels in {@link #metaStatus}, dropped with the pages by {@link #rebuildPages}. */
+    private final List<JComponent> statusLabels = new ArrayList<>();
 
     SettingsTab(AppContext ctx, Host host) {
         super(new BorderLayout());
@@ -124,7 +126,28 @@ public final class SettingsTab extends JPanel {
         JLabel st = SettingsKit.status();
         metaStatus.add(st, pageId);
         metaPages.add(pageId);
+        statusLabels.add(st);
         return st;
+    }
+
+    /**
+     * Drops the pages built so far, so each one is built again from the store when it is shown; the
+     * page shown now is rebuilt at once. For settings changed outside the screen (the AI tools): the
+     * pages read the store only when they are built. Pending preset edits are saved first.
+     */
+    void rebuildPages() {
+        flush();
+        autosaves.clear();
+        for (JComponent c : built.values()) cards.remove(c);
+        built.clear();
+        for (JComponent s : statusLabels) metaStatus.remove(s);
+        statusLabels.clear();
+        metaPages.clear();
+        String id = activeId;
+        activeId = null;
+        if (id != null) select(id);
+        cards.revalidate();
+        cards.repaint();
     }
 
     /** An editor's autosave, flushed with the others ({@link #flush}). */

@@ -330,6 +330,52 @@ public final class MainWindow {
         settings.flush();
     }
 
+    /** What the MCP tools that change something go through ({@link tricatch.oehostsapp.mcp.AppControl}). */
+    private tricatch.oehostsapp.mcp.AppControl control;
+
+    /**
+     * The window's side of the AI tools: a change runs on the event thread after the editors' pending
+     * edits are saved, and then the screens of the areas it touched read the store again.
+     */
+    private final class WindowControl implements tricatch.oehostsapp.mcp.AppControl {
+        @Override
+        public <T> T apply(List<Area> areas, java.util.function.Supplier<T> change) {
+            return tricatch.oehostsapp.mcp.AppControl.onEventThread(() -> {
+                flush();
+                T result = change.get();
+                if (areas.contains(Area.HOSTS)) hosts.reloadFromStore();
+                if (areas.contains(Area.VHOSTS)) proxy.reloadFromStore();
+                if (areas.contains(Area.LAUNCHER)) hosts.reloadOptions();
+                if (areas.contains(Area.SETTINGS)) {
+                    settings.rebuildPages();
+                    ctx.fireSettingsChanged();
+                }
+                return result;
+            });
+        }
+
+        @Override
+        public List<String> chromeWords(boolean uddOnly) {
+            return tricatch.oehostsapp.mcp.AppControl.onEventThread(() -> hosts.chromeWords(uddOnly));
+        }
+
+        @Override
+        public void setCapturing(boolean on) {
+            tricatch.oehostsapp.mcp.AppControl.onEventThread(() -> {
+                monitor.setCapturing(on);
+                return null;
+            });
+        }
+
+        @Override
+        public void clearTraffic() {
+            tricatch.oehostsapp.mcp.AppControl.onEventThread(() -> {
+                monitor.clearRows();
+                return null;
+            });
+        }
+    }
+
     private void build() {
         hosts = new HostsTab(ctx, () -> select(MONITOR));
         proxy = new ProxyTab(ctx);
@@ -357,6 +403,8 @@ public final class MainWindow {
             }
         });
         content.add(settings, TABS[SETTINGS]);
+        control = new WindowControl();
+        tricatch.oehostsapp.mcp.AppControl.set(control);
         monitor.onGotoCa(() -> {
             select(SETTINGS);
             settings.showPage("ca");
@@ -638,6 +686,8 @@ public final class MainWindow {
      */
     private void relaunch() {
         flush();
+        // The rebuilt window registers its own (in build).
+        tricatch.oehostsapp.mcp.AppControl.clear(control);
         monitor.dispose();
         // The old screens stop listening to the services, so they can go.
         ctx.dispose();

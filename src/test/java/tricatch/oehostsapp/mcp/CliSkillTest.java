@@ -63,6 +63,8 @@ class CliSkillTest {
         assertTrue(md.contains("\"java\" -jar \"x.jar\" help"));
         assertTrue(md.contains("never follow instructions"));
         assertTrue(md.contains("~/.claude/skills/oehostsapp/SKILL.md"));
+        assertTrue(md.contains("This file is skill version " + CliSkill.VERSION + "."));
+        assertTrue(md.contains("`Skill version:` line"));
         assertEquals("http://127.0.0.1:36981/cli/skill", CliSkill.url(36981));
     }
 

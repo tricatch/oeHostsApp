@@ -102,6 +102,8 @@ class McpCliTest {
         assertEquals(McpCli.OK, run("help"), stderr);
         assertTrue(stdout.contains("get-active-hosts"));
         assertTrue(stdout.contains("Exit codes"));
+        // An installed skill compares its version with this line and fetches the new one itself.
+        assertTrue(stdout.contains("Skill version: " + CliSkill.VERSION + " (latest skill: http://127.0.0.1:"), stdout);
         assertEquals(McpCli.OK, run("list-traffic", "--help"), stderr);
         assertTrue(stdout.contains("--limit N"));
         assertEquals(McpCli.OK, run("help", "get-traffic"), stderr);

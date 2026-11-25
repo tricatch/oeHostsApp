@@ -104,6 +104,46 @@ public final class Settings {
             if (text == null || more.isEmpty()) return;
             text = (text.isEmpty() || text.endsWith("\n") ? text : text + "\n") + more;
         }
+
+        /** Replaces the list with an editor text: the text is kept as typed, the entries parsed from it. */
+        public void replaceText(String editorText) {
+            text = editorText;
+            items = parsePresets(editorText);
+        }
+    }
+
+    /** Entries a preset list keeps; the rest of the lines are dropped. */
+    public static final int MAX_PRESETS = 500;
+
+    /**
+     * The entries of a preset text, "name | value" per line. Blank lines, comments and malformed
+     * lines (see {@link #presetLine}) are skipped; entries past {@link #MAX_PRESETS} are dropped.
+     */
+    public static List<Preset> parsePresets(String text) {
+        List<Preset> out = new ArrayList<>();
+        for (String line : (text == null ? "" : text).split("\n")) {
+            Preset p = presetLine(line);
+            if (p != null && out.size() < MAX_PRESETS) out.add(p);
+        }
+        return out;
+    }
+
+    /** A preset line starting with {@code #}; a {@code #} later in a line is not a comment (URLs carry fragments). */
+    public static boolean isPresetComment(String line) {
+        return line.strip().startsWith("#");
+    }
+
+    /** The entry on one preset line, or null for a blank line, a comment or a malformed line. */
+    public static Preset presetLine(String line) {
+        if (line.isBlank() || isPresetComment(line)) return null;
+        int i = line.indexOf('|');
+        if (i < 0) return null;
+        String name = line.substring(0, i).strip(), value = line.substring(i + 1).strip();
+        if (name.isEmpty() || value.isEmpty() || name.length() > 200 || value.length() > 4096
+                || (name + value).chars().anyMatch(Character::isISOControl)) {
+            return null;
+        }
+        return new Preset(name, value);
     }
 
     /** The main window's last normal bounds and state, and the shared list/panel sizes. */

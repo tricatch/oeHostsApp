@@ -129,8 +129,9 @@ public final class McpCli {
     private int help() {
         StringBuilder b = new StringBuilder();
         b.append(USAGE_LINE).append("\n\n");
-        b.append("Reads oeHostsApp through the MCP server of the running app (Settings > General > AI tools);\n");
-        b.append("read-only. Prints the result as JSON on stdout (UTF-8), messages on stderr.\n");
+        b.append(skillLine()).append("\n\n");
+        b.append("Reads and changes oeHostsApp through the MCP server of the running app (Settings > General > AI tools).\n");
+        b.append("Prints the result as JSON on stdout (UTF-8), messages on stderr.\n");
         b.append("Tool names in the descriptions are the commands below with '-' for '_'.\n\n");
         b.append(McpProtocol.INSTRUCTIONS).append("\n\n");
         b.append("Commands:\n");
@@ -332,6 +333,20 @@ public final class McpCli {
     // ── The MCP server ────────────────────────────────────────
 
     private record Target(int port, String token) {}
+
+    /**
+     * The skill's current version and where to fetch it; an installed skill compares its own number
+     * with this line and replaces itself when it is older ({@link CliSkill#VERSION}).
+     */
+    private String skillLine() {
+        String url;
+        try {
+            url = CliSkill.url(target().port());
+        } catch (Failure f) {
+            url = null;
+        }
+        return "Skill version: " + CliSkill.VERSION + (url == null ? "" : " (latest skill: " + url + ")");
+    }
 
     /** Port and token of the MCP server, from the data file; never written to. */
     private Target target() throws Failure {

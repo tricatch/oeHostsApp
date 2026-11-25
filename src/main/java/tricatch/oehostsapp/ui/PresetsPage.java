@@ -14,8 +14,6 @@ import java.util.List;
  */
 final class PresetsPage {
 
-    static final int MAX_PRESETS = 500;
-
     private final SettingsTab tab;
     private final AppContext ctx;
     private final boolean ua;
@@ -44,11 +42,7 @@ final class PresetsPage {
         String pageId = ua ? "ua" : "url";
         JLabel st = tab.status(pageId);
         Autosave autosave = new Autosave(ctx, editor, st, (id, text) -> {
-            List<Settings.Preset> parsed = parse(text);
-            if (!ctx.saveSettings(s -> {
-                list(s).items = parsed;
-                list(s).text = text;
-            })) {
+            if (!ctx.saveSettings(s -> list(s).replaceText(text))) {
                 return Autosave.Result.retry(ctx.m("status.save.failed"));
             }
             ctx.fireSettingsChanged();
@@ -67,36 +61,13 @@ final class PresetsPage {
         return page;
     }
 
-    // ── The line format (also used by PresetTokenMaker) ─────────
+    // ── The line format (also used by PresetTokenMaker; kept in Settings) ─────────
 
-    /**
-     * The entries of a preset text, "name | value" per line. Blank lines, comments and malformed
-     * lines (see {@link #line}) are skipped; entries past {@link #MAX_PRESETS} are dropped.
-     */
-    static List<Settings.Preset> parse(String text) {
-        List<Settings.Preset> out = new java.util.ArrayList<>();
-        for (String line : text.split("\n")) {
-            Settings.Preset p = line(line);
-            if (p != null && out.size() < MAX_PRESETS) out.add(p);
-        }
-        return out;
-    }
-
-    /** A line starting with {@code #}; a {@code #} later in a line is not a comment (URLs carry fragments). */
     static boolean isComment(String line) {
-        return line.strip().startsWith("#");
+        return Settings.isPresetComment(line);
     }
 
-    /** The entry on one line, or null for a blank line, a comment or a malformed line. */
     static Settings.Preset line(String line) {
-        if (line.isBlank() || isComment(line)) return null;
-        int i = line.indexOf('|');
-        if (i < 0) return null;
-        String name = line.substring(0, i).strip(), value = line.substring(i + 1).strip();
-        if (name.isEmpty() || value.isEmpty() || name.length() > 200 || value.length() > 4096
-                || (name + value).chars().anyMatch(Character::isISOControl)) {
-            return null;
-        }
-        return new Settings.Preset(name, value);
+        return Settings.presetLine(line);
     }
 }

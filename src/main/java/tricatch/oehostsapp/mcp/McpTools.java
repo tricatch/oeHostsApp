@@ -7,6 +7,7 @@ import tricatch.oehostsapp.proxy.ProxyMonitor;
 import tricatch.oehostsapp.proxy.ProxyRuntime;
 import tricatch.oehostsapp.proxy.SslProxy;
 import tricatch.oehostsapp.proxy.Vhosts;
+import tricatch.oehostsapp.store.Settings;
 import tricatch.oehostsapp.store.Store;
 import tricatch.oehostsapp.store.Store.Kind;
 
@@ -29,12 +30,20 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * The MCP server's tools. All of them only read: the hosts profiles and vhosts as stored, what is in
- * force (through {@link HostsRules#merge} and {@link Vhosts#served}, the same merge the proxy and the
- * Chrome launcher use), the state of the proxies, and, only while {@code settings.mcp.traffic} is on,
- * what the Network tab captured ({@link Traffic}), with cookies, credentials and secret-named values
- * replaced by {@link Redactor} tags. No secret of the app (the CA's private key, the share key, the
- * MCP token) is ever part of a result.
+ * The MCP server's tools. They read the hosts profiles and vhosts as stored, what is in force
+ * (through {@link HostsRules#merge} and {@link Vhosts#served}, the same merge the proxy and the
+ * Chrome launcher use), the state of the proxies, the settings, and, only while
+ * {@code settings.mcp.traffic} is on, what the Network tab captured ({@link Traffic}), with cookies,
+ * credentials and secret-named values replaced by {@link Redactor} tags. No secret of the app (the
+ * CA's private key, the share key, the MCP token) is ever part of a result.
+ *
+ * <p>The change tools edit profiles, vhosts and folders, launch Chrome, and change the SSL proxy, the
+ * capture, the launcher options, the presets, the ports and binding (the owner's decision: all of
+ * them act at once, without a confirmation). Each goes through {@link #change}, which runs it under
+ * the store's lock through the window ({@link AppControl}) so the screens show it; they refuse what
+ * the screens refuse (content with problems, taken names). Never offered: the secrets above, the MCP
+ * server's own settings and token, replacing the CA, restoring a backup over the data, allowing
+ * devices, and updating the app.
  */
 final class McpTools {
 
@@ -121,6 +130,12 @@ final class McpTools {
                         + "WebSocket messages and timings. Cookie values, credentials, secret-named headers, query parameters, "
                         + "form fields and JSON members, and JWTs are replaced by hmac:<hex> tags. " + UNTRUSTED,
                 schema("id", "The id from list_traffic."), a -> traffic(id(a)));
+        add("get_settings", "Read app settings",
+                "Returns the settings the change tools can set: the Chrome launcher's options, the User-Agent and Open URL "
+                        + "presets (editor text and parsed entries), the proxy service port, the reverse proxy's binding (with "
+                        + "the values it accepts), the SSL proxy, and the MCP server's own settings (read only).",
+                schema(), a -> settings());
+        addWriteTools();
     }
 
     List<Tool> all() {
@@ -141,8 +156,10 @@ final class McpTools {
     private JsonNode list(Kind kind) {
         ObjectNode out = JSON.objectNode();
         ArrayNode items = out.putArray(kind == Kind.HOSTS ? "profiles" : "vhosts");
+        ArrayNode folderList = out.putArray("folders");
         synchronized (store) {
             Map<String, String> folders = folderNames(kind);
+            for (Store.Node n : store.tree(kind)) if (n.folder() != null) folderList.add(folder(n.folder()));
             for (Store.Item i : store.list(kind)) {
                 ObjectNode n = summary(kind, i, folders);
                 if (kind == Kind.HOSTS) n.put("rules", HostsRules.parse(i.content).size());
@@ -163,7 +180,7 @@ final class McpTools {
             n.put("content", i.content);
             ArrayNode problems = n.putArray("problems");
             if (kind == Kind.HOSTS) {
-                for (HostsRules.Problem p : HostsRules.problems(i.content)) problems.add(problem(p.line(), message(p.key(), null)));
+                for (HostsRules.Problem p : HostsRules.problems(i.content)) problems.add(problem(p.line(), message(p.key(), String.valueOf(p.line() + 1))));
             } else {
                 for (Vhosts.Problem p : Vhosts.problems(i.content)) {
                     ObjectNode q = problem(p.line(), p.key() == null ? p.detail() : message(p.key(), p.detail()));
@@ -245,6 +262,565 @@ final class McpTools {
         ssl.put("decrypting", SslProxy.active());
         ssl.put("domains", domains);
         return out;
+    }
+
+    // ── Changes ───────────────────────────────────────────────
+
+    private static final String HOSTS_KIND = "hosts", VHOSTS_KIND = "vhosts";
+    private static final String NOT_STORED = " Nothing was changed.";
+
+    /** The tools that change something; each goes through {@link #change} so the window shows it. */
+    private void addWriteTools() {
+        for (Kind kind : Kind.values()) {
+            boolean h = kind == Kind.HOSTS;
+            String noun = h ? "oeHosts profile" : "oeProxy virtual host";
+            String base = h ? "hosts_profile" : "vhost";
+            String format = h ? "\"IP host\" lines (# for comments)" : "YAML routes, as get_vhost returns them";
+            add("create_" + base, "Create an " + noun,
+                    "Creates an " + noun + " at the end of the list (or of a folder), not selected. The content is "
+                            + format + "; content with problems is refused (" + (h ? "invalid lines" : "the problems get_vhost reports")
+                            + "). A taken name gets a \" (2)\" suffix. Returns the new entry with its id.",
+                    new Schema().text("name", "The name.", true).raw("content", "The content (default: empty).", false)
+                            .text("folderId", "A folder id from the list tool (default: the root).", false).build(),
+                    a -> create(kind, a));
+            add("update_" + base, "Change an " + noun,
+                    "Replaces the content and/or the name of an " + noun + ". Content with problems is refused. "
+                            + "The app's editor shows the change at once.",
+                    new Schema().text("id", "The id.", true).raw("content", "The new full content.", false)
+                            .text("name", "The new name (unique within its folder).", false).build(),
+                    a -> update(kind, a));
+            add("delete_" + base, "Delete an " + noun, "Deletes an " + noun + ". This cannot be undone.",
+                    new Schema().text("id", "The id.", true).build(), a -> delete(kind, a));
+            add("select_" + base, "Turn an " + noun + " on or off",
+                    "Turns an " + noun + " on (in force" + (h ? " for the proxy, the Chrome launcher and oeHosts-Agent" : " in the reverse proxy")
+                            + ") or off. One with problems cannot be turned on.",
+                    new Schema().text("id", "The id.", true).bool("selected", "true to turn it on, false to turn it off.", true).build(),
+                    a -> select(kind, a));
+            add("move_" + base, "Move an " + noun,
+                    "Moves an " + noun + " into a folder (placed last) or, without folderId, to the root.",
+                    new Schema().text("id", "The id.", true).text("folderId", "The folder id (omit for the root).", false).build(),
+                    a -> move(kind, a));
+        }
+        add("share_hosts_profile", "Share an oeHosts profile by URL",
+                "Turns sharing of an oeHosts profile on or off: a shared profile is served as a hosts file by the proxy "
+                        + "service, for hosts managers with remote sources.",
+                new Schema().text("id", "The profile id.", true).bool("shared", "true to share, false to stop.", true).build(),
+                this::share);
+        add("create_folder", "Create a folder",
+                "Creates a folder in the oeHosts or the oeProxy list. Returns its id.",
+                new Schema().choice("kind", "Which list.", true, HOSTS_KIND, VHOSTS_KIND).text("name", "The folder name (unique).", true).build(),
+                this::createFolder);
+        add("rename_folder", "Rename a folder", "Renames a folder of the oeHosts or the oeProxy list.",
+                new Schema().choice("kind", "Which list.", true, HOSTS_KIND, VHOSTS_KIND).text("id", "The folder id.", true)
+                        .text("name", "The new name (unique).", true).build(),
+                this::renameFolder);
+        add("delete_folder", "Delete a folder",
+                "Deletes a folder; its entries move to the root (a taken name gets a \" (n)\" suffix).",
+                new Schema().choice("kind", "Which list.", true, HOSTS_KIND, VHOSTS_KIND).text("id", "The folder id.", true).build(),
+                this::deleteFolder);
+
+        add("launch_chrome", "Launch Chrome",
+                "Starts Chrome on this PC. mode \"as_set\": with the launcher's options and the selected oeHosts profiles, "
+                        + "as the \"Open Chrome as set\" button; \"default\": the default profile with no options; "
+                        + "\"user_data_dir\": the launcher's --user-data-dir with no other option. When a Chrome on the same "
+                        + "profile is running it answers \"running\" and starts nothing, unless closeRunning is true: that Chrome "
+                        + "is then closed first (unsaved work in it may be lost).",
+                new Schema().choice("mode", "Which launch.", true, "as_set", "default", "user_data_dir")
+                        .bool("closeRunning", "Close a running Chrome on the same profile first (default false).", false).build(),
+                this::launchChrome);
+
+        add("set_ssl_proxy", "Change the SSL proxy",
+                "Turns HTTPS decryption on or off and/or replaces its domain list (one per line: api.example.com, "
+                        + "*.example.com, * for all, !domain to leave out, # comments). Invalid lines are refused. Changing what "
+                        + "is decrypted restarts the proxy service, which drops its open connections. Decrypted traffic, logins "
+                        + "and cookies included, shows in the Network tab.",
+                new Schema().bool("enabled", "true to decrypt, false to stop.", false).raw("domains", "The new domain list.", false).build(),
+                this::setSslProxy);
+        add("set_capture", "Start or stop the Network capture",
+                "Starts or stops recording in the Network tab (both proxies).",
+                new Schema().bool("capturing", "true to record, false to stop.", true).build(), this::setCapture);
+        add("clear_traffic", "Clear the Network tab", "Removes every captured row from the Network tab.",
+                schema(), a -> clearTraffic());
+
+        add("set_launcher_options", "Change the Chrome launcher's options",
+                "Changes the Chrome launcher's options (only the ones given). hostResolverRules and proxyServer cannot both "
+                        + "be on. openUrl must start with http://, https://, about: or chrome://.",
+                new Schema().bool("devTools", "--auto-open-devtools-for-tabs", false).bool("incognito", "--incognito", false)
+                        .bool("userAgentEnabled", "Use --user-agent.", false).raw("userAgent", "The User-Agent text.", false)
+                        .bool("userDataDirEnabled", "Use the launcher's --user-data-dir (a profile of its own).", false)
+                        .bool("extraArgsEnabled", "Use the extra arguments.", false)
+                        .raw("extraArgs", "Extra Chrome arguments, one per line (unsafe flags are dropped at launch).", false)
+                        .bool("openUrlEnabled", "Open a start URL.", false).raw("openUrl", "The start URL.", false)
+                        .bool("hostResolverRules", "Apply the selected profiles with --host-resolver-rules.", false)
+                        .bool("proxyServer", "Send Chrome through the proxy service (--proxy-server).", false)
+                        .bool("openNetworkTab", "Show the Network tab after a launch through the proxy service.", false).build(),
+                this::setLauncherOptions);
+        add("set_presets", "Replace a preset list",
+                "Replaces the User-Agent or the Open URL presets of the launcher with an editor text: one \"name | value\" "
+                        + "per line, # for comments. Malformed lines are kept in the text but offer nothing.",
+                new Schema().choice("list", "Which presets.", true, "user_agent", "open_url").raw("text", "The new editor text.", true).build(),
+                this::setPresets);
+        add("set_proxy_service_port", "Change the proxy service port",
+                "Saves the proxy service's port (1-65535) and restarts it there. Shared hosts URLs, the Active-Hosts URL and "
+                        + "devices set to this proxy use the port, so they need the new one.",
+                new Schema().integer("port", "The port.", true).build(), this::setProxyPort);
+        add("set_reverse_proxy_bind", "Change where the reverse proxy listens",
+                "Saves the reverse proxy's binding and restarts it: \"127.0.0.1\" (this PC only), \"0.0.0.0\" (every network) "
+                        + "or one of this PC's IPv4 addresses (get_settings lists them).",
+                new Schema().text("bind", "The address.", true).build(), this::setReverseProxyBind);
+        add("restart_service", "Restart a service",
+                "Restarts the reverse proxy or the proxy service (open connections are dropped).",
+                new Schema().choice("service", "Which service.", true, "reverse_proxy", "proxy_service").build(),
+                this::restartService);
+    }
+
+    /**
+     * Runs {@code op} under the store's lock, through the window when there is one (its editors saved
+     * first, its screens of {@code areas} reloaded after). Store refusals become tool errors.
+     */
+    private <T> T change(List<AppControl.Area> areas, java.util.function.Supplier<T> op) {
+        java.util.function.Supplier<T> locked = () -> {
+            synchronized (store) {
+                return op.get();
+            }
+        };
+        AppControl window = AppControl.current();
+        try {
+            return window == null ? locked.get() : window.apply(areas, locked);
+        } catch (Store.StoreException e) {
+            throw new ToolError(switch (e.code) {
+                case "not_found" -> "Not found; call the list tool for the ids." + NOT_STORED;
+                case "name_taken" -> "That name is already taken there." + NOT_STORED;
+                case "invalid" -> "Invalid value: " + e.getMessage() + "." + NOT_STORED;
+                default -> "The data file could not be saved: " + e.getMessage();
+            });
+        } catch (AppControl.Unavailable e) {
+            throw new ToolError(e.getMessage());
+        }
+    }
+
+    private static AppControl.Area area(Kind kind) {
+        return kind == Kind.HOSTS ? AppControl.Area.HOSTS : AppControl.Area.VHOSTS;
+    }
+
+    private static Kind kind(JsonNode args) {
+        String k = requiredText(args, "kind");
+        return switch (k) {
+            case HOSTS_KIND -> Kind.HOSTS;
+            case VHOSTS_KIND -> Kind.VHOSTS;
+            default -> throw new ToolError("kind must be \"" + HOSTS_KIND + "\" or \"" + VHOSTS_KIND + "\"");
+        };
+    }
+
+    /** Refuses content the screen would not store, listing its first problems. */
+    private void requireValid(Kind kind, String content) {
+        List<String> lines = new ArrayList<>();
+        if (kind == Kind.HOSTS) {
+            for (HostsRules.Problem p : HostsRules.problems(content)) lines.add(message(p.key(), String.valueOf(p.line() + 1)));
+        } else {
+            for (Vhosts.Problem p : Vhosts.problems(content)) {
+                lines.add("line " + (p.line() + 1) + ": " + (p.key() == null ? p.detail() : message(p.key(), p.detail())));
+            }
+        }
+        if (lines.isEmpty()) return;
+        throw new ToolError("The content has problems:\n" + String.join("\n", lines.subList(0, Math.min(10, lines.size())))
+                + (lines.size() > 10 ? "\n(" + (lines.size() - 10) + " more)" : "") + "\n" + NOT_STORED.strip());
+    }
+
+    private Store.Item existing(Kind kind, String id) {
+        Store.Item i = store.find(kind, id);
+        if (i == null) {
+            throw new ToolError("No " + (kind == Kind.HOSTS ? "oeHosts profile" : "vhost") + " with id " + id
+                    + "; call " + (kind == Kind.HOSTS ? "list_hosts_profiles" : "list_vhosts") + " for the ids.");
+        }
+        return i;
+    }
+
+    /** The name of folder {@code id} of {@code kind}; an unknown id is a tool error. */
+    private String folderName(Kind kind, String id) {
+        String name = folderNames(kind).get(id);
+        if (name == null) throw new ToolError("No folder with id " + id + "; the list tool shows the folders.");
+        return name;
+    }
+
+    private JsonNode itemResult(Kind kind, Store.Item i) {
+        return summary(kind, i, folderNames(kind));
+    }
+
+    private JsonNode create(Kind kind, JsonNode a) {
+        String name = requiredText(a, "name");
+        String content = normalize(rawText(a, "content"));
+        String folderId = optionalText(a, "folderId");
+        requireValid(kind, content);
+        JsonNode out = change(List.of(area(kind)), () -> {
+            String folder = folderId == null ? null : folderName(kind, folderId);
+            List<Store.Item> list = kind == Kind.HOSTS ? store.data.hosts : store.data.vhosts;
+            store.addItems(kind, List.of(new Store.NewItem(folder, name, content)));
+            return itemResult(kind, list.get(list.size() - 1));
+        });
+        if (kind == Kind.VHOSTS) ProxyRuntime.reload();
+        return out;
+    }
+
+    private JsonNode update(Kind kind, JsonNode a) {
+        String id = id(a);
+        String content = rawText(a, "content");
+        String name = optionalText(a, "name");
+        if (content == null && name == null) throw new ToolError("Give content and/or name.");
+        if (content != null) requireValid(kind, normalize(content));
+        JsonNode out = change(List.of(area(kind)), () -> {
+            Store.Item i = existing(kind, id);
+            if (content != null) i = store.updateContent(kind, id, normalize(content));
+            if (name != null && !name.equals(i.name)) i = store.rename(kind, id, name);
+            return itemResult(kind, i);
+        });
+        if (kind == Kind.VHOSTS) ProxyRuntime.reload();
+        return out;
+    }
+
+    private JsonNode delete(Kind kind, JsonNode a) {
+        String id = id(a);
+        change(List.of(area(kind)), () -> {
+            existing(kind, id);
+            store.delete(kind, id);
+            return null;
+        });
+        if (kind == Kind.VHOSTS) ProxyRuntime.reload();
+        return done("Deleted " + id + ".");
+    }
+
+    private JsonNode select(Kind kind, JsonNode a) {
+        String id = id(a);
+        boolean on = requiredBoolean(a, "selected");
+        JsonNode out = change(List.of(area(kind)), () -> {
+            Store.Item i = existing(kind, id);
+            if (on && !i.selected) requireValid(kind, i.content);
+            if (i.selected != on) i = store.toggleSelected(kind, id);
+            return itemResult(kind, i);
+        });
+        if (kind == Kind.VHOSTS) ProxyRuntime.reload();
+        return out;
+    }
+
+    private JsonNode move(Kind kind, JsonNode a) {
+        String id = id(a);
+        String folderId = optionalText(a, "folderId");
+        return change(List.of(area(kind)), () -> {
+            existing(kind, id);
+            if (folderId != null) folderName(kind, folderId);
+            return itemResult(kind, store.moveItem(kind, id, folderId));
+        });
+    }
+
+    private JsonNode share(JsonNode a) {
+        String id = id(a);
+        boolean on = requiredBoolean(a, "shared");
+        return change(List.of(AppControl.Area.HOSTS), () -> {
+            existing(Kind.HOSTS, id);
+            return itemResult(Kind.HOSTS, store.setShared(id, on));
+        });
+    }
+
+    private JsonNode createFolder(JsonNode a) {
+        Kind kind = kind(a);
+        String name = requiredText(a, "name");
+        return change(List.of(area(kind)), () -> {
+            if (folderNames(kind).values().stream().anyMatch(n -> n.equalsIgnoreCase(name))) {
+                throw new ToolError("A folder named " + name + " already exists." + NOT_STORED);
+            }
+            Store.Folder f = store.createFolder(kind);
+            f = store.updateFolder(kind, f.id, name, null);
+            return folder(f);
+        });
+    }
+
+    private JsonNode renameFolder(JsonNode a) {
+        Kind kind = kind(a);
+        String id = requiredText(a, "id");
+        String name = requiredText(a, "name");
+        return change(List.of(area(kind)), () -> {
+            folderName(kind, id);
+            return folder(store.updateFolder(kind, id, name, null));
+        });
+    }
+
+    private JsonNode deleteFolder(JsonNode a) {
+        Kind kind = kind(a);
+        String id = requiredText(a, "id");
+        change(List.of(area(kind)), () -> {
+            folderName(kind, id);
+            store.deleteFolder(kind, id);
+            return null;
+        });
+        return done("Deleted folder " + id + "; its entries are at the root now.");
+    }
+
+    private static ObjectNode folder(Store.Folder f) {
+        ObjectNode n = JSON.objectNode();
+        n.put("id", f.id);
+        n.put("name", f.name);
+        return n;
+    }
+
+    private JsonNode launchChrome(JsonNode a) {
+        String mode = requiredText(a, "mode");
+        boolean close = optionalBoolean(a, "closeRunning");
+        tricatch.oehostsapp.chrome.ChromeLauncher.Result r;
+        if (mode.equals("default")) {
+            r = tricatch.oehostsapp.chrome.ChromeLauncher.launchDefault(close);
+        } else if (mode.equals("as_set") || mode.equals("user_data_dir")) {
+            AppControl window = AppControl.current();
+            if (window == null) throw new ToolError("The app's window is not ready; try again.");
+            List<String> words;
+            try {
+                words = window.chromeWords(mode.equals("user_data_dir"));
+            } catch (AppControl.Unavailable e) {
+                throw new ToolError(e.getMessage());
+            }
+            r = tricatch.oehostsapp.chrome.ChromeLauncher.launch(words, close);
+        } else {
+            throw new ToolError("mode must be \"as_set\", \"default\" or \"user_data_dir\"");
+        }
+        ObjectNode out = JSON.objectNode();
+        out.put("result", r.name().toLowerCase(Locale.ROOT));
+        out.put("message", switch (r) {
+            case LAUNCHED -> "Chrome was started.";
+            case RUNNING -> "A Chrome on the same profile is running and nothing was started. Call again with "
+                    + "closeRunning true to close it and start again (unsaved work in it may be lost).";
+            case NOT_FOUND -> "Chrome was not found on this PC.";
+            case REFUSED -> "A launcher option is not an allowed flag or start URL; nothing was started.";
+            case FAILED -> "Chrome could not be started.";
+        });
+        return out;
+    }
+
+    private JsonNode setSslProxy(JsonNode a) {
+        Boolean enabled = optionalBooleanOrNull(a, "enabled");
+        String domains = rawText(a, "domains");
+        if (enabled == null && domains == null) throw new ToolError("Give enabled and/or domains.");
+        String text = domains == null ? null : normalize(domains);
+        if (text != null) {
+            List<Integer> bad = tricatch.oehostsapp.proxy.SslRules.problems(text);
+            if (!bad.isEmpty()) {
+                throw new ToolError("Invalid domain lines (1-based): " + bad + "." + NOT_STORED);
+            }
+        }
+        tricatch.oehostsapp.proxy.SslRules before = SslProxy.effective();
+        change(List.of(AppControl.Area.SETTINGS), () -> {
+            if (text != null) store.data.settings.sslProxy.domains = text;
+            if (enabled != null) store.data.settings.sslProxy.enabled = enabled;
+            store.save();
+            return null;
+        });
+        // Blocks for the restart of the proxy service when what is decrypted changed.
+        SslProxy.apply(before);
+        return status().get("sslProxy");
+    }
+
+    private JsonNode setCapture(JsonNode a) {
+        boolean on = requiredBoolean(a, "capturing");
+        windowAction(w -> w.setCapturing(on));
+        return done(on ? "The capture runs." : "The capture is stopped.");
+    }
+
+    private JsonNode clearTraffic() {
+        windowAction(AppControl::clearTraffic);
+        return done("The Network tab was cleared.");
+    }
+
+    private static void windowAction(java.util.function.Consumer<AppControl> action) {
+        AppControl window = AppControl.current();
+        if (window == null) throw new ToolError("The Network tab is not ready; try again.");
+        try {
+            action.accept(window);
+        } catch (AppControl.Unavailable e) {
+            throw new ToolError(e.getMessage());
+        }
+    }
+
+    private JsonNode setLauncherOptions(JsonNode a) {
+        Boolean devTools = optionalBooleanOrNull(a, "devTools"), incognito = optionalBooleanOrNull(a, "incognito"),
+                uaOn = optionalBooleanOrNull(a, "userAgentEnabled"), uddOn = optionalBooleanOrNull(a, "userDataDirEnabled"),
+                extraOn = optionalBooleanOrNull(a, "extraArgsEnabled"), urlOn = optionalBooleanOrNull(a, "openUrlEnabled"),
+                hrr = optionalBooleanOrNull(a, "hostResolverRules"), proxy = optionalBooleanOrNull(a, "proxyServer"),
+                network = optionalBooleanOrNull(a, "openNetworkTab");
+        String ua = rawText(a, "userAgent"), extra = rawText(a, "extraArgs"), url = rawText(a, "openUrl");
+        if (url != null && !url.isBlank() && !tricatch.oehostsapp.chrome.ChromeArgs.isStartUrl(url.strip())) {
+            throw new ToolError("openUrl must start with http://, https://, about: or chrome://." + NOT_STORED);
+        }
+        change(List.of(AppControl.Area.LAUNCHER), () -> {
+            tricatch.oehostsapp.store.LauncherOptions now = store.data.launcher;
+            boolean hrrAfter = hrr != null ? hrr : now.hostResolverRules;
+            boolean proxyAfter = proxy != null ? proxy : now.proxyServer;
+            if (hrrAfter && proxyAfter) {
+                throw new ToolError("hostResolverRules and proxyServer cannot both be on." + NOT_STORED);
+            }
+            if (devTools != null) now.devTools = devTools;
+            if (incognito != null) now.incognito = incognito;
+            if (uaOn != null) now.userAgentEnabled = uaOn;
+            if (ua != null) now.userAgent = ua.strip();
+            if (uddOn != null) now.userDataDirEnabled = uddOn;
+            if (extraOn != null) now.extraArgsEnabled = extraOn;
+            if (extra != null) now.extraArgs = normalize(extra);
+            if (urlOn != null) now.openUrlEnabled = urlOn;
+            if (url != null) now.openUrl = url.strip();
+            now.hostResolverRules = hrrAfter;
+            now.proxyServer = proxyAfter;
+            if (network != null) now.openNetworkTab = network;
+            store.save();
+            return null;
+        });
+        return settings().get("launcher");
+    }
+
+    private JsonNode setPresets(JsonNode a) {
+        String which = requiredText(a, "list");
+        if (!which.equals("user_agent") && !which.equals("open_url")) {
+            throw new ToolError("list must be \"user_agent\" or \"open_url\"");
+        }
+        String text = rawText(a, "text");
+        if (text == null) throw new ToolError("Missing argument: text");
+        change(List.of(AppControl.Area.SETTINGS, AppControl.Area.LAUNCHER), () -> {
+            Settings st = store.data.settings;
+            (which.equals("user_agent") ? st.userAgentPresets : st.openUrlPresets).replaceText(normalize(text));
+            store.save();
+            return null;
+        });
+        return settings().get("presets").get(which.equals("user_agent") ? "userAgent" : "openUrl");
+    }
+
+    private JsonNode setProxyPort(JsonNode a) {
+        int port = optionalInt(a, "port", -1);
+        if (port < 1 || port > 65535) throw new ToolError("port must be 1-65535");
+        change(List.of(AppControl.Area.SETTINGS), () -> {
+            store.data.settings.fwdproxy.port = port;
+            store.save();
+            return null;
+        });
+        ForwardProxy.restart();
+        return status().get("proxyService");
+    }
+
+    private JsonNode setReverseProxyBind(JsonNode a) {
+        String bind = requiredText(a, "bind");
+        if (!bindChoices().contains(bind)) throw new ToolError("bind must be one of " + bindChoices());
+        change(List.of(AppControl.Area.SETTINGS), () -> {
+            store.data.settings.reverseProxy.bind = bind;
+            store.save();
+            return null;
+        });
+        ProxyRuntime.restart();
+        return status().get("reverseProxy");
+    }
+
+    private JsonNode restartService(JsonNode a) {
+        String s = requiredText(a, "service");
+        switch (s) {
+            case "reverse_proxy" -> ProxyRuntime.restart();
+            case "proxy_service" -> ForwardProxy.restart();
+            default -> throw new ToolError("service must be \"reverse_proxy\" or \"proxy_service\"");
+        }
+        return status().get(s.equals("reverse_proxy") ? "reverseProxy" : "proxyService");
+    }
+
+    private static List<String> bindChoices() {
+        List<String> out = new ArrayList<>(List.of(tricatch.oehostsapp.net.Network.LOOPBACK, tricatch.oehostsapp.net.Network.ALL));
+        for (tricatch.oehostsapp.net.Network.Lan l : tricatch.oehostsapp.net.Network.addresses()) out.add(l.ip());
+        return out;
+    }
+
+    private JsonNode settings() {
+        ObjectNode out = JSON.objectNode();
+        synchronized (store) {
+            Settings st = store.data.settings;
+            out.set("launcher", Store.MAPPER.valueToTree(store.data.launcher));
+            ObjectNode presets = out.putObject("presets");
+            presets.set("userAgent", presets(st.userAgentPresets));
+            presets.set("openUrl", presets(st.openUrlPresets));
+            out.put("proxyServicePort", st.fwdproxy.port);
+            ObjectNode rp = out.putObject("reverseProxy");
+            rp.put("bind", st.reverseProxy.bind);
+            ObjectNode ssl = out.putObject("sslProxy");
+            ssl.put("enabled", st.sslProxy.enabled);
+            ssl.put("domains", st.sslProxy.domains);
+            ObjectNode mcp = out.putObject("mcp");
+            mcp.put("enabled", st.mcp.enabled);
+            mcp.put("port", st.mcp.port);
+            mcp.put("traffic", st.mcp.traffic);
+            mcp.put("note", "Read only: the MCP server's settings and token are changed on the settings screen only.");
+        }
+        ArrayNode choices = ((ObjectNode) out.get("reverseProxy")).putArray("bindChoices");
+        bindChoices().forEach(choices::add);
+        return out;
+    }
+
+    private static ObjectNode presets(Settings.PresetList list) {
+        ObjectNode n = JSON.objectNode();
+        n.put("text", list.editorText());
+        ArrayNode entries = n.putArray("entries");
+        for (Settings.Preset p : list.items) {
+            ObjectNode e = entries.addObject();
+            e.put("name", p.name);
+            e.put("value", p.value);
+        }
+        return n;
+    }
+
+    private static ObjectNode done(String message) {
+        ObjectNode n = JSON.objectNode();
+        n.put("ok", true);
+        n.put("message", message);
+        return n;
+    }
+
+    /** Line ends as the editors keep them (LF). */
+    private static String normalize(String s) {
+        return s == null ? "" : s.replace("\r\n", "\n").replace('\r', '\n');
+    }
+
+    /** A small builder for the change tools' input schemas. */
+    private static final class Schema {
+        private final ObjectNode s = schema();
+        private final ObjectNode props = (ObjectNode) s.get("properties");
+        private final List<String> required = new ArrayList<>();
+
+        private Schema prop(String name, String type, String description, boolean req) {
+            props.putObject(name).put("type", type).put("description", description);
+            if (req) required.add(name);
+            return this;
+        }
+
+        Schema text(String name, String description, boolean req) {
+            return prop(name, "string", description, req);
+        }
+
+        /** A string taken as given (content, lists): blank values are kept. */
+        Schema raw(String name, String description, boolean req) {
+            return prop(name, "string", description, req);
+        }
+
+        Schema bool(String name, String description, boolean req) {
+            return prop(name, "boolean", description, req);
+        }
+
+        Schema integer(String name, String description, boolean req) {
+            return prop(name, "integer", description, req);
+        }
+
+        Schema choice(String name, String description, boolean req, String... values) {
+            prop(name, "string", description, req);
+            ArrayNode e = ((ObjectNode) props.get(name)).putArray("enum");
+            for (String v : values) e.add(v);
+            return this;
+        }
+
+        ObjectNode build() {
+            if (!required.isEmpty()) {
+                ArrayNode r = s.putArray("required");
+                required.forEach(r::add);
+            }
+            return s;
+        }
     }
 
     // ── Traffic ───────────────────────────────────────────────
@@ -427,6 +1003,7 @@ final class McpTools {
         n.put("id", i.id);
         n.put("name", i.name);
         n.put("folder", i.folderId == null ? null : folders.get(i.folderId));
+        n.put("folderId", i.folderId == null || !folders.containsKey(i.folderId) ? null : i.folderId);
         n.put("selected", i.selected);
         if (kind == Kind.HOSTS) n.put("shared", i.shared);
         n.put("updatedAt", i.updatedAt);
@@ -458,6 +1035,33 @@ final class McpTools {
         if (!v.isTextual()) throw new ToolError("Argument " + name + " must be a string");
         String s = v.asText().strip();
         return s.isEmpty() ? null : s;
+    }
+
+    private static String requiredText(JsonNode args, String name) {
+        String s = optionalText(args, name);
+        if (s == null) throw new ToolError("Missing argument: " + name);
+        return s;
+    }
+
+    /** A string argument as given (an empty one too); null when absent. */
+    private static String rawText(JsonNode args, String name) {
+        JsonNode v = args == null ? null : args.get(name);
+        if (v == null || v.isNull()) return null;
+        if (!v.isTextual()) throw new ToolError("Argument " + name + " must be a string");
+        return v.asText();
+    }
+
+    private static Boolean optionalBooleanOrNull(JsonNode args, String name) {
+        JsonNode v = args == null ? null : args.get(name);
+        if (v == null || v.isNull()) return null;
+        if (!v.isBoolean()) throw new ToolError("Argument " + name + " must be true or false");
+        return v.asBoolean();
+    }
+
+    private static boolean requiredBoolean(JsonNode args, String name) {
+        Boolean b = optionalBooleanOrNull(args, name);
+        if (b == null) throw new ToolError("Missing argument: " + name);
+        return b;
     }
 
     private static ObjectNode schema() {

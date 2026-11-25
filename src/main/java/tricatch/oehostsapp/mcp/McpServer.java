@@ -27,7 +27,7 @@ import java.util.concurrent.Executors;
 /**
  * The MCP server for AI coding tools (Claude Code): MCP's Streamable HTTP transport at
  * {@code http://127.0.0.1:<settings.mcp.port>/mcp}, answering each POSTed JSON-RPC message with one
- * JSON reply ({@link McpProtocol}); no event stream, no sessions. Read-only ({@link McpTools}).
+ * JSON reply ({@link McpProtocol}); no event stream, no sessions. The tools are in {@link McpTools}.
  * It also serves the CLI's Claude Code skill at {@link CliSkill#PATH}, the only path without the token.
  *
  * <p>Runs while {@code settings.mcp.enabled} (on by default). It listens on 127.0.0.1 only, never on a network card,
