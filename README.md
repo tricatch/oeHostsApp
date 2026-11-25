@@ -44,7 +44,7 @@ irm https://raw.githubusercontent.com/tricatch/oeHostsApp/master/install.ps1 | i
 1. **CA 인증서 등록** — 설정 → oeProxy → CA 인증서에서 인증서를 등록합니다. 처음 한 번만 하면 됩니다.
 2. **vhost 추가** — oeProxy 탭에서 **+** 를 눌러 vhost를 추가하고, 도메인과 연결할 서버 주소를 적은 뒤 스위치를 켭니다.
 3. **hosts 프로필 추가** — oeHosts 탭에서 **+** 를 눌러 프로필을 추가하고, `127.0.0.1 dev.example.com`을 적은 뒤 스위치를 켭니다.
-4. **Chrome 실행** — oeHosts 탭 오른쪽의 **Chrome 실행**을 누르고 `https://dev.example.com`에 접속합니다.
+4. **Chrome 열기** — oeHosts 탭 오른쪽의 **설정대로 Chrome 열기**를 누르고 `https://dev.example.com`에 접속합니다.
 5. **요청 확인** — Network 탭에서 요청과 응답을 확인합니다.
 
 ## 사용법
@@ -53,8 +53,10 @@ irm https://raw.githubusercontent.com/tricatch/oeHostsApp/master/install.ps1 | i
 
 - 프로필에는 `IP 도메인`을 한 줄에 하나씩 적습니다. 입력하면 자동으로 저장됩니다.
 - 여러 프로필을 함께 켤 수 있습니다. 같은 도메인이 여러 프로필에 있으면 목록에서 위에 있는 프로필이 우선합니다.
-- 오른쪽에서 Chrome 옵션(`--incognito`, `--user-agent`, `--user-data-dir`, 시작 URL 등)을 고른 뒤 **Chrome 실행**을 누릅니다. **Win / Mac** 버튼을 누르면 같은 내용을 터미널에서 실행할 수 있는 명령어로 보여 줍니다.
+- 오른쪽에서 Chrome 옵션(`--incognito`, `--user-agent`, `--user-data-dir`, 시작 URL 등)을 고른 뒤 **설정대로 Chrome 열기**를 누릅니다. 오른쪽 끝의 ⋮ 버튼을 누르면 같은 내용을 터미널에서 실행할 수 있는 명령어(Windows / macOS)로 보여 줍니다.
 - 같은 Chrome 프로필이 이미 실행 중이면, 확인을 받은 뒤 기존 창을 닫고 새로 실행합니다. **저장하지 않은 작업은 사라질 수 있으니 주의하세요.**
+- **기본 Chrome 열기**는 기본 프로필로 Chrome을 옵션 없이 실행합니다. `--user-data-dir`로 연 Chrome이 떠 있으면 바로가기 아이콘으로는 기본 프로필 Chrome을 띄울 수 없는데, 이 버튼으로는 열 수 있습니다. 이미 실행 중이면 종료하고 다시 실행할지 묻습니다.
+- `--user-data-dir` 줄 오른쪽의 Chrome 버튼은 그 프로필로 다른 옵션 없이 Chrome을 엽니다. 화면의 스위치 설정은 바뀌지 않습니다.
 - 목록 위의 돋보기 버튼으로 모든 프로필을 검색할 수 있고, 편집기에서는 Ctrl+F(macOS는 Cmd+F)로 찾을 수 있습니다.
 
 **`--proxy-server` 옵션** — 이 옵션을 켜고 실행하면 Chrome이 앱의 프록시(`36980` 포트)를 거칩니다. 프로필에 적은 도메인은 지정한 IP로, 나머지는 원래대로 연결되고, 오가는 요청을 Network 탭에서 확인할 수 있습니다.
