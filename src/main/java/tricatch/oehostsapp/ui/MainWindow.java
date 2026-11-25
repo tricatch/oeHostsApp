@@ -188,15 +188,49 @@ public final class MainWindow {
         t.start();
     }
 
+    /**
+     * Widens every visible label under {@code c} a little, keeping its old width in {@code old}.
+     * Only labels without a background or border: a boxed label would cover its neighbour.
+     */
+    private static void widenLabels(Container c, java.util.Map<JLabel, Integer> old) {
+        for (Component child : c.getComponents()) {
+            if (child instanceof JLabel l && l.isShowing() && l.getWidth() > 0 && !l.isOpaque() && l.getBorder() == null) {
+                old.put(l, l.getWidth());
+                l.setSize(l.getWidth() + Math.max(4, l.getWidth() / 25), l.getHeight());
+            }
+            if (child instanceof Container sub) widenLabels(sub, old);
+        }
+    }
+
     private static void save(JComponent c, String file) {
         // At the display's scale (e.g. 150%), as on screen: text is measured at that scale, and
         // painted at 100% it can come out wider than its label and look cut off.
+        // -Doehostsapp.shot.scale=<n> paints the same layout at n times the pixels instead (sharp
+        // pictures for high-density screens, e.g. the intro page's).
         double s = c.getGraphicsConfiguration() == null ? 1 : c.getGraphicsConfiguration().getDefaultTransform().getScaleX();
+        boolean forcedScale = false;
+        try {
+            String forced = System.getProperty("oehostsapp.shot.scale");
+            if (forced != null && Double.parseDouble(forced) > 0) {
+                s = Double.parseDouble(forced);
+                forcedScale = true;
+            }
+        } catch (NumberFormatException ignored) {
+            // keep the display's scale
+        }
         java.awt.image.BufferedImage img = new java.awt.image.BufferedImage((int) Math.ceil(c.getWidth() * s),
                 (int) Math.ceil(c.getHeight() * s), java.awt.image.BufferedImage.TYPE_INT_RGB);
         Graphics2D g = img.createGraphics();
+        // Glyphs at their exact scaled widths: hinted at n times the size they can come out wider
+        // than the text measured for the layout, and be cut off.
+        if (forcedScale) g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
         g.scale(s, s);
+        // A label sized to its text at 100% can still lose its last letter at n times: widen the
+        // labels by a few pixels for the picture only, then put them back.
+        java.util.Map<JLabel, Integer> widened = new java.util.HashMap<>();
+        if (forcedScale) widenLabels(c, widened);
         c.paint(g);
+        widened.forEach((l, w) -> l.setSize(w, l.getHeight()));
         g.dispose();
         try {
             ImageIO.write(img, "png", new java.io.File(file + ".png"));

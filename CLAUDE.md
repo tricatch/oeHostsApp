@@ -25,7 +25,7 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
 
 ## Launch Options
 
-- App-specific JVM system properties are named `-Doehostsapp.<name>` and read with `System.getProperty("oehostsapp.<name>")`. Existing: `oehostsapp.log` (log level), `oehostsapp.shot` and `oehostsapp.settings.page` (screenshot aid, below), `oehostsapp.update.repo` and `oehostsapp.agent.repo` (base URLs the app update and the oeHosts-Agent update use instead of the GitHub repositories; for testing against a local server).
+- App-specific JVM system properties are named `-Doehostsapp.<name>` and read with `System.getProperty("oehostsapp.<name>")`. Existing: `oehostsapp.log` (log level), `oehostsapp.shot`, `oehostsapp.shot.scale` and `oehostsapp.settings.page` (screenshot aid, below), `oehostsapp.update.repo` and `oehostsapp.agent.repo` (base URLs the app update and the oeHosts-Agent update use instead of the GitHub repositories; for testing against a local server).
 - The app's only command-line option is `--data DIR`. A first argument that is not an option (or `--help`/`-h`) starts the command line (`mcp.McpCli`, below) instead of the window, and every argument after it belongs to that command. Document any new user-facing option or command in `README.md`.
 
 ## Verifying UI Changes
@@ -34,6 +34,7 @@ oeHostsApp is a standalone Java Swing (FlatLaf) desktop port of oeHub's oeHosts 
   `java -Duser.language=ko -Doehostsapp.shot=<prefix> -jar build/libs/oehostsapp.jar --data <scratch dir>`
   It saves each tab as `<prefix>-<n>.png` and each dialog listed in `MainWindow.screenshots()` as `<prefix>-d<n>.png`, then exits. Add a dialog there when you need to check it.
 - `-Doehostsapp.settings.page=<id>` opens that settings page first (ids are the `Page` ids in `SettingsTab`).
+- `-Doehostsapp.shot.scale=<n>` saves the pictures at n times the pixels of the 100% layout (default: the display's scale); use 2 for pictures shown on high-density screens.
 - Always use a scratch `--data` folder, never the user's real data folder. Check both `ko` and `en` when strings change.
 - The user often has their own instance running: it holds ports 443 and 36980 (the reverse and forward proxies then report "failed to start" in the test instance, which is expected) and its window may be on screen. Do not drive real mouse/keyboard input (e.g. `java.awt.Robot`) unless the test window is known to be the target; prefer screenshot mode.
 - Small changes do not need the full test suite; run the tests that cover the touched code.
