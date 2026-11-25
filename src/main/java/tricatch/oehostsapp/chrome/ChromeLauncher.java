@@ -126,14 +126,36 @@ public final class ChromeLauncher {
             if (!closeRunning) return Result.RUNNING;
             close(running);
         }
+        return start(exe.get(), args);
+    }
 
+    /**
+     * Starts Chrome on its default profile with no flags at all. A
+     * running one is never sent a new window or tab: it is left alone ({@link Result#RUNNING})
+     * unless {@code restart}, in which case it is closed first, as {@link #launch} closes one.
+     * Started by the app rather than a shortcut, so a running Chrome on another
+     * {@code --user-data-dir} (the launcher's) cannot take the click over, as a pinned taskbar or
+     * Dock icon does. Blocks like {@link #launch}: call it off the UI thread.
+     */
+    public static Result launchDefault(boolean restart) {
+        Optional<String> exe = chrome();
+        if (exe.isEmpty()) return Result.NOT_FOUND;
+        List<Long> running = running(null);
+        if (!running.isEmpty()) {
+            if (!restart) return Result.RUNNING;
+            close(running);
+        }
+        return start(exe.get(), List.of());
+    }
+
+    private static Result start(String exe, List<String> args) {
         List<String> cmd = new ArrayList<>();
         if (!MAC) {
-            cmd.add(exe.get());
+            cmd.add(exe);
             cmd.addAll(args);
         } else {
             // A new instance through Launch Services, as a Dock click would start it.
-            cmd.addAll(List.of("open", "-na", exe.get()));
+            cmd.addAll(List.of("open", "-na", exe));
             if (!args.isEmpty()) {
                 cmd.add("--args");
                 cmd.addAll(args);
