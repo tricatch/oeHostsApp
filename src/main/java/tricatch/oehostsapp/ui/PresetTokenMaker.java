@@ -30,7 +30,7 @@ final class PresetTokenMaker extends TokenMakerBase {
         String line = new String(text.array, text.offset, text.count);
         int type;
         if (line.isBlank()) type = Token.WHITESPACE;
-        else if (PresetsPage.isComment(line)) type = Token.COMMENT_EOL;
+        else if (PresetsDialog.isComment(line)) type = Token.COMMENT_EOL;
         else if (!valid.test(line)) type = Token.ERROR_IDENTIFIER;
         else type = Token.IDENTIFIER;
         addToken(text, text.offset, text.offset + text.count - 1, type, startOffset);

@@ -14,7 +14,7 @@ public final class LauncherOptions {
     public boolean incognito;
     public boolean userAgentEnabled;
     public String userAgent = "";
-    public boolean userDataDirEnabled;
+    public boolean userDataDirEnabled = true;
     public boolean extraArgsEnabled;
     /** One argument per line. */
     public String extraArgs = DEFAULT_EXTRA_ARGS;

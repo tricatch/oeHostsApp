@@ -51,8 +51,6 @@ public final class SettingsTab extends JPanel {
     private final JPanel cards = new JPanel(new CardLayout());
     private final JLabel title = Ui.title(" ");
     private String activeId;
-    /** The preset editors built so far. */
-    private final List<Autosave> autosaves = new ArrayList<>();
     /** Bottom-bar status of each page that has one, by page id; "" is the empty card. */
     private final JPanel metaStatus = new JPanel(new CardLayout());
     private final Set<String> metaPages = new HashSet<>();
@@ -72,8 +70,6 @@ public final class SettingsTab extends JPanel {
                 new Page("export", "app.settings.export.title", () -> new DataPage(this).buildExport()),
                 new Page("licenses", "licenses.section.opensource", () -> LicensesPage.build(ctx)))));
         folders.add(new Folder("app.settings.folder.hosts", List.of(
-                new Page("ua", "app.settings.ua.presets.title", () -> new PresetsPage(this, true).build()),
-                new Page("url", "app.settings.url.presets.title", () -> new PresetsPage(this, false).build()),
                 new Page("active", "app.settings.active.title", () -> new ActiveHostsPage(this).build()),
                 new Page("agent", "app.settings.agent.title", () -> new AgentPage(this).build()))));
         folders.add(new Folder("app.settings.folder.proxy", List.of(
@@ -133,11 +129,9 @@ public final class SettingsTab extends JPanel {
     /**
      * Drops the pages built so far, so each one is built again from the store when it is shown; the
      * page shown now is rebuilt at once. For settings changed outside the screen (the AI tools): the
-     * pages read the store only when they are built. Pending preset edits are saved first.
+     * pages read the store only when they are built.
      */
     void rebuildPages() {
-        flush();
-        autosaves.clear();
         for (JComponent c : built.values()) cards.remove(c);
         built.clear();
         for (JComponent s : statusLabels) metaStatus.remove(s);
@@ -150,20 +144,9 @@ public final class SettingsTab extends JPanel {
         cards.repaint();
     }
 
-    /** An editor's autosave, flushed with the others ({@link #flush}). */
-    void track(Autosave a) {
-        autosaves.add(a);
-    }
-
-    /** Saves the preset editors' pending edits (window closing, rebuild). */
-    public void flush() {
-        for (Autosave a : autosaves) a.flush();
-    }
-
-    /** Saves every pending edit of the window: the editors of all screens and the preset editors. */
+    /** Saves every pending edit of the window (the oeHosts and oeProxy editors). */
     void flushAll() {
         host.flushEdits();
-        flush();
     }
 
     // ── Left list ───────────────────────────────────────────────

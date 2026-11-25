@@ -126,7 +126,7 @@ public final class CodeEditor {
 
     /** Preset text colouring: see {@link #lineHighlighting}, with the "name | value" rule. */
     public void presetHighlighting() {
-        lineHighlighting(line -> PresetsPage.line(line) != null);
+        lineHighlighting(line -> PresetsDialog.line(line) != null);
     }
 
     /**
